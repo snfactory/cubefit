@@ -1,4 +1,8 @@
-__all__ = ["hello"]
+__all__ = ["DDTData"]
 
-def hello():
-    print "hello world"
+class DDTData(object):
+    """A class to hold DDT data"""
+
+    def __init__(self, filename):
+        """Initialize from a JSON-formatted file."""
+        pass

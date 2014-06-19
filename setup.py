@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-
 from distutils.core import setup
 
 data_files=[]
@@ -21,6 +20,7 @@ setup(name="ddtpy",
       url="https://github.com/kbarbary/ddtpy",
       author=", ".join(authors),
       author_email="kylebarbary@gmail.com",
-      install_requires=['numpy', 'scipy'],
+      requires=['numpy', 'scipy'],
       packages=['ddtpy'],
+      scripts=['scripts/ddt'],
       data_files=data_files)
