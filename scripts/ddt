@@ -1,4 +1,5 @@
 #!/usr/bin/env python
 
-import ddtpy
+import ddtpy.ddt
+
 ddtpy.ddt.main()
