@@ -14,5 +14,4 @@ def main():
     args = parser.parse_args()
 
     ddtdata = ddtpy.DDTData(args.filename)
-    print(ddtdata.data.shape)
-    print(ddtdata.wave.shape)
+    print(ddtdata)
