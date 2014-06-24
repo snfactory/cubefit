@@ -1,5 +1,18 @@
 #!/usr/bin/env python
+from __future__ import print_function
 
-import ddtpy.ddt
+import ddtpy
 
-ddtpy.ddt.main()
+def main():
+    from argparse import ArgumentParser
+
+    parser = ArgumentParser(
+        description="DDT: Datacube Deconvolution Thingy")
+    parser.add_argument("filename", help="path to configuration file")
+
+    args = parser.parse_args()
+
+    ddtdata = ddtpy.DDTData(args.filename)
+    print(ddtdata)
+
+main()

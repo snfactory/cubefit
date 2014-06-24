@@ -1,2 +1,1 @@
-from core import *
-import ddt
+from ddtdata import *
