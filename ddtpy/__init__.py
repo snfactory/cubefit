@@ -1,1 +1,1 @@
-from ddtdata import *
+from core import *

@@ -131,6 +131,11 @@ def differential_refraction(airmass, p, t, h, wave, wave_ref):
         Wavelengths
     wave_ref : float
         Reference wavelength
+
+    Returns
+    -------
+    delta_r : 2-d array
+        2-d array of shape (n_airmass, n_wave)
     """
   
     n2 = refraction_index_of_air_minus_one(p, t, h, wave)

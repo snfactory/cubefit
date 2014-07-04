@@ -1,5 +1,6 @@
 from __future__ import print_function, division
 
+from copy import deepcopy
 import json
 
 import numpy as np
@@ -8,10 +9,17 @@ from .psf import params_from_gs, gaussian_plus_moffat_psf_4d
 from .io import read_dataset, read_select_header_keys
 from .adr import calc_paralactic_angle, differential_refraction
 
-__all__ = ["DDTData"]
+__all__ = ["DDT"]
 
-class DDTData(object):
-    """A class to hold DDT data."""
+class DDT(object):
+    """This class is analagous to the ddt object that gets created by
+    ddt_setup_ddt() in Yorick.
+
+    The namespace has been flattened relative to the Yorick version.
+    For example, suppose we have an instance of this class named `ddt`.
+    Rather than `ddt.ddt_data.data` (as in the Yorick version), we have
+    `ddt.data`.
+    """
 
     def __init__(self, filename):
         """Initialize from a JSON-formatted file."""
@@ -34,6 +42,8 @@ class DDTData(object):
         # save sizes for convenience
         self.nt = len(self.data)
         self.nw = len(self.wave)
+        self.data_ny = self.data.shape[2]  # 15 for SNIFS
+        self.data_nx = self.data.shape[3]  # 15 for SNIFS
 
         # Load PSF model
         # GS-PSF --> ES-PSF
@@ -71,7 +81,7 @@ class DDTData(object):
         wave_ref = conf.get("PARAM_LAMBDA_REF", 5000.)
         paralactic_angle = calc_paralactic_angle(airmass, ha, dec, tilt)
         delta_r = differential_refraction(airmass, p, t, h, self.wave,
-                                          wave_ref)
+                                          wave_ref) # 2-d, shape = (nt, nw)
         delta_r /= self.spaxel_size  # convert from arcsec to spaxels
 
         self.delta_r = delta_r
@@ -92,10 +102,31 @@ class DDTData(object):
 
         # TODO : setup FFT(s)
 
+        # this was done in ddt_setup_R in Yorick
+        self.sn_offset_x_ref = deepcopy(self.target_xp)
+        self.sn_offset_y_ref = deepcopy(self.target_yp)
+
+        # 2-d arrays in (time, wave)
+        self.sn_offset_x = (self.sn_offset_x_ref[:, None] +
+                            self.delta_r * self.adr_x[:, None])
+        self.sn_offset_y = (self.sn_offset_y_ref[:, None] +
+                            self.delta_r * self.adr_y[:, None])
+
+        # if no pointing error, the supernova is at  
+        # int((N_x + 1) / 2 ), int((N_y + 1) / 2 )
+        # in Yorick indexing for both the MLA and the model
+
+        offset_x = int((self.psf_nx-1.) / 2.) - int((self.data_nx-1.) / 2.)
+        offset_y = int((self.psf_ny-1.) / 2.) - int((self.data_ny-1.) / 2.)
+
+        self.range_x = slice(offset_x, offset_x + self.data_nx)
+        self.range_y = slice(offset_y, offset_y + self.data_ny)
+
     def __str__(self):
         """Create a string representation.
 
-        For now this just lists the sizes of all the member arrays.
+        For now this just lists all the members of the object and for arrays,
+        their shapes.
         """
 
         lines = ["Members:"]
@@ -106,3 +137,23 @@ class DDTData(object):
                 info = repr(val)
             lines.append("  {0:s} : {1}".format(name, info))
         return "\n".join(lines)
+
+    # TODO: make a better name for this.
+    def r(self, x):
+        """Returns just the section of the model (x) that overlaps the data.
+
+        This is the same as the Yorick ddt.R operator with job = 0.
+        
+        In Yorick x could be 2 or more dimensions, here it must be 4-d.
+        """
+        return x[:, :, self.range_y, self.range_x]
+
+    def r_inv(self, x):
+        """creates a model with MLA data at the right location.
+
+        This is the same as the Yorick ddt.R operator with job = 1.
+        """
+        shape = (x.shape[0], x.shape[1], self.psf_ny, self.psf_nx)
+        y = np.zeros(shape, dtype=np.float32)
+        y[:, :, self.range_y, self.range_x] = x
+        return y

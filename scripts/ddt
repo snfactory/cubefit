@@ -12,7 +12,7 @@ def main():
 
     args = parser.parse_args()
 
-    ddtdata = ddtpy.DDTData(args.filename)
-    print(ddtdata)
+    ddt = ddtpy.DDT(args.filename)
+    print(ddt)
 
 main()
