@@ -38,20 +38,21 @@ def params_from_gs(es_psf, wave):
 
     return ellipticity, alpha
 
-def gaussian_plus_moffat_psf_4d(nx, ny, ellipticity, alpha, angle=None):
+def gaussian_plus_moffat_psf_4d(x, y, ellipticity, alpha, angle=None):
     """Create a 2-d PSF for a 2-d array of parameters.
 
     Parameters
     ----------
-    nx, ny : int
-        Size of output 2-d PSFs.
+    x, y : 1-d array of int
+        Coordinates of each array element in x and y. The PSF is centered
+        at coordinates (x,y) = (0.,0.).
     ellipticity : 2-d array
     alpha : 2-d array
 
     Returns
     -------
-    x : 1-d array
-    y : 1-d array
+    x : 1-d array of int
+    y : 1-d array of int
     psf : 4-d array
 
     Notes
@@ -63,7 +64,10 @@ def gaussian_plus_moffat_psf_4d(nx, ny, ellipticity, alpha, angle=None):
     """
 
     assert ellipticity.shape == alpha.shape
+
     nt, nw = ellipticity.shape
+    ny = len(y)
+    nx = len(x)
 
     if angle is None:
         angle = np.zeros(nt)
@@ -71,20 +75,15 @@ def gaussian_plus_moffat_psf_4d(nx, ny, ellipticity, alpha, angle=None):
     # allocate output array
     psf = np.empty((nt, nw, ny, nx), dtype=np.float)
 
-    # coordinates of center of each spaxel, relative to central spaxel
-    x = np.arange(1-nx//2, 1+nx//2)
-    y = np.arange(1-ny//2, 1+ny//2)
-
     for i_t in range(nt):
-        angle_t = angle[i_t]
         for i_w in range(nw):
             e = ellipticity[i_t, i_w]
             a = alpha[i_t, i_w]
-            slicepsf = gaussian_plus_moffat_psf(x, y, 0.0, 0.0, e, a,
-                                                angle=angle_t)
+            slicepsf = gaussian_plus_moffat_psf(x, y, 0., 0., e, a,
+                                                angle=angle[i_t])
             psf[i_t, i_w, :, :] = slicepsf / np.sum(slicepsf)
 
-    return x, y, psf
+    return psf
 
 def gaussian_plus_moffat_psf(x, y, x0, y0, ellipticity, alpha, angle=0.):
     """Evaluate a gaussian+moffat function on a 2-d grid. 
@@ -142,3 +141,32 @@ def gaussian_plus_moffat_psf(x, y, x0, y0, ellipticity, alpha, angle=0.):
     norm_psf = 1. / (1./norm_moffat + eta * 1./norm_gauss)
 
     return norm_psf * (moffat + eta*gauss)
+
+def roll_psf(psf, dx, dy):
+    """Rolls the psf by dx, dy in x and y coordinates.
+
+    The equivalent of the Yorick version with job = 0 is
+
+    dx, dy = (1 - sn_x, 1 - sn_y) [if sn_x = (nx+1)//2]
+    or
+    dx, dy = (-sn_x, -sn_y) [if sn_x = (nx-1)//2]  # python indexed
+
+    job=1 is 
+
+    Parameters
+    ----------
+    psf : 4-d array
+    dx, dy : int
+        Shift in x and y coordinates.
+
+    Returns
+    -------
+    rolled_psf : 4-d array
+
+    """
+
+    assert psf.ndim == 4  # just checkin' (in Yorick this is also used for 3-d)
+                          # but we haven't implemented that here.
+
+    tmp = np.roll(psf, dy, 2)  # roll along y (axis = 2)
+    return np.roll(tmp, dx, 3)  # roll along x (axis = 3)

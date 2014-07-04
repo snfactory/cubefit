@@ -49,12 +49,22 @@ class DDT(object):
         # GS-PSF --> ES-PSF
         # G-PSF --> GR-PSF
         if conf["PARAM_PSF_TYPE"] == "GS-PSF":
+            self.psf_nx, self.psf_ny = 32, 32
+            offx = int((self.psf_nx-1) / 2.)
+            offy = int((self.psf_ny-1) / 2.)
+
+            # x, y coordinates on psf array (1-d)
+            self.psf_x = np.arange(-offx, self.psf_nx - offx)
+            self.psf_y = np.arange(-offy, self.psf_ny - offy)
+
+            # sn is "by definition" at array position where coordinates = (0,0)
+            self.model_sn_x = offx
+            self.model_sn_y = offy
+
             es_psf = np.array(conf["PARAM_PSF_ES"])
             ellipticity, alpha = params_from_gs(es_psf, self.wave)
-            tmp = gaussian_plus_moffat_psf_4d(32, 32, ellipticity, alpha)
-            self.psf_x, self.psf_y, self.psf = tmp
-            self.psf_nx = len(self.psf_x)
-            self.psf_ny = len(self.psf_y)
+            self.psf = gaussian_plus_moffat_psf_4d(self.psf_x, self.psf_y,
+                                                   ellipticity, alpha)
         elif conf["PARAM_PSF_TYPE"] == "G-PSF":
             raise RuntimeError("G-PSF (from FITS files) not implemented")
         else:
@@ -65,8 +75,6 @@ class DDT(object):
         self.model_galprior = np.zeros((self.nw, self.psf_ny, self.psf_nx))
         self.model_sky = np.zeros((self.nt, self.nw))
         self.model_sn = np.zeros((self.nt, self.nw))
-        self.model_sn_x = (self.psf_nx + 1) // 2
-        self.model_sn_y = (self.psf_ny + 1) // 2
         self.model_eta = np.ones(self.nt)
         self.model_final_ref_sky = np.zeros(self.nw)
 
@@ -122,6 +130,21 @@ class DDT(object):
         self.range_x = slice(offset_x, offset_x + self.data_nx)
         self.range_y = slice(offset_y, offset_y + self.data_ny)
 
+        # equilvalent of ddt_setup_apodizer() in Yorick,
+        # with without implementing all of it:
+        if self.flag_apodizer < 2:
+            self.apodizer = None
+            self.psf_enlarge = None
+        else:
+            raise RuntimeError("FLAG_APODIZER >= 2 not implemented")
+
+        # This moves the center of the PSF from array coordinates
+        # (model_sn_x, model_sn_y) -> (0, 0) [lower left pixel]
+        # I don't know why this is done.
+        self.psf = roll_psf(self.psf, -self.model_sn_x, -self.model_sn_y)
+        self.psf_rolled = True
+
+
     def __str__(self):
         """Create a string representation.
 
@@ -143,8 +166,7 @@ class DDT(object):
         """Returns just the section of the model (x) that overlaps the data.
 
         This is the same as the Yorick ddt.R operator with job = 0.
-        
-        In Yorick x could be 2 or more dimensions, here it must be 4-d.
+        In Yorick, `x` could be 2 or more dimensions; here it must be 4-d.
         """
         return x[:, :, self.range_y, self.range_x]
 
