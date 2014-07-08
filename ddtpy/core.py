@@ -5,10 +5,10 @@ import json
 
 import numpy as np
 
-from .psf import params_from_gs, gaussian_plus_moffat_psf_4d
+from .psf import params_from_gs, gaussian_plus_moffat_psf_4d, roll_psf
 from .io import read_dataset, read_select_header_keys
 from .adr import calc_paralactic_angle, differential_refraction
-
+from .regul_toolbox import RegulGalaxyXY
 __all__ = ["DDT"]
 
 class DDT(object):
@@ -143,6 +143,21 @@ class DDT(object):
         # I don't know why this is done.
         self.psf = roll_psf(self.psf, -self.model_sn_x, -self.model_sn_y)
         self.psf_rolled = True
+
+        # equivalent of ddt_setup_regularization...
+        # In original, these use "sky=guess_sky", but I can't find this defined.
+        # Similarly, can't find DDT_CHEAT_NO_NORM
+        self.regul_galax_xy = RegulGalaxyXY(self.data[self.final_ref], 
+                                            self.weight[self.final_ref],
+                                            conf["MU_GALAXY_XY_PRIOR"],
+                                            sky=None,
+                                            no_norm=False)
+        self.regul_galax_lambda = RegulGalaxyXY(
+                                        self.data[self.final_ref], 
+                                        self.weight[self.final_ref],
+                                        conf["MU_GALAXY_LAMBDA_PRIOR"],
+                                        sky=None,
+                                        no_norm=False)
 
 
     def __str__(self):

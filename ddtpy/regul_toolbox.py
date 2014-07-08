@@ -1,6 +1,6 @@
 import numpy as np
 
-
+from .toolbox import invert_var
 # This part does ddt_setup_regularization_galaxy_lambda_normalized_3
 class RegulGalaxyXY():
 
@@ -21,19 +21,20 @@ class RegulGalaxyXY():
     * var is the variance alond the lambda axis
     """
     
-    def __init__(self, data_ref, weight_ref, mu, sky = None, no_norm = None):
+    def __init__(self, data_ref, weight_ref, mu, sky=None, no_norm=None):
         
-        h_mu_estim_q, h_mu_estim = mu_estim_xy_normalized_1( data_ref, 
-                                       weight_ref, sky = sky, no_norm = no_norm)
+        h_mu_estim_q, h_mu_estim = self.mu_estim_xy_normalized_1(data_ref, 
+                                       weight_ref, sky=sky, no_norm=no_norm)
         weight = h_mu_estim**2
         
-        fn =rgl_roughness_l2 # This is defined somewhere in the yeti section
+        # fn commented out until rgl_roughness_l2 is sorted out:
+        #fn = rgl_roughness_l2 # This is defined somewhere in the yeti section
         #...haven't found def yet. See yeti/yeti.doc
         # rgl_roughness computes a regularization penalty based on roughness, 
         # l2 means cost function "L2 norm"
     
         # X and Y are the 1st and 2nd dimensions in the galaxy array
-        which = np.array([1,2]) 
+        which1, which2 = np.array([-1,-2]) 
         # Not sure about above indices
         if mu != None: 
             hyper = np.array(mu)
@@ -44,23 +45,23 @@ class RegulGalaxyXY():
         if not isinstance(which2, int):
             raise ValueError("expecting a scalar integer for WHICH2")
             
-        self.off1 = self.off2 = self.off3 = self.off4 = np.array(long, 4)
+        self.off1 = self.off2 = self.off3 = self.off4 = np.zeros(4)
         self.off1[which1] =  1
         self.off2[which2] =  1
         self.off3[which1] =  1
         self.off3[which2] =  1
-        self.off4[which1] = -1
+        self.off4[which1] =  -1
         self.off4[which2] =  1
         # takes into account the weight as a multiplicative 
         # factor for each wavelength slice */
-        self.fn = fn
+        #self.fn = fn
         self.hyper = hyper*weight
         self.q = weight
         self.factor = 1.0
         self.mu_estim = h_mu_estim
 
     def mu_estim_xy_normalized_1(self, data_ref, weight_ref, 
-                                 sky = None, no_norm = True):
+                                 sky=None, no_norm=True):
         """Return mu estimate and inverse of spectrum
         This function does a lot of work to compute mu = size of the data 
         divided an estimate of the element-wise variation in the data
@@ -90,24 +91,23 @@ class RegulGalaxyXY():
             w = weight_ref
             s = sky
             
-        if sky != None:
+        if sky is not None:
             # Current understanding of this: get average of sky along lambda 
             # axis for each day, subtract that from sky spectrum for each day
             # Then subtract resulting spectra for each day from data.
-            d -= (s - s.mean( axis = 1 ))[:,:,None,None]
+            d -= (s - s.mean(axis = 1))[:,:,None,None]
             
         # Average along x,y, and epoch axes:
-        avg_spectrum = (d.sum(axis = -1).sum(axis = -1).sum(axis = 0)/
-                        (d.shape[0]*d.shape[2]*d.shape[3]))
+        avg_spectrum = d.mean(axis=-1).mean(axis=-1).mean(axis=0)
         assert len(avg_spectrum) == d.shape[1] 
         
         q = 1./avg_spectrum
         
         N_xy = w.size
-        var_ref = invert_var( w )
+        var_ref = invert_var(w)
         
         i_bad = w<= 0
-        N_xy -= np.sum( i_bad)
+        N_xy -= np.sum(i_bad)
         
         """
         # Comments from DDT:    
@@ -120,36 +120,36 @@ class RegulGalaxyXY():
         # Terms that play a role in the dif above
         d_var_x = var_ref[:,:,:,:-1] + var_ref[:,:,:,1:] 
         
-        i_ok = np.int_( 0.5*(i_bad[:,:,:,1:] + i_bad[:,:,:,:-1]))
+        i_ok = np.int_(0.5*(i_bad[:,:,:,1:] + i_bad[:,:,:,:-1]))
         # Only elements where none of elements used in dif (d_x) had zero weight
         i_ok =  (i_ok == 0) 
         d_x *= i_ok
         d_var_x *= i_ok
-        mu_estim_x = ( d_x**2 - d_var_x )*(q**2)[None,None,:,None]
-        mu_estim_x = np.sum( mu_estim_x )
+        mu_estim_x = (d_x**2 - d_var_x)*(q**2)[None,:,None,None]
+        mu_estim_x = np.sum(mu_estim_x)
 
         d_y = d[:,:,1:,:] - d[:,:,:-1,:]
          # Terms that play a role in the dif above
         d_var_y = var_ref[:,:,:-1,:] + var_ref[:,:,1:,:]
         
-        i_ok = np.int_( 0.5*(i_bad[:,:,1:,:] + i_bad[:,:,:-1,:]))
+        i_ok = np.int_(0.5*(i_bad[:,:,1:,:] + i_bad[:,:,:-1,:]))
         # Only elements where none of elements used in dif (d_y) had zero weight
         i_ok =  (i_ok == 0) 
         d_y *= i_ok
         d_var_y *= i_ok
-        mu_estim_y = (d_y**2 - d_var_y)*(q**2)[None,None,:,None]
+        mu_estim_y = (d_y**2 - d_var_y)*(q**2)[None,:,None,None]
         mu_estim_y = np.sum(mu_estim_y)
         
         mu_estim = mu_estim_x + mu_estim_y
         mu_estim = N_xy/mu_estim
         
         if mu_estim < 0:
-            print "<ddt_mu_estim_xy_normalized_1> WARNING: mu_estim was < 0. 
+            print "<ddt_mu_estim_xy_normalized_1> WARNING: mu_estim was < 0. \
                     Not enough information in the data => changed it to be 1."
             mu_estim = 1 
      
         ## There is a "FIXME" in DDT code here:
-        print "<ddt_mu_estim_xy_normalized_1> WARNING: 
+        print "<ddt_mu_estim_xy_normalized_1> WARNING: \
                 mu_estim =1 no matter what"
         mu_estim = 1.
         
@@ -190,7 +190,7 @@ class RegulGalaxyXY():
         
         regul = 0.
         dim_gal = x.shape
-        if grd = None:
+        if grd is None:
             for i_l in range(dim_gal[2]):
                 """
                 Comment from DDT:
@@ -203,11 +203,11 @@ class RegulGalaxyXY():
                           fn(hyper1[i_l], [0,1], x[:,:,i_l]))
                               
         else:    
-            for i_l in range( dim_gal[2]):
+            for i_l in range(dim_gal[2]):
                 grd_temp = np.zeros((2, dim_gal[0], dim_gal[1]))
                 # FIXME same as above
-                regul += (fn( hyper1[i_l], [1,0], x[:,:,i_l], grd_temp) +
-                          fn( hyper1[i_l], [0,1], x[:,:,i_l], grd_temp))
+                regul += (fn(hyper1[i_l], [1,0], x[:,:,i_l], grd_temp) +
+                          fn(hyper1[i_l], [0,1], x[:,:,i_l], grd_temp))
                               
         return regul
                           
@@ -232,14 +232,14 @@ class RegulGalaxyLambda():
         if mu is None:
             mu = 0
         
-        q, mu_estim    = mu_estim_lambda_normalized_3(data_ref, weight_ref, 
-                                                sky=sky, no_norm=no_norm)
+        q, mu_estim = self.mu_estim_lambda_normalized_3(data_ref, weight_ref, 
+                                                    sky=sky, no_norm=no_norm)
         self.mu = mu
         self.q = q
         self.mu_estim = mu_estim
     
     def mu_estim_lambda_normalized_3(self, data_ref, weight_ref,
-                                                sky=None, no_norm=True):
+                                     sky=None, no_norm=True):
         """Return mu estimate and inverse of spectrum
         This function just sets mu_estim to 1 and calculates q.
         
@@ -268,10 +268,10 @@ class RegulGalaxyLambda():
             s = sky    
             
         if sky is not None:
-            d -= ( s - np.average(s[:,None], axis = 0)[:,None])[None, None, :,:]
+            d -= (s - np.average(s[:,None], axis = 0)[:,None])[None, None, :,:]
             
-        avg_spectrum = (d.sum(axis=-1).sum(axis=-1).sum(axis=0)/
-                       (d.shape[0]*d.shape[2]*d.shape[3]))
+        avg_spectrum = d.mean(axis=-1).mean(axis=-1).mean(axis=0)
+
         assert len(avg_spectrum) == d.shape[1]
         
         q = 1./avg_spectrum
@@ -286,8 +286,8 @@ class RegulGalaxyLambda():
         # From DDT : FIXME, calculation not implemented yet 
         # (should this be like in xy_norm above?)
         mu_estim = 1.
-        print "<ddt_mu_estim_xy_normalized_3> WARNING: mu_estim calculation not 
-                implemented, set to 1."
+        print "<ddt_mu_estim_xy_normalized_3> WARNING: \
+                mu_estim calculation not implemented, set to 1."
         if no_norm:
             print "NO NORM NO NORM NO NORM NO NORM NO NORM NO NORM"
             q = q*0. + 1.
