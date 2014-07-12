@@ -104,8 +104,8 @@ def _sn_galaxy_registration_model(a, ddt, i_t, job=None, recalculate=None):
     a(3) = galaxy_offset_x
     a(4) = galaxy_offset_y
     """
-    sn_offset=np.array([0.,0.])
-    galaxy_offset=array([0.,0.])
+    sn_offset = np.array([0.,0.])
+    galaxy_offset = array([0.,0.])
     if ! job:
         sn_offset = a
     elif job == 1:

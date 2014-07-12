@@ -31,6 +31,8 @@ class DDT(object):
 
         # index of final ref. Subtract 1 due to Python zero-indexing.
         self.final_ref = conf["PARAM_FINAL_REF"]-1
+        # also want array with true/false for final refs.
+        self.is_final_ref = np.array(conf.get("PARAM_IS_FINAL_REF"))
 
         # Load the header from the final ref or first cube
         idx = self.final_ref if (self.final_ref >= 0) else 0
@@ -147,12 +149,12 @@ class DDT(object):
         # equivalent of ddt_setup_regularization...
         # In original, these use "sky=guess_sky", but I can't find this defined.
         # Similarly, can't find DDT_CHEAT_NO_NORM
-        self.regul_galax_xy = RegulGalaxyXY(self.data[self.final_ref], 
+        self.regul_galaxy_xy = RegulGalaxyXY(self.data[self.final_ref], 
                                             self.weight[self.final_ref],
                                             conf["MU_GALAXY_XY_PRIOR"],
                                             sky=None,
                                             no_norm=False)
-        self.regul_galax_lambda = RegulGalaxyXY(
+        self.regul_galaxy_lambda = RegulGalaxyXY(
                                         self.data[self.final_ref], 
                                         self.weight[self.final_ref],
                                         conf["MU_GALAXY_LAMBDA_PRIOR"],

@@ -329,5 +329,38 @@ class RegulGalaxyLambda():
             del grd_tmp
             
         return rgl
-        
+   
+
+def regul_g(ddt, x, &grd, debug=None):
+    """
+    *   Compute regularization for 'g' (galaxy) or 'h' (PSF's).
+    *   The returned value ERR is the penalty.
+    *   Argument X is the array of parameters
+    *   Optional argument GRD is the output gradient, it must have been
+    *   already initialized and its contents is incremented by the gradient
+    *   of regularization w.r.t. the parameters X.
+    """
+   
+    galaxy = x
+    
+    gradient =  not (grd is None)
+    if gradient:   
+        galaxy_grd = np.zeros(galaxy.shape)
+  
+    galaxy -= ddt.model_galprior
+    galaxy_err = (ddt.regul_galaxy_xy(galaxy, galaxy_grd) +
+                  ddt.regul_galaxy_lambda(galaxy, galaxy_grd))
+  
+    if debug:
+        print "<regul_g> need to fix debug thing"
+        h_set, ddt_model, galaxy_grd=galaxy_grd
+  
+    if gradient:
+        grd += galaxy_grd
+        del galaxy_grd
+
+  
+    return galaxy_err;
+
+
     

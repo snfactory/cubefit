@@ -5,7 +5,7 @@ from .registration import shift_galaxy
 from .toolbox import invert_var
 def calc_residual(ddt, galaxy=None, sn=None, sky=None, eta=None):
     """Returns residual?
-    
+    So far only 'm' part of this is being used.
     Parameters
     ----------
     ddt : DDT object
@@ -89,6 +89,44 @@ def make_cube(ddt, i_t, galaxy=None, sn=None, sky=None, eta=None,
         return ddt.R(ddt.H(ddt, i_t)(model)) #Sort this out
     else:
         return ddt.R((H(model)))
+
+
+def make_all_cube(ddt, galaxy=None, sn=None, sky=None, eta=None):
+    """
+    Parameters
+    ----------
+    galaxy : 3d array
+    sn, sky : 2d arrays
+    eta : 1d array
+    Returns
+    -------
+    cube : 4d array
+    * FIXME: make a similar script that does G(psf),
+    *  so that we can make sure that they give the same result
+    """
+    if isinstance(galaxy, np.ndarray):
+        galaxy = ddt.model_gal
+  
+    if isinstance(sn, np.ndarray):
+        sn = ddt.model_sn
+  
+    if isinstance(sky, np.ndarray):
+        sky = ddt.model_sky
+  
+    if isinstance(eta, np.ndarray):
+        eta = ddt.model_eta
+
+    cube = np.zeros(ddt.data.shape)
+
+    n_fit = ddt.i_fit.size
+    tmp_H=ddt.H
+    for i_n in range(n_fit):
+        i_t = ddt.i_fit[i_n]
+        model = make_g(galaxy, sn[i_t,:], sky[i_t,:], eta[i_t], 
+                       ddt.sn_x, ddt.sn_y) 
+        cube[i_t,:,:,:] = ddt.R( tmp_H[i_t](model) )
+        del model
+    return cube
         
         
 def make_g(galaxy, sn, sky, eta, sn_x, sn_y):
@@ -240,8 +278,8 @@ def make_offset_cube(ddt,i_t, sn_offset=None, galaxy_offset=None,
         sn_sky = extract_eta_sn_sky(ddt, i_t, no_eta=TRUE, 
                                     galaxy_offset=galaxy_offset, 
                                     sn_offset=sn_offset)
-        sn = sn_sky.sn
-        sky = sn_sky.sky
+        sn = sn_sky['sn']
+        sky = sn_sky['sky']
     else:
         sn = ddt.model_sn[i_t,:]
         sky = ddt.model_sky[i_t,:]
@@ -281,8 +319,22 @@ def extract_eta_sn_sky(ddt, i_t, galaxy=None, sn_offset=None,
     """calculates sn and sky
     calculates the optimal SN and Sky in the chi^2 sense for given
     PSF and galaxy, including a possible offset of the supernova
-   
+    
+    Maybe this can be compressed?
+
     Sky is sky per spaxel
+    Parameters
+    ----------
+    ddt : DDT object
+    i_t : int
+    a bunch of optional stuff
+    Returns
+    -------
+    extract_dict : dict
+        Includes new sky and sn
+    Notes
+    -----
+    Updates ddt if 'update_ddt' is True
     """
     if ddt_data is None:
         d = ddt.data[i_t,:,:,:]
@@ -296,7 +348,7 @@ def extract_eta_sn_sky(ddt, i_t, galaxy=None, sn_offset=None,
     if not isinstance(galaxy_offset, np.ndarray):
         galaxy_offset = np.array([0., 0.])
     if not isinstance(galaxy, np.ndarray):
-        galaxy = ddt.model_galaxy
+        galaxy = ddt.model_gal
   
     galaxy_model = make_galaxy_model(galaxy, ddt, i_t, offset=galaxy_offset,
                                      H=H)
@@ -454,7 +506,8 @@ def extract_eta_sn_sky(ddt, i_t, galaxy=None, sn_offset=None,
       
             if isinstance(i_bad, np.ndarray):
                 print "<ddt_extract_eta_sn_sky> WARNING: 
-                       due to null denom, putting some eta, sn and sky values to 0";
+                       due to null denom, putting some eta, 
+                       sn and sky values to 0"
                 sky[i_bad] = 0.
                 sn[i_bad] = 0.
                 eta[i_bad] = 0.
@@ -464,7 +517,9 @@ def extract_eta_sn_sky(ddt, i_t, galaxy=None, sn_offset=None,
     if update_ddt:
         raise ValueError("<extract_eta_sn_sky>:
                           need to write part that updates ddt")
-    return extract_dict # What do I want here?
+                          
+    extract_dict = {'sky': sky, 'sn': sn}
+    return extract_dict # What do I want here? So far no other attributes used
     
   
 
