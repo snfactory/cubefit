@@ -345,9 +345,9 @@ def regul_g(ddt, x, &grd, debug=None):
     galaxy_err = (ddt.regul_galaxy_xy(galaxy, galaxy_grd) +
                   ddt.regul_galaxy_lambda(galaxy, galaxy_grd))
   
-    if debug:
-        print "<regul_g> need to fix debug thing"
-        h_set, ddt_model, galaxy_grd=galaxy_grd
+    # TODO: below was debug option:
+    # galaxy_grd is probably something that gets printed to header if debug=1.
+    #h_set, ddt_model, galaxy_grd=galaxy_grd
   
     if gradient:
         grd += galaxy_grd

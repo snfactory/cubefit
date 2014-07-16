@@ -64,26 +64,21 @@ def penalty_g_all_epoch(x, grd, ddt):
     wr=[]
     tmp_x=[]
         
-    if ddt.debug:
-        print "<penalty_g_all_epoch> need to fix debug thing"
-        h_set, ddt.ddt_model, grd_lkl = grd
-  
-    h_set, ddt.ddt_model, lkl = lkl_err
-  
     # regularization 
     grd2 = np.zeros(grd.shape)
     rgl_err = regul_g(ddt, x, grd2)
     
-    if ddt.debug:
-        print "<penalty_g_all_epoch> need to fix debug thing"
-        h_set, ddt.ddt_model, grd_rgl = grd2
-  
-    h_set, ddt.ddt_model, rgl = rgl_err
+    # TODO: These prob go into header if debug=1:
+    #h_set, ddt.ddt_model, grd_rgl = grd2
+    #h_set, ddt.ddt_model, grd_lkl = grd
+    # TODO: These need to go into output file header:
+    #h_set, ddt.ddt_model, lkl = lkl_err   
+    #h_set, ddt.ddt_model, rgl = rgl_err
   
     grd += grd2;
 
     if ddt.verb:
-    print "<ddt_penalty_g>: lkl %s, rgl %s \n" % (lkl_err, rgl_err)
+        print "<ddt_penalty_g>: lkl %s, rgl %s \n" % (lkl_err, rgl_err)
   
   
     return rgl_err + lkl_err

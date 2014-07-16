@@ -199,14 +199,16 @@ class DDT(object):
         y[:, :, self.range_y, self.range_x] = x
         return y
         
-    def H(self, x, i_t):
-        """
+    def H(self, x, i_t, job=None, offset=None):
+        """Convolve x with psf
         this is where ADR is treated as a phase shift in Fourier space.
         
         Parameters
         ----------
         x : 3-d array
         i_t : int
+        job : int
+        offset : 1-d array
         
         Returns
         -------
@@ -225,9 +227,9 @@ class DDT(object):
                                          self.sn_offset_x[i_t,k]],
                                         half=1, apodize=self.apodizer)
             ptr[k] = self.FFT(psf[k,:,:] * phase_shift_apodize)
-        return _convolve(ptr, x, job=None)
+        return _convolve(ptr, x, job=job, offset=offset)
                             
-    def _convolve(self, ptr, x, job=0):
+    def _convolve(self, ptr, x, job=0, offset=None):
         """This convolves two functions using DDT.FFT
         Will need to be adapted if other FFT needs to be an option
         
@@ -235,6 +237,8 @@ class DDT(object):
         ----------
         ptr : 1-d array
         x : 3-d array
+        job : int, see below
+        offset : 1-d array
         
         Returns
         -------
@@ -253,7 +257,7 @@ class DDT(object):
             return out
         elif job == 1:
             for k in range(number):
-                out[k,:,:] = FFT( conj(ptr[k]) * FFT(x[k,:,:]),2)
+                out[k,:,:] = FFT( np.conj(ptr[k]) * FFT(x[k,:,:]),2)
             return out
         elif job == 2:
             if offset is None:

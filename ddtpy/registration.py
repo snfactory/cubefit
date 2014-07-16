@@ -32,7 +32,7 @@ def shift_galaxy(ddt, offset, galaxy=None):
     
     
 def sn_galaxy_registration(ddt, i_t, verb=None, maxiter=None, job=None, 
-                           mask_sn=None, recalculate=None):
+                           mask_sn=0, recalculate=None):
     """          
     Warning: Offsets are in SPAXELS
           
@@ -56,7 +56,6 @@ def sn_galaxy_registration(ddt, i_t, verb=None, maxiter=None, job=None,
     a(4) galaxy_offset_y
     """
     if job == 0:
-        model = _sn_galaxy_registration_model
         print "<ddt_sn_galaxy_registration> SN registration"
         a = np.array([0.,0.])
 
@@ -70,27 +69,35 @@ def sn_galaxy_registration(ddt, i_t, verb=None, maxiter=None, job=None,
    
     sqrt_weight = (ddt.weight[i_t,:,:,:])**0.5
   
+    # TODO: Fix this once op_nllsq is sorted out.
     extra = h_new(ddt=ddt,
                 i_t=i_t,
                 data=ddt.data[i_t,:,:,:],
                 sqrt_weight = sqrt_weight,
                 model=_sn_galaxy_registration_model,
-                job=job, recalculate=recalculate)
-    if mask_sn:
-        h_set, extra, mask_sn = mask_sn
-    else:
-        h_set, extra, mask_sn = 0
+                job=job, recalculate=recalculate,
+                mask_sn=mask_sn)
   
     # FIND op_nllsq (optimpac probably)
     # Translation of this will probably depend on how optimpac wrapper works
     anew = op_nllsq(_registration_worker, a, extra=extra, verb=verb,
                     maxstep=maxiter)
+    if job == 0:
+        sn_offset = a
+        galaxy_offset = np.array([0.,0.])
+    elif job == 1:
+        galaxy_offset = a 
+        sn_offset = np.array([0.,0.])
+    elif job == 2:
+        sn_offset = np.array([a[0], a[1]])
+        galaxy_offset = np.array([a[2], a[3]])
 
-    model = _sn_galaxy_registration_model(anew, ddt, i_t, job=job,
-                                          recalculate=recalculate)
-    return [&anew, &a, &model]
+    model = make_offset_cube(ddt, i_t, galaxy_offset=galaxy_offset, 
+                             sn_offset=sn_offset, recalculate=recalculate)
+    return anew, a, model
 
 
+# TODO: once op_llnsq above is sorted out, maybe this can be removed.
 def _sn_galaxy_registration_model(a, ddt, i_t, job=None, recalculate=None):
     """
     Parameters
@@ -118,13 +125,13 @@ def _sn_galaxy_registration_model(a, ddt, i_t, job=None, recalculate=None):
                             job %s not implemented" % job)
   
 
-    print  "sn_offset [%s, %s], galaxy_offset [%s, %s] \n" % (sn_offset(1),
-                                                              sn_offset(2),
-                                                              galaxy_offset(1),
-                                                              galaxy_offset(2))
-
-    cube_offset = ddt_make_offset_cube(ddt,i_t, galaxy_offset=galaxy_offset, 
-                        sn_offset=sn_offset, recalculate=recalculate)
+    print  "sn_offset [%s, %s], galaxy_offset [%s, %s] \n" % (sn_offset[0],
+                                                              sn_offset[1],
+                                                              galaxy_offset[0],
+                                                              galaxy_offset[1])
+                                                              
+    cube_offset = make_offset_cube(ddt, i_t, galaxy_offset=galaxy_offset, 
+                                   sn_offset=sn_offset, recalculate=recalculate)
     return cube_offset
 
 def _registration_worker(a, extra):
@@ -140,8 +147,8 @@ def _registration_worker(a, extra):
     """
     if extra.mask_sn:
         # SN PSF convolved by delta function 
-        sn_mask_32 = ddt_make_sn_model(array(1.,extra.ddt.ddt_model.n_l), 
-                                       extra.ddt, extra.i_t)
+        sn_mask_32 = make_sn_model(np.zeros(extra.ddt.ddt_model.n_l), 
+                                   extra.ddt, extra.i_t)
 
         i_low = np.where(sn_mask_32 <= (extra.mask_sn * max(sn_mask_32)))
         sn_mask_32 *= 0.;
@@ -149,7 +156,7 @@ def _registration_worker(a, extra):
 
         h_set, extra.ddt, sn_mask_32 = sn_mask_32
 
-        sqrt_weight = extra.sqrt_weight*ddt.R(sn_mask_32)
+        sqrt_weight = extra.sqrt_weight*ddt.r(sn_mask_32)
     else:
         sqrt_weight = extra.sqrt_weight
   
