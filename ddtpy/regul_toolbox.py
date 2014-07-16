@@ -1,6 +1,6 @@
 import numpy as np
 
-from .toolbox import invert_var
+
 # This part does ddt_setup_regularization_galaxy_lambda_normalized_3
 class RegulGalaxyXY():
 
@@ -21,10 +21,10 @@ class RegulGalaxyXY():
     * var is the variance alond the lambda axis
     """
     
-    def __init__(self, data_ref, weight_ref, mu, sky=None, no_norm=None):
+    def __init__(self, data_ref, weight_ref, mu, sky=None):
         
         h_mu_estim_q, h_mu_estim = self.mu_estim_xy_normalized_1(data_ref, 
-                                       weight_ref, sky=sky, no_norm=no_norm)
+                                       weight_ref, sky=sky)
         weight = h_mu_estim**2
         
         # fn commented out until rgl_roughness_l2 is sorted out:
@@ -45,7 +45,10 @@ class RegulGalaxyXY():
         if not isinstance(which2, int):
             raise ValueError("expecting a scalar integer for WHICH2")
             
-        self.off1 = self.off2 = self.off3 = self.off4 = np.zeros(4)
+        self.off1 = np.zeros(4)
+        self.off2 = np.zeros(4)
+        self.off3 = np.zeros(4)
+        self.off4 = np.zeros(4)
         self.off1[which1] =  1
         self.off2[which2] =  1
         self.off3[which1] =  1
@@ -61,7 +64,7 @@ class RegulGalaxyXY():
         self.mu_estim = h_mu_estim
 
     def mu_estim_xy_normalized_1(self, data_ref, weight_ref, 
-                                 sky=None, no_norm=True):
+                                 sky=None):
         """Return mu estimate and inverse of spectrum
         This function does a lot of work to compute mu = size of the data 
         divided an estimate of the element-wise variation in the data
@@ -104,7 +107,7 @@ class RegulGalaxyXY():
         q = 1./avg_spectrum
         
         N_xy = w.size
-        var_ref = invert_var(w)
+        var_ref = 1/w
         
         i_bad = w<= 0
         N_xy -= np.sum(i_bad)
@@ -152,11 +155,6 @@ class RegulGalaxyXY():
         print "<ddt_mu_estim_xy_normalized_1> WARNING: \
                 mu_estim =1 no matter what"
         mu_estim = 1.
-        
-        if no_norm:
-            print "XY NO NORM  XY NO NORM  XY NO NORM  XY NO NORM  XY NO NORM"
-            q = q * 0.+1.
-            
         
         return q, mu_estim
         
@@ -227,19 +225,19 @@ class RegulGalaxyLambda():
     - _ddt_eval_regularization_galaxy_lambda_normalized_3
     """
 
-    def __init__(self, data_ref, weight_ref, mu, sky=None, no_norm=False):
+    def __init__(self, data_ref, weight_ref, mu, sky=None):
     
         if mu is None:
             mu = 0
         
         q, mu_estim = self.mu_estim_lambda_normalized_3(data_ref, weight_ref, 
-                                                    sky=sky, no_norm=no_norm)
+                                                        sky=sky) 
+
         self.mu = mu
         self.q = q
         self.mu_estim = mu_estim
     
-    def mu_estim_lambda_normalized_3(self, data_ref, weight_ref,
-                                     sky=None, no_norm=True):
+    def mu_estim_lambda_normalized_3(self, data_ref, weight_ref, sky=None):
         """Return mu estimate and inverse of spectrum
         This function just sets mu_estim to 1 and calculates q.
         
@@ -250,7 +248,6 @@ class RegulGalaxyLambda():
         sky : 1 or 2-d array
               the above variables have an additional dimension if there are 
               multiple final refs
-        no_norm : bool
         
         Returns
         -------
@@ -288,9 +285,6 @@ class RegulGalaxyLambda():
         mu_estim = 1.
         print "<ddt_mu_estim_xy_normalized_3> WARNING: \
                 mu_estim calculation not implemented, set to 1."
-        if no_norm:
-            print "NO NORM NO NORM NO NORM NO NORM NO NORM NO NORM"
-            q = q*0. + 1.
             
         return q, mu_estim
                 

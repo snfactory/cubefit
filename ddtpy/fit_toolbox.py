@@ -2,7 +2,7 @@ import numpy as np
 from copy import copy
 
 from .registration import shift_galaxy
-from .toolbox import invert_var
+
 def calc_residual(ddt, galaxy=None, sn=None, sky=None, eta=None):
     """Returns residual?
     So far only 'm' part of this is being used.
@@ -19,10 +19,9 @@ def calc_residual(ddt, galaxy=None, sn=None, sky=None, eta=None):
     resid_dict : dict
         Dictionary including residual, cube, data, other stuff
     """
-    data_shape = ddt.data.shape
-    
-    o = np.zeros(data_shape)
-    m = np.zeros(data_shape)
+        
+    o = np.zero_like(ddt.data)
+    m = np.zeros_like(ddt.data)
     
     
     if galaxy is None:
@@ -35,7 +34,7 @@ def calc_residual(ddt, galaxy=None, sn=None, sky=None, eta=None):
                                    ddt.target_yp[i_t]-
                                    ddt.target_yp[ddt.final_ref[0]]],
                                   galaxy=galaxy)
-        o[i_t,:,:,:] = ddt.R(tmp_galaxy)
+        o[i_t,:,:,:] = ddt.r(tmp_galaxy) 
         m[i_t,:,:,:] = make_cube(ddt, i_t, galaxy=galaxy, sn=sn, sky=sky, 
                                  eta=eta)
 
@@ -55,7 +54,7 @@ def calc_residual(ddt, galaxy=None, sn=None, sky=None, eta=None):
     return resid_dict
     
 def make_cube(ddt, i_t, galaxy=None, sn=None, sky=None, eta=None, 
-              galaxy_offset=None, H=None):
+              galaxy_offset=None):
               
     """
     Parameters
@@ -85,10 +84,7 @@ def make_cube(ddt, i_t, galaxy=None, sn=None, sky=None, eta=None,
     # Get galaxy*eta + sn (in center) + sky
     model = make_g(galaxy, sn[i_t,:], sky[i_t,:], eta[i_t], ddt.sn_x, ddt.sn_y)
     
-    if H is None:
-        return ddt.R(ddt.H(ddt, i_t)(model)) #Sort this out
-    else:
-        return ddt.R((H(model)))
+    return ddt.r(ddt.H(model, i_t))
 
 
 def make_all_cube(ddt, galaxy=None, sn=None, sky=None, eta=None):
@@ -104,19 +100,19 @@ def make_all_cube(ddt, galaxy=None, sn=None, sky=None, eta=None):
     * FIXME: make a similar script that does G(psf),
     *  so that we can make sure that they give the same result
     """
-    if isinstance(galaxy, np.ndarray):
+    if not isinstance(galaxy, np.ndarray):
         galaxy = ddt.model_gal
   
-    if isinstance(sn, np.ndarray):
+    if not isinstance(sn, np.ndarray):
         sn = ddt.model_sn
   
-    if isinstance(sky, np.ndarray):
+    if not isinstance(sky, np.ndarray):
         sky = ddt.model_sky
   
-    if isinstance(eta, np.ndarray):
+    if not isinstance(eta, np.ndarray):
         eta = ddt.model_eta
 
-    cube = np.zeros(ddt.data.shape)
+    cube = np.zeros_like(ddt.data)
 
     n_fit = ddt.i_fit.size
     tmp_H=ddt.H
@@ -149,113 +145,6 @@ def make_g(galaxy, sn, sky, eta, sn_x, sn_y):
     
     return model
     
-
-def get_H(ddt, i_t):
-    """Function from ddt_setup.i, not sure where it should go.
-    """
-    ## i_t == 0 is okay in python version:
-    #if i_t == 0:
-    #    print "<ddt_get_H> WARNING: i_t == 0"
-    #    i_t = ddt.nt
-    return ddt.H[i_t]
-    
-def setup_H(ddt):
-    """Also from ddt_setup.i
-    """
-    
-    H = [ddt_H(ddt,1)] # Should 1 be zero here?
-    for i_t in range(1, ddt.nt):
-        H.append(ddt_H(ddt, i_t))
-    
-    return H
-
-## All functions from here to _convolve need to be merged with Kyle's G, R work 
-def ddt_H(ddt, i_t, psf=None):
-    """Operator H corresponding to time i_t
-    
-    Parameters
-    ----------
-    ddt : DDT object
-    i_t = int
-    psf = ?
-    
-    Returns
-    -------
-    a function
-    """
-    
-    print "<ddt_H> calculating H for i_t=%d" % i_t
-    if not ddt.psf_rolled: # Whatever this is
-        raise ValueError("<ddt_H> need the psf to be rolled!")
-    if psf is None:
-        psf = ddt.psf[i_t,:,:,:]
-    else:
-        print "<ddt_H> setting up new psf"
-        
-    return G_or_H(ddt, psf, ddt.psf_nx, ddt.psf_ny, ddt.psf.shape[-3], i_t)
-    
-def G_or_H(ddt, x, n_x, n_y, n_l, i_t):
-    """this is where ADR is treated a s a phase shift in Fourier space
-    Parameters
-    ----------
-    ddt: DDT object
-    x : 3d array
-    n_x, n_y, n_l, i_t : int
-    
-    Returns
-    _______
-    a function
-    """
-    
-    ptr = np.zeros(n_l) # This is a pointer in DDT, not sure if ptr is used
-    number = ptr.size
-    FFT = ddt.FFT # Not set up yet in ddt object
-    
-    for k in range(number):
-        # fft_shift_phasor is defined in Yorick_util/fft_shift.i
-        phase_shift_apodize = fft_shift_phasor([2,ddt.psf_nx, ddt.psf_ny],
-                                                [ddt.sn_offset_x[k,i_t],
-                                                 ddt.sn_offset_y[k,i_t]],
-                                                half=1,
-                                                apodize=ddt.apodizer)
-        ptr[k] = FFT(x[k,:,:] * phase_shift_apodize)
-    
-    return _convolve()
-           
-def _convolve(this, x, job, offset=None, n_x=None, n_y=None, apodize=None):
-    """
-    Notes
-    -----
-    job = 0: direct
-    job = 1: gradient
-    job = 2: add an offset, in SPAXELS
-    """
-    FFT = this.FFT
-    local ptr
-    eq_nocopy, ptr, this.ptr # Haven't yet figured out eq_nocopy
-    number = ptr.size
-    out = np.zeros(x.shape)
-    
-    if job == 0:
-        for k in range(number):
-            out[k,:,:] = FFT(ptr[k]*FFT(x[k,:,:]),2)
-        return out
-    elif job == 1:
-        for k in range(number):
-            out[k,:,:] = FFT( conj(ptr[k]) * FFT(x[k,:,:]),2)
-        return out
-    elif job == 2:
-        if offset is None:
-            raise ValueError("<_convolve> job=2 need offset")
-        if n_x is None: n_x = 32
-        if n_y is None: n_y = 32
-        phase_shift_apodize = fft_shift_phasor([2, n_x, n_y], offset, half=1,
-                                               apodize=apodize)
-        for k in range(number):
-            out[k,:,:] = FFT( ptr[k] * phase_shift_apodize*FFT(x[k,:,:]),2)
-        return out 
-    else: 
-        raise ValueError("unsupported JOB")
         
 def make_offset_cube(ddt,i_t, sn_offset=None, galaxy_offset=None,
                      recalculate=None):
@@ -288,18 +177,15 @@ def make_offset_cube(ddt,i_t, sn_offset=None, galaxy_offset=None,
 
     model += sky[:,None,None]
 
-    return ddt.R(model)
+    return ddt.r(model)
     
-def make_galaxy_model(galaxy, ddt, i_t, offset=None, H=None):
+def make_galaxy_model(galaxy, ddt, i_t, offset=None):
     """offsets in spaxels
     """
     if not isinstance(offset, np.ndarray):
         offset = np.array([0., 0.,])
-    if H is None:
-        # Incorporate with however H turns out
-        return get_H(ddt,i_t)(galaxy, 2, offset=offset)
-    else:
-        return H(galaxy, 2, offset=offset)
+
+    return ddt.H(galaxy, i_t, 2, offset=offset)
 
 def make_sn_model(sn, ddt, i_t, offset=None):
     """offsets in spaxels
@@ -309,12 +195,12 @@ def make_sn_model(sn, ddt, i_t, offset=None):
     sn_model = np.zeros((ddt.nw,ddt.psf_ny, ddt.psf_nx))
     sn_model[:,ddt.model_sn_y, ddt.model_sn_x] = sn
     
-    return ddt.H[i_t](sn_model, 2, offset=offset)
+    return ddt.H(sn_model, i_t job=2, offset=offset)
     
     
 def extract_eta_sn_sky(ddt, i_t, galaxy=None, sn_offset=None,
                        galaxy_offset=None, no_eta=None, i_t_is_final_ref=None,
-                       update_ddt=None, ddt_data=None, H=None,
+                       update_ddt=None, ddt_data=None,
                        calculate_variance=None):
     """calculates sn and sky
     calculates the optimal SN and Sky in the chi^2 sense for given
@@ -359,7 +245,7 @@ def extract_eta_sn_sky(ddt, i_t, galaxy=None, sn_offset=None,
         wd = (w*d)
         wz = (w*z_jlt)
         if calculate_variance:
-            v = ddt_invert_var(w)
+            v = 1/w
             w2d = w*w*v
             sky_var = ((w2d.sum(axis=-1).sum(axis=-1))/
                        ((w*w).sum(axis=-1).sum(axis=-1)))
@@ -455,7 +341,7 @@ def extract_eta_sn_sky(ddt, i_t, galaxy=None, sn_offset=None,
             sn = b_sn - c_sn
 
             if calculate_variance:
-                v = invert_var(w)
+                v = 1/w
                 w2d = w*w*v    
                 w2dy = w2d *  y_jlt * y_jlt 
                 w2dz = w2d * z_jlt * z_jlt

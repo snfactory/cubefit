@@ -8,7 +8,8 @@ import numpy as np
 from .psf import params_from_gs, gaussian_plus_moffat_psf_4d, roll_psf
 from .io import read_dataset, read_select_header_keys
 from .adr import calc_paralactic_angle, differential_refraction
-from .regul_toolbox import RegulGalaxyXY
+from .regul_toolbox import RegulGalaxyXY, RegulGalaxyLambda
+from .data_toolbox import sky_guess_all
 __all__ = ["DDT"]
 
 class DDT(object):
@@ -145,6 +146,9 @@ class DDT(object):
         # I don't know why this is done.
         self.psf = roll_psf(self.psf, -self.model_sn_x, -self.model_sn_y)
         self.psf_rolled = True
+        
+        # This makes a first guess at the sky by recursively removing outliers
+        self.guess_sky = sky_guess_all(self.data, self.weight, self.nw, self.nt)
 
         # equivalent of ddt_setup_regularization...
         # In original, these use "sky=guess_sky", but I can't find this defined.
@@ -152,14 +156,12 @@ class DDT(object):
         self.regul_galaxy_xy = RegulGalaxyXY(self.data[self.final_ref], 
                                             self.weight[self.final_ref],
                                             conf["MU_GALAXY_XY_PRIOR"],
-                                            sky=None,
-                                            no_norm=False)
-        self.regul_galaxy_lambda = RegulGalaxyXY(
+                                            sky=self.guess_sky)
+        self.regul_galaxy_lambda = RegulGalaxyLambda(
                                         self.data[self.final_ref], 
                                         self.weight[self.final_ref],
                                         conf["MU_GALAXY_LAMBDA_PRIOR"],
-                                        sky=None,
-                                        no_norm=False)
+                                        sky=self.guess_sky) 
 
 
     def __str__(self):
@@ -196,3 +198,73 @@ class DDT(object):
         y = np.zeros(shape, dtype=np.float32)
         y[:, :, self.range_y, self.range_x] = x
         return y
+        
+    def H(self, x, i_t):
+        """
+        this is where ADR is treated as a phase shift in Fourier space.
+        
+        Parameters
+        ----------
+        x : 3-d array
+        i_t : int
+        
+        Returns
+        -------
+        3-d array
+        """
+        if not self.psf_rolled:
+            raise ValueError("<ddt_H> need the psf to be rolled!")
+        psf = self.psf[i_t]
+        ptr = np.zeros(self.nw)
+        number = ptr.size
+        
+        for k in range(number):
+            phase_shift_apodize = fft_shift_phasor(
+                                        [self.psf_ny, self.pst_nx, 2],
+                                        [self.sn_offset_y[i_t,k],
+                                         self.sn_offset_x[i_t,k]],
+                                        half=1, apodize=self.apodizer)
+            ptr[k] = self.FFT(psf[k,:,:] * phase_shift_apodize)
+        return _convolve(ptr, x, job=None)
+                            
+    def _convolve(self, ptr, x, job=0):
+        """This convolves two functions using DDT.FFT
+        Will need to be adapted if other FFT needs to be an option
+        
+        Parameters
+        ----------
+        ptr : 1-d array
+        x : 3-d array
+        
+        Returns
+        -------
+        out : 3-d array
+        
+        Notes
+        -----
+        job = 0: direct
+        job = 1: gradient
+        job = 2: add an offset, in SPAXELS
+        """
+        
+        if job = 0:
+            for k in range(number):
+                out[k,:,:] = FFT(ptr[k] * FFT(x[k,:,:]),2)
+            return out
+        elif job == 1:
+            for k in range(number):
+                out[k,:,:] = FFT( conj(ptr[k]) * FFT(x[k,:,:]),2)
+            return out
+        elif job == 2:
+            if offset is None:
+                raise ValueError("<_convolve> job=2 need offset")
+        
+            phase_shift_apodize = fft_shift_phasor(
+                                               [self.psf_ny, self.psf_nx, 2], 
+                                               offset, half=1,
+                                               apodize=apodize)
+            for k in range(number):
+                out[k,:,:] = FFT(ptr[k] * phase_shift_apodize*FFT(x[k,:,:]),2)
+            return out 
+        else: 
+            raise ValueError("unsupported JOB")
