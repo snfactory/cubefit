@@ -181,6 +181,9 @@ def make_offset_cube(ddt,i_t, sn_offset=None, galaxy_offset=None,
     
 def make_galaxy_model(galaxy, ddt, i_t, offset=None):
     """offsets in spaxels
+    Notes
+    -----
+    This fn is probably unnecessary since it is now basically only one line.
     """
     if not isinstance(offset, np.ndarray):
         offset = np.array([0., 0.,])
@@ -236,8 +239,7 @@ def extract_eta_sn_sky(ddt, i_t, galaxy=None, sn_offset=None,
     if not isinstance(galaxy, np.ndarray):
         galaxy = ddt.model_gal
   
-    galaxy_model = make_galaxy_model(galaxy, ddt, i_t, offset=galaxy_offset,
-                                     H=H)
+    galaxy_model = make_galaxy_model(galaxy, ddt, i_t, offset=galaxy_offset)
     z_jlt = ddt.R(galaxy_model)
     
     # FIXME: eta won't be fitted on multiple final refs

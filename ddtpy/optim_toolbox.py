@@ -30,8 +30,6 @@ def penalty_g_all_epoch(x, grd, ddt):
                                         i_t_is_final_ref=ddt.is_final_ref[i_t],
                                         update_ddt=TRUE)
   
-
-
     # calculate residual 
     # ddt_make_all_cube uses ddt.i_fit and only calculates those*/  
     r = make_all_cube(ddt, galaxy=x, sn=ddt.model_sn, sky=ddt.model_sky,
@@ -42,25 +40,19 @@ def penalty_g_all_epoch(x, grd, ddt):
     if ddt.verb:
         print "<ddt_penalty_g>:r %s, wr %s" (np.sum(r), np.sum(wr))
   
-
     # FIXME: The gradient MUST be reinitialized each time isn't it?
     grd = np.zeros(x.shape)
  
     # Likelihood 
     lkl_err = np.sum(wr*r)
-    del r
     n_fit = ddt.i_fit.size
-    tmp_H=ddt.H; 
     for i_n in range(n_fit):
         i_t = ddt.i_fit[i_n]
         if(ddt.verb){
             print "<ddt_penalty_g>: calculating gradient for i_t=%d" % i_t
-    
-        tmp_op = tmp_H[i_t]
-        tmp_x = ddt.R( 2.*wr[i_n,:,:,:], 1 )
-        grd +=  tmp_op(tmp_x, 1 )
+        tmp_x = ddt.R(2.*wr[i_n,:,:,:])
+        grd += ddt.H(tmp_x, i_t, job=1)
   
-
     wr=[]
     tmp_x=[]
         
@@ -80,8 +72,39 @@ def penalty_g_all_epoch(x, grd, ddt):
     if ddt.verb:
         print "<ddt_penalty_g>: lkl %s, rgl %s \n" % (lkl_err, rgl_err)
   
-  
     return rgl_err + lkl_err
 
+def fit_model_all_epoch(ddt, maxiter=None, xmin=None):
+    """fits galaxy (and thus extracts sn and sky)
+    
+    Parameters
+    ----------
+    ddt : DDT object
+    
+    Returns
+    -------
+    Nothing
+    
+    Notes
+    -----
+    Updates DDT object
+    Assumes no_eta = True (seems to always be)
+    """
+    
+    penalty = penalty_g_all_epoch
+    x = copy.copy(ddt.model_gal)
+    
+    # TODO : This obviously needs to be fixed:
+    method = (OP_FLAG_UPDATE_WITH_GP |
+              OP_FLAG_SHANNO_PHUA |
+              OP_FLAG_MORE_THUENTE);
+    mem = 3   
 
+    if maxiter:
+        print "<fit_model_all_epoch> starting the fit"
+        x_new = op_mnb(penalty, x, extra=ddt, xmin=xmin, maxiter=maxiter,
+                       verb=ddt.verb, ftol=ftol)
+    
+    ddt.model_gal = x_new
+    sn_sky = extract_eta_sn_sky_all(ddt, update_ddt=True, no_eta=True)
     
