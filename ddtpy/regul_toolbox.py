@@ -27,17 +27,16 @@ class RegulGalaxyXY():
                                        weight_ref, sky=sky)
         weight = h_mu_estim**2
         
-        # fn commented out until rgl_roughness_l2 is sorted out:
-        #fn = rgl_roughness_l2 # This is defined somewhere in the yeti section
-        #...haven't found def yet. See yeti/yeti.doc
+        fn = rgl_roughness_l2 # This is defined somewhere in yeti.doc
         # rgl_roughness computes a regularization penalty based on roughness, 
         # l2 means cost function "L2 norm"
     
         # X and Y are the 1st and 2nd dimensions in the galaxy array
         which1, which2 = np.array([-1,-2]) 
         # Not sure about above indices
+        hyper = np.zeros(data_ref.shape[0])
         if mu != None: 
-            hyper = np.array(mu)
+            hyper += mu
     
         if not isinstance(which1, int):
             raise ValueError("expecting a scalar integer for WHICH1")
@@ -57,7 +56,7 @@ class RegulGalaxyXY():
         self.off4[which2] =  1
         # takes into account the weight as a multiplicative 
         # factor for each wavelength slice */
-        #self.fn = fn
+        self.fn = fn
         self.hyper = hyper*weight
         self.q = weight
         self.factor = 1.0
@@ -93,12 +92,12 @@ class RegulGalaxyXY():
             d = data_ref
             w = weight_ref
             s = sky
-            
+        
         if sky is not None:
             # Current understanding of this: get average of sky along lambda 
             # axis for each day, subtract that from sky spectrum for each day
             # Then subtract resulting spectra for each day from data.
-            d -= (s - s.mean(axis = 1))[:,:,None,None]
+            d -= (s - s.mean(axis=1)[:,None])[:,:,None,None]
             
         # Average along x,y, and epoch axes:
         avg_spectrum = d.mean(axis=-1).mean(axis=-1).mean(axis=0)
@@ -147,13 +146,13 @@ class RegulGalaxyXY():
         mu_estim = N_xy/mu_estim
         
         if mu_estim < 0:
-            print "<ddt_mu_estim_xy_normalized_1> WARNING: mu_estim was < 0. \
-                    Not enough information in the data => changed it to be 1."
+            print ("<ddt_mu_estim_xy_normalized_1> WARNING: mu_estim was < 0."+
+                   "Not enough information in the data => changed it to be 1.")
             mu_estim = 1 
      
         ## There is a "FIXME" in DDT code here:
-        print "<ddt_mu_estim_xy_normalized_1> WARNING: \
-                mu_estim =1 no matter what"
+        print ("<ddt_mu_estim_xy_normalized_1> WARNING: "
+                "mu_estim=1 no matter what")
         mu_estim = 1.
         
         return q, mu_estim
@@ -172,24 +171,20 @@ class RegulGalaxyXY():
         -------
         regul: float?
         """
-        # Not sure about this function - can't find a definition
-        eq_nocopy, hyper, self.hyper 
-            
-        if not hyper1[0]: return 0.0
             
         if self.mu_estim :
-            hyper1*= self.mu_estim
+            self.hyper *= self.mu_estim
             
-        hyper2 = hyper1
         # regularization weight for diagonal terms, 
         # see yeti def of rgl_roughness_l2
-        hyper2 *= 0.5 
+        # diagonal regularization is apparently not needed.
+        #hyper2 = 0.5*self.hyper
         fn = self.fn
         
         regul = 0.
         dim_gal = x.shape
         if grd is None:
-            for i_l in range(dim_gal[2]):
+            for i_l in range(dim_gal[0]):
                 """
                 Comment from DDT:
                 * FIXME: in the paper we show that the spatial regularization 
@@ -197,15 +192,15 @@ class RegulGalaxyXY():
                 Then some stuff was commented out.
                 """
                     
-                regul += (fn(hyper1[i_l], [1,0], x[:,:,i_l]) +
-                          fn(hyper1[i_l], [0,1], x[:,:,i_l]))
+                regul += (fn(self.hyper[i_l], [1,0], x[i_l,:,:]) +
+                          fn(self.hyper[i_l], [0,1], x[i_l,:,:]))
                               
         else:    
-            for i_l in range(dim_gal[2]):
-                grd_temp = np.zeros((2, dim_gal[0], dim_gal[1]))
+            for i_l in range(dim_gal[0]):
+                grd_temp = np.zeros((dim_gal[0], dim_gal[1],2))
                 # FIXME same as above
-                regul += (fn(hyper1[i_l], [1,0], x[:,:,i_l], grd_temp) +
-                          fn(hyper1[i_l], [0,1], x[:,:,i_l], grd_temp))
+                regul += (fn(self.hyper[i_l], [1,0], x[i_l,:,:], grd=grd_temp)+
+                          fn(self.hyper[i_l], [0,1], x[i_l,:,:], grd=grd_temp))
                               
         return regul
                           
@@ -255,7 +250,7 @@ class RegulGalaxyLambda():
         q : 1-d array
         """
 
-        if (data_ref[0]).shape < 4:
+        if len((data_ref).shape) < 4:
             d = data_ref[None,:,:,:]
             w = weight_ref[None,:,:,:]
             s = sky[None,:]
@@ -263,9 +258,9 @@ class RegulGalaxyLambda():
             d = data_ref
             w = weight_ref
             s = sky    
-            
+        
         if sky is not None:
-            d -= (s - np.average(s[:,None], axis = 0)[:,None])[None, None, :,:]
+            d -= (s - np.mean(s, axis=1)[:,None])[:,:,None, None]
             
         avg_spectrum = d.mean(axis=-1).mean(axis=-1).mean(axis=0)
 
@@ -283,8 +278,8 @@ class RegulGalaxyLambda():
         # From DDT : FIXME, calculation not implemented yet 
         # (should this be like in xy_norm above?)
         mu_estim = 1.
-        print "<ddt_mu_estim_xy_normalized_3> WARNING: \
-                mu_estim calculation not implemented, set to 1."
+        print ("<ddt_mu_estim_xy_normalized_3> WARNING: "+
+               "mu_estim calculation not implemented, set to 1.")
             
         return q, mu_estim
                 
@@ -304,12 +299,10 @@ class RegulGalaxyLambda():
 
         Notes:
         -----
-        Comment from DDT:
-        * DOCUMENT _ddt_eval_regularization_galaxy_lambda_prior(this, x, &grd)
-        * Here q is the parameter called mu^cal in ddt-paper-a     
+        Here q is the parameter called mu^cal in ddt-paper-a     
         """
         
-        r = x*self.q[None,None,:]
+        r = x*self.q[:,None,None]
         r = x[1:,:,:] - x[:-1,:,:] # Why is r reassigned? Which is right?
         rgl = self.mu*self.mu_estim*np.sum(r**2)
         
@@ -319,13 +312,13 @@ class RegulGalaxyLambda():
             grd_tmp = np.zeros(x.shape)
             grd_tmp[1:,:,:] = r
             grd_tmp[:-1,:,:] -= r
-            grd += (2.* self.mu*self.mu_estim) * self.q[None, None,:]*grd_tmp
+            grd += (2.* self.mu*self.mu_estim) * self.q[:,None, None]*grd_tmp
             del grd_tmp
             
         return rgl
    
 
-def regul_g(ddt, x, &grd, debug=None):
+def regul_g(ddt, x, grd, debug=None):
     """
     *   Compute regularization for 'g' (galaxy) or 'h' (PSF's).
     *   The returned value ERR is the penalty.
@@ -356,5 +349,26 @@ def regul_g(ddt, x, &grd, debug=None):
   
     return galaxy_err;
 
-
+def rgl_roughness_l2(hyper, offset, arr, grd=None):
+    """Regularization penalty based on roughness of arr
+    L2 is cost function mu*x^2, "From a Bayesian viewpoint, L2 corresponds to 
+    the neg-log likelihood of a Gaussian distribution"
+    
+    Parameters
+    ----------
+    hyper : float
+    offset : 1-d array
+    arr : 2-d array
+    grd : 3-d array - isn't used right now.
+    
+    Returns
+    -------
+    err : float
+    """
+    ind_y, ind_x = arr.shape
+    d_arr = arr[offset[0]:,offset[1]:] - arr[:ind_y-offset[0],:ind_x-offset[1]]
+    cost = hyper * d_arr**2
+    
+    return np.sum(cost)
+    
     

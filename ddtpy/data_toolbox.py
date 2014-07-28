@@ -30,25 +30,25 @@ def sky_guess_all(ddt_data, ddt_weight, nw, nt):
         nxny = data.shape[1]*data.shape[2]
         while (ind.size != prev_npts) and (niter < niter_max):
             prev_npts = ind.size
-            print "<ddt_sky_guess> Sky: prev_npts %d" & prev_npts
+            #print "<ddt_sky_guess> Sky: prev_npts %d" % prev_npts
             I = (data*weight).sum(axis=-1).sum(axis=-1)
             i_Iok = np.where(weight.sum(axis=-1).sum(axis=-1) != 0.0)
-            if i_Iok.size != 0:
+            if i_Iok[0].size != 0:
                 I[i_Iok] /= weight.sum(axis=-1).sum(axis=-1)[i_Iok]
                 sigma = (var.sum(axis=-1).sum(axis=-1)/nxny)**0.5
                 ind = np.where(abs(data - I[:,None,None]) > 
                                sky_cut*sigma[:,None,None])
-                if ind.size != 0:
+                if ind[0].size != 0:
                     data[ind] = 0.
                     var[ind] = 0.
                     weight[ind] = 0.
                 else:
-                    print "<ddt_sky_guess> no more ind"
+                    #print "<ddt_sky_guess> no more ind"
                     break
             else:
                 break
             niter += 1
-            
-        sky[nt] = I
+                
+        sky[i_t] = I
         
     return sky

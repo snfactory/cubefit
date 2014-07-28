@@ -1,5 +1,5 @@
 import numpy as np
-
+import scipy.optimize
 
 def shift_galaxy(ddt, offset, galaxy=None):
     """Galaxy offset in SPAXELS
@@ -20,13 +20,15 @@ def shift_galaxy(ddt, offset, galaxy=None):
     offset = offset
     dim_gal = galaxy.shape
     
-    # This comes up in other places, will be done later
-    phase_shift = fft_shift_phasor(dim_gal, offset, half=1)
+    # TODO: This comes up in other places, will be done later
+    phase_shift = 1 #fft_shift_phasor(dim_gal, offset, half=1)
 
     galaxy_fix = np.zeros(dim_gal)
 
     for i_l in range(dim_gal[0]):
-        galaxy_fix[i_l,:,:] = ddt.FFT(ddt.FFT(galaxy(i_l,:,:))*phase_shift , 2)
+        # galaxy_fix[i_l,:,:] = ddt.FFT(ddt.FFT(galaxy[i_l,:,:])*phase_shift , 2)
+        galaxy_fix[i_l,:,:] = ddt.FFT(ddt.FFT(galaxy[i_l,:,:])*phase_shift)
+        #print type(ddt.FFT(galaxy[i_l,:,:]))
     
     return galaxy_fix
     
@@ -70,18 +72,19 @@ def sn_galaxy_registration(ddt, i_t, verb=None, maxiter=None, job=None,
     sqrt_weight = (ddt.weight[i_t,:,:,:])**0.5
   
     # TODO: Fix this once op_nllsq is sorted out.
-    extra = h_new(ddt=ddt,
-                i_t=i_t,
-                data=ddt.data[i_t,:,:,:],
-                sqrt_weight = sqrt_weight,
-                model=_sn_galaxy_registration_model,
-                job=job, recalculate=recalculate,
-                mask_sn=mask_sn)
+    extra = {'ddt':ddt, 'i_t':i_t, 'data':ddt.data[i_t,:,:,:],
+             'sqrt_weight':sqrt_weight, 'model':_sn_galaxy_registration_model,
+             'job':job, 'recalculate':recalculate, 'mask_sn':mask_sn}
   
-    # FIND op_nllsq (optimpac probably)
+    # TODO: FIND op_nllsq (optimpac probably)
     # Translation of this will probably depend on how optimpac wrapper works
-    anew = op_nllsq(_registration_worker, a, extra=extra, verb=verb,
-                    maxstep=maxiter)
+    # - Using fmin_cg as temporary placeholder for optimpack function:
+    #anew = op_nllsq(_registration_worker, a, extra=extra, verb=verb,
+    #                maxstep=maxiter)
+    a0 = np.array([0.,0.])
+    anew = scipy.optimize.fmin_cg(_registration_worker, a0, args=extra, 
+                                  maxiter=maxiter)
+    
     if job == 0:
         sn_offset = a
         galaxy_offset = np.array([0.,0.])
@@ -113,7 +116,7 @@ def _sn_galaxy_registration_model(a, ddt, i_t, job=None, recalculate=None):
     """
     sn_offset = np.array([0.,0.])
     galaxy_offset = array([0.,0.])
-    if ! job:
+    if not job:
         sn_offset = a
     elif job == 1:
         galaxy_offset = a 
@@ -121,8 +124,8 @@ def _sn_galaxy_registration_model(a, ddt, i_t, job=None, recalculate=None):
         sn_offset = np.array([a[0], a[1]])
         galaxy_offset = np.array([a[2], a[3]])
     else:
-        raise ValueError("<_ddt_sn_galaxy_registration_model> 
-                            job %s not implemented" % job)
+        raise ValueError("<_ddt_sn_galaxy_registration_model> "+
+                         "job %s not implemented" % job)
   
 
     print  "sn_offset [%s, %s], galaxy_offset [%s, %s] \n" % (sn_offset[0],
@@ -145,25 +148,27 @@ def _registration_worker(a, extra):
     -------
     ?
     """
-    if extra.mask_sn:
+    if extra['mask_sn']:
         # SN PSF convolved by delta function 
-        sn_mask_32 = make_sn_model(np.zeros(extra.ddt.ddt_model.n_l), 
-                                   extra.ddt, extra.i_t)
+        sn_mask_32 = make_sn_model(np.zeros(extra['ddt'].ddt_model.nw), 
+                                   extra['ddt'], extra['i_t'])
 
-        i_low = np.where(sn_mask_32 <= (extra.mask_sn * max(sn_mask_32)))
+        i_low = np.where(sn_mask_32 <= (extra['mask_sn'] * max(sn_mask_32)))
         sn_mask_32 *= 0.;
         sn_mask_32[i_low] = 1.;
+        
+        # TODO: Fix this h_set:
+        #h_set, extra.ddt, sn_mask_32 = sn_mask_32
 
-        h_set, extra.ddt, sn_mask_32 = sn_mask_32
-
-        sqrt_weight = extra.sqrt_weight*ddt.r(sn_mask_32)
+        sqrt_weight = extra['sqrt_weight']*ddt.r(sn_mask_32)
     else:
-        sqrt_weight = extra.sqrt_weight
+        sqrt_weight = extra['sqrt_weight']
   
   
-    wr = sqrt_weight*(extra.data - extra.model(a, extra.ddt, extra.i_t, 
-                                               job=extra.job, 
-                                               recalculate=extra.recalculate))
+    wr = sqrt_weight*(extra['data'] - extra['model'](
+                                            a, extra['ddt'], extra['i_t'], 
+                                            job=extra.job, 
+                                            recalculate=extra['recalculate']))
   
     return wr
 

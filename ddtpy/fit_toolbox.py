@@ -20,7 +20,7 @@ def calc_residual(ddt, galaxy=None, sn=None, sky=None, eta=None):
         Dictionary including residual, cube, data, other stuff
     """
         
-    o = np.zero_like(ddt.data)
+    o = np.zeros_like(ddt.data)
     m = np.zeros_like(ddt.data)
     
     
@@ -28,22 +28,26 @@ def calc_residual(ddt, galaxy=None, sn=None, sky=None, eta=None):
         galaxy = ddt.model_gal
         
     for i_t in range(ddt.nt):
+        # TODO: In DDT, seems like final_ref is list, in example file, it's int
+        i_final_ref = (ddt.final_ref if type(ddt.final_ref) == int 
+                       else ddt.final_ref[0])
         tmp_galaxy = shift_galaxy(ddt,
                                   [ddt.target_xp[i_t]-
-                                   ddt.target_xp[ddt.final_ref[0]],
+                                   ddt.target_xp[i_final_ref],
                                    ddt.target_yp[i_t]-
-                                   ddt.target_yp[ddt.final_ref[0]]],
+                                   ddt.target_yp[i_final_ref]],
                                   galaxy=galaxy)
-        o[i_t,:,:,:] = ddt.r(tmp_galaxy) 
+        # TODO: Fix this (Hack because r requires 4-d array):
+        o[i_t,:,:,:] = ddt.r(np.array([tmp_galaxy]))[0] 
         m[i_t,:,:,:] = make_cube(ddt, i_t, galaxy=galaxy, sn=sn, sky=sky, 
                                  eta=eta)
 
     resid_dict = {}
     resid_dict['d'] = copy(ddt.data)
     resid_dict['w'] = copy(ddt.weight)
-    resid_dict['r'] = d - m
-    resid_dict['wr'] = r * w
-    resid_dict['lkl'] = wr * r
+    resid_dict['r'] = ddt.data - m
+    resid_dict['wr'] = resid_dict['r'] * ddt.weight
+    resid_dict['lkl'] = resid_dict['wr'] * resid_dict['r']
     resid_dict['m'] = m
     resid_dict['o'] = o
     resid_dict['l'] = copy(ddt.wave)
@@ -72,19 +76,24 @@ def make_cube(ddt, i_t, galaxy=None, sn=None, sky=None, eta=None,
         whatever ddt.R(model) returns
     
     """
+    
     if not isinstance(galaxy, np.ndarray):
         galaxy = ddt.model_gal
     if galaxy_offset is not None:
         galaxy = shift_galaxy(ddt, galaxy_offset, galaxy=galaxy)
     if not isinstance(sn, np.ndarray):
         sn = ddt.model_sn
+    if not isinstance(sky, np.ndarray):
+        sky = ddt.model_sky
     if not isinstance(eta, np.ndarray):
         eta = ddt.model_eta
     
     # Get galaxy*eta + sn (in center) + sky
-    model = make_g(galaxy, sn[i_t,:], sky[i_t,:], eta[i_t], ddt.sn_x, ddt.sn_y)
+    model = make_g(galaxy, sn[i_t,:], sky[i_t,:], eta[i_t], ddt.model_sn_x,
+                   ddt.model_sn_y)
     
-    return ddt.r(ddt.H(model, i_t))
+    # TODO: Hack below to use ddt.r on 3-d array
+    return ddt.r(np.array([ddt.H(model, i_t)]))[0]
 
 
 def make_all_cube(ddt, galaxy=None, sn=None, sky=None, eta=None):
@@ -113,15 +122,16 @@ def make_all_cube(ddt, galaxy=None, sn=None, sky=None, eta=None):
         eta = ddt.model_eta
 
     cube = np.zeros_like(ddt.data)
-
-    n_fit = ddt.i_fit.size
-    tmp_H=ddt.H
+    # TODO i_fit is an option in DDT (could be only some phases) (was ddt.i_fit)
+    i_fit = np.arange(ddt.nt)
+    n_fit = i_fit.size
     for i_n in range(n_fit):
-        i_t = ddt.i_fit[i_n]
+        i_t = i_fit[i_n]
         model = make_g(galaxy, sn[i_t,:], sky[i_t,:], eta[i_t], 
-                       ddt.sn_x, ddt.sn_y) 
-        cube[i_t,:,:,:] = ddt.R( tmp_H[i_t](model) )
+                       ddt.model_sn_x, ddt.model_sn_y) 
+        cube[i_t,:,:,:] = ddt.r(np.array([ddt.H(model, i_t)]))[0]
         del model
+    
     return cube
         
         
@@ -198,7 +208,7 @@ def make_sn_model(sn, ddt, i_t, offset=None):
     sn_model = np.zeros((ddt.nw,ddt.psf_ny, ddt.psf_nx))
     sn_model[:,ddt.model_sn_y, ddt.model_sn_x] = sn
     
-    return ddt.H(sn_model, i_t job=2, offset=offset)
+    return ddt.H(sn_model, i_t, job=2, offset=offset)
     
     
 def extract_eta_sn_sky(ddt, i_t, galaxy=None, sn_offset=None,
@@ -225,6 +235,7 @@ def extract_eta_sn_sky(ddt, i_t, galaxy=None, sn_offset=None,
     -----
     Updates ddt if 'update_ddt' is True
     """
+    
     if ddt_data is None:
         d = ddt.data[i_t,:,:,:]
         w = ddt.weight[i_t,:,:,:]
@@ -238,9 +249,9 @@ def extract_eta_sn_sky(ddt, i_t, galaxy=None, sn_offset=None,
         galaxy_offset = np.array([0., 0.])
     if not isinstance(galaxy, np.ndarray):
         galaxy = ddt.model_gal
-  
+
     galaxy_model = make_galaxy_model(galaxy, ddt, i_t, offset=galaxy_offset)
-    z_jlt = ddt.R(galaxy_model)
+    z_jlt = ddt.r(np.array([galaxy_model]))[0]
     
     # FIXME: eta won't be fitted on multiple final refs
     if i_t_is_final_ref:
@@ -255,15 +266,17 @@ def extract_eta_sn_sky(ddt, i_t, galaxy=None, sn_offset=None,
             sky_var = np.ones(ddt.nw)
     
         #/* We fix the sky in the final ref used for fitting */
-        if ( i_t == ddt.final_ref[0]):
-            if ddt.fit_final_ref_sky:
-                print "<ddt_extract_eta_sn_sky>: 
-                       calculating sky on final ref %d" % i_t
+        i_final_ref = (ddt.final_ref if type(ddt.final_ref) == int else
+                       ddt.final_ref[0])
+        if ( i_t == i_final_ref):
+            if 0: #ddt.fit_final_ref_sky:
+                print ("<ddt_extract_eta_sn_sky>: "+
+                      "calculating sky on final ref %d" % i_t)
                 sky = ((wd-wz).sum(axis=-1).sum(axis=-1)/
                        w.sum(axis=-1).sum(axis=-1))
             else:
-                print "<ddt_extract_eta_sn_sky>:
-                       using final_ref_sky on exp %d" % i_t
+                print ("<ddt_extract_eta_sn_sky>: "+
+                       "using final_ref_sky on exp %d" % i_t)
                 sky = ddt.model_final_ref_sky
                 # FIXME: here the variance is wrong,
                 # since the sky has been estimated on the signal 
@@ -278,9 +291,9 @@ def extract_eta_sn_sky(ddt, i_t, galaxy=None, sn_offset=None,
         eta = 1.
         
     else:
-        print "<ddt_extract_eta_sn_sky>: working on SN+Galaxy exposure %d" % i_t
+        #print "<ddt_extract_eta_sn_sky>: working on SN+Galaxy exposure %d" % i_t
         sn_psf = make_sn_model(np.ones(ddt.nw), ddt, i_t, offset=sn_offset)
-        y_jlt = ddt.R(sn_psf)
+        y_jlt = ddt.r(np.array([sn_psf]))[0]
     
         A22 = w
         A12 = w * y_jlt
@@ -301,14 +314,14 @@ def extract_eta_sn_sky(ddt, i_t, galaxy=None, sn_offset=None,
         """
         i_bad = np.where(denom == 0)
         if isinstance(i_bad, np.ndarray):
-            print "<ddt_extract_eta_sn_sky> WARNING: 
-                    found null denominator in %d slices \n" % i_bad.size
+            print ("<ddt_extract_eta_sn_sky> WARNING: "+
+                   "found null denominator in %d slices \n" % i_bad.size)
             denom[i_bad] = 1.
       
             if sum(w.sum(axis=-1).sum(axis=-1)[i_bad]) != 0.0:
-                raise ValueError("<ddt_extract_eta_sn_sky> ERROR: 
-                                  found null denom for slices with non null
-                                  weight")
+                raise ValueError("<ddt_extract_eta_sn_sky> ERROR: "+
+                                 "found null denom for slices with non null "+
+                                 "weight")
       
     
         # w2d, w2dy w2dz are used to calculate the variance using 
@@ -324,9 +337,9 @@ def extract_eta_sn_sky(ddt, i_t, galaxy=None, sn_offset=None,
         wz = (w*z_jlt)
         wzy = wz*y_jlt
         wzz = (wz*z_jlt)
-        wz = wz(sum,sum,:)
-        wzy = wzy(sum,sum,:)
-        wzz = wzz(sum,sum,:)
+        wz = wz.sum(axis=-1).sum(axis=-1)
+        wzy = wzy.sum(axis=-1).sum(axis=-1)
+        wzz = wzz.sum(axis=-1).sum(axis=-1)
     
         b_sky = wd*A11 + wdy*A12
         b_sky /= denom
@@ -364,8 +377,8 @@ def extract_eta_sn_sky(ddt, i_t, galaxy=None, sn_offset=None,
                 sn_var = np.ones(sn.shape)
           
             if isinstance(i_bad,np.ndarray):
-                print "<ddt_extract_eta_sn_sky> WARNING: 
-                       due to null denom, putting some sn and sky values to 0"
+                print ("<ddt_extract_eta_sn_sky> WARNING: "+
+                       "due to null denom, putting some sn and sky values to 0")
                 sky[i_bad] = 0.
                 sn[i_bad]  = 0.
                 sky_var[i_bad] = 0.
@@ -384,8 +397,8 @@ def extract_eta_sn_sky(ddt, i_t, galaxy=None, sn_offset=None,
             sky = b_sky - eta*c_sky
             sn = b_sn - eta*c_sn
             if calculate_variance:
-                print "WARNING: variance calculation with 
-                       eta calculation not implemented"
+                print ("WARNING: variance calculation with "+
+                       "eta calculation not implemented")
                 sky_var = np.ones(sky.shape)
                 sn_var = np.ones(sn.shape)
             else:
@@ -393,18 +406,22 @@ def extract_eta_sn_sky(ddt, i_t, galaxy=None, sn_offset=None,
                 sn_var = np.ones(sn.shape)
       
             if isinstance(i_bad, np.ndarray):
-                print "<ddt_extract_eta_sn_sky> WARNING: 
-                       due to null denom, putting some eta, 
-                       sn and sky values to 0"
+                print ("<ddt_extract_eta_sn_sky> WARNING: due to null denom,"+
+                       "putting some eta, sn and sky values to 0")
                 sky[i_bad] = 0.
                 sn[i_bad] = 0.
                 eta[i_bad] = 0.
                 sky_var[i_bad] = 0.
                 sn_var[i_bad] = 0.
     
+    
     if update_ddt:
-        raise ValueError("<extract_eta_sn_sky>:
-                          need to write part that updates ddt")
+    
+        ddt.model_sn[i_t] = sn
+        ddt.model_sky[i_t] = sky
+        ddt.model_eta[i_t] = eta
+        # TODO: Fill in sn_var and sky_var.
+
                           
     extract_dict = {'sky': sky, 'sn': sn}
     return extract_dict # What do I want here? So far no other attributes used

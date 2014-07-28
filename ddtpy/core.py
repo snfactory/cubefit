@@ -35,13 +35,17 @@ class DDT(object):
         # also want array with true/false for final refs.
         self.is_final_ref = np.array(conf.get("PARAM_IS_FINAL_REF"))
 
-        # Load the header from the final ref or first cube
+        # Load the heidader from the final ref or first cube
         idx = self.final_ref if (self.final_ref >= 0) else 0
         self.header = read_select_header_keys(conf["IN_CUBE"][idx])
 
         # Load data from FITS files.
         self.data, self.weight, self.wave = read_dataset(conf["IN_CUBE"])
-
+        # TODO: why are there nans in here?
+        zz = np.where(np.isnan(self.data))
+        self.data[zz] = 0.0
+        self.weight[zz] = 0.0
+        
         # save sizes for convenience
         self.nt = len(self.data)
         self.nw = len(self.wave)
@@ -80,6 +84,7 @@ class DDT(object):
         self.model_sn = np.zeros((self.nt, self.nw))
         self.model_eta = np.ones(self.nt)
         self.model_final_ref_sky = np.zeros(self.nw)
+        self.n_iter_galaxy_prior = conf.get("N_ITER_GALAXY_PRIOR")
 
         # atmospheric differential refraction
         airmass = np.array(conf["PARAM_AIRMASS"])
@@ -112,6 +117,8 @@ class DDT(object):
         self.flag_apodizer = bool(conf.get("FLAG_APODIZER", 0))
 
         # TODO : setup FFT(s)
+        # Placeholder FFT:
+        self.FFT = np.fft.fft
 
         # this was done in ddt_setup_R in Yorick
         self.sn_offset_x_ref = deepcopy(self.target_xp)
@@ -156,13 +163,13 @@ class DDT(object):
         self.regul_galaxy_xy = RegulGalaxyXY(self.data[self.final_ref], 
                                             self.weight[self.final_ref],
                                             conf["MU_GALAXY_XY_PRIOR"],
-                                            sky=self.guess_sky)
+                                            sky=self.guess_sky[self.final_ref])
         self.regul_galaxy_lambda = RegulGalaxyLambda(
                                         self.data[self.final_ref], 
                                         self.weight[self.final_ref],
                                         conf["MU_GALAXY_LAMBDA_PRIOR"],
-                                        sky=self.guess_sky) 
-
+                                        sky=self.guess_sky[self.final_ref]) 
+        self.verb = True
 
     def __str__(self):
         """Create a string representation.
@@ -199,7 +206,7 @@ class DDT(object):
         y[:, :, self.range_y, self.range_x] = x
         return y
         
-    def H(self, x, i_t, job=None, offset=None):
+    def H(self, x, i_t, job=0, offset=None):
         """Convolve x with psf
         this is where ADR is treated as a phase shift in Fourier space.
         
@@ -216,18 +223,23 @@ class DDT(object):
         """
         if not self.psf_rolled:
             raise ValueError("<ddt_H> need the psf to be rolled!")
-        psf = self.psf[i_t]
-        ptr = np.zeros(self.nw)
-        number = ptr.size
         
+        psf = self.psf[i_t]
+        if len(x.shape) == 1:
+            x = x.reshape(self.model_gal.shape)
+        ptr = np.zeros(psf.shape)
+        number = ptr.shape[0]
+
         for k in range(number):
-            phase_shift_apodize = fft_shift_phasor(
-                                        [self.psf_ny, self.pst_nx, 2],
-                                        [self.sn_offset_y[i_t,k],
-                                         self.sn_offset_x[i_t,k]],
-                                        half=1, apodize=self.apodizer)
+            # TODO: fix when fft_shift_phasor written
+            phase_shift_apodize = 1  #fft_shift_phasor(
+            #                            [self.psf_ny, self.pst_nx, 2],
+            #                            [self.sn_offset_y[i_t,k],
+            #                             self.sn_offset_x[i_t,k]],
+            #                            half=1, apodize=self.apodizer)
             ptr[k] = self.FFT(psf[k,:,:] * phase_shift_apodize)
-        return _convolve(ptr, x, job=job, offset=offset)
+            
+        return self._convolve(ptr, x, job=job, offset=offset)
                             
     def _convolve(self, ptr, x, job=0, offset=None):
         """This convolves two functions using DDT.FFT
@@ -250,25 +262,33 @@ class DDT(object):
         job = 1: gradient
         job = 2: add an offset, in SPAXELS
         """
+        number = ptr.shape[0]
+        out = np.zeros(x.shape)
         
-        if job = 0:
+        if job == 0:
             for k in range(number):
-                out[k,:,:] = FFT(ptr[k] * FFT(x[k,:,:]),2)
+                # TODO: Fix when FFT is sorted out:
+                #out[k,:,:] = self.FFT(ptr[k] * self.FFT(x[k,:,:]),2)
+                out[k,:,:] = self.FFT(ptr[k]*self.FFT(x[k,:,:]))
             return out
         elif job == 1:
             for k in range(number):
-                out[k,:,:] = FFT( np.conj(ptr[k]) * FFT(x[k,:,:]),2)
+                # out[k,:,:] = self.FFT(np.conj(ptr[k]) * self.FFT(x[k,:,:]),2)
+                out[k,:,:] = self.FFT(np.conj(ptr[k]) * self.FFT(x[k,:,:]))
             return out
         elif job == 2:
             if offset is None:
                 raise ValueError("<_convolve> job=2 need offset")
         
-            phase_shift_apodize = fft_shift_phasor(
-                                               [self.psf_ny, self.psf_nx, 2], 
-                                               offset, half=1,
-                                               apodize=apodize)
+            phase_shift_apodize = 1#fft_shift_phasor(
+            #                                   [self.psf_ny, self.psf_nx, 2], 
+            #                                   offset, half=1,
+            #                                   apodize=apodize)
             for k in range(number):
-                out[k,:,:] = FFT(ptr[k] * phase_shift_apodize*FFT(x[k,:,:]),2)
+                out[k,:,:] = self.FFT(ptr[k] * phase_shift_apodize *
+                                      self.FFT(x[k,:,:]))    
+                #out[k,:,:] = self.FFT(ptr[k] * phase_shift_apodize *
+                #                      self.FFT(x[k,:,:]),2)
             return out 
         else: 
             raise ValueError("unsupported JOB")
