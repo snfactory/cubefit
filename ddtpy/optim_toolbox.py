@@ -2,8 +2,9 @@ import numpy as np
 
 from .fit_toolbox import extract_eta_sn_sky, make_all_cube
 from .regul_toolbox import regul_g
-import scipy.optimize
+import scipy.optimize 
 import copy
+
 
 def penalty_g_all_epoch(x, ddt):
     """if i_t is not set, fits all the datacubes at once, else fits the 
@@ -26,7 +27,7 @@ def penalty_g_all_epoch(x, ddt):
     i_fit = np.arange(ddt.nt)
     # Extracts sn and sky 
     n_fit = (i_fit).size
-    print x[100:102,10,10]
+    print np.where(x != 0)
     for i_n in range(n_fit):
         i_t = i_fit[i_n]
         sn_sky = extract_eta_sn_sky(ddt, i_t, no_eta=True,
@@ -41,7 +42,6 @@ def penalty_g_all_epoch(x, ddt):
                           eta=ddt.model_eta)
     r = r[i_fit] - ddt.data[i_fit]
     wr = ddt.weight[i_fit] * r
-    
     
     if ddt.verb:
         print "<ddt_penalty_g>:r %s, wr %s" % (np.sum(r), np.sum(wr))
@@ -112,7 +112,7 @@ def fit_model_all_epoch(ddt, maxiter=None, xmin=None):
         #x_new = op_mnb(penalty, x, extra=ddt, xmin=xmin, maxiter=maxiter,
         #               method=method, mem=mem,
         #               verb=ddt.verb, ftol=ftol)
-        x_new = scipy.optimize.fmin_bfgs(penalty, x, args=(ddt,)) 
+        x_new = scipy.optimize.fmin_cg(penalty, x, args=(ddt,)) 
     
     ddt.model_gal = x_new
     sn_sky = extract_eta_sn_sky_all(ddt, update_ddt=True, no_eta=True)

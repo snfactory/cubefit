@@ -1,6 +1,6 @@
 import numpy as np
 import scipy.optimize
-
+from .data_toolbox import fft_shift_phasor
 def shift_galaxy(ddt, offset, galaxy=None):
     """Galaxy offset in SPAXELS
     Parameters
@@ -20,8 +20,7 @@ def shift_galaxy(ddt, offset, galaxy=None):
     offset = offset
     dim_gal = galaxy.shape
     
-    # TODO: This comes up in other places, will be done later
-    phase_shift = 1 #fft_shift_phasor(dim_gal, offset, half=1)
+    phase_shift = fft_shift_phasor(dim_gal, offset, half=1)
 
     galaxy_fix = np.zeros(dim_gal)
 

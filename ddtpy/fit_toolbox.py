@@ -426,10 +426,4 @@ def extract_eta_sn_sky(ddt, i_t, galaxy=None, sn_offset=None,
     extract_dict = {'sky': sky, 'sn': sn}
     return extract_dict # What do I want here? So far no other attributes used
     
-  
-
-
-    
-
-
     

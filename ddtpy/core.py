@@ -9,7 +9,7 @@ from .psf import params_from_gs, gaussian_plus_moffat_psf_4d, roll_psf
 from .io import read_dataset, read_select_header_keys
 from .adr import calc_paralactic_angle, differential_refraction
 from .regul_toolbox import RegulGalaxyXY, RegulGalaxyLambda
-from .data_toolbox import sky_guess_all
+from .data_toolbox import sky_guess_all, fft_shift_phasor
 __all__ = ["DDT"]
 
 class DDT(object):
@@ -231,14 +231,14 @@ class DDT(object):
         number = ptr.shape[0]
 
         for k in range(number):
-            # TODO: fix when fft_shift_phasor written
-            phase_shift_apodize = 1  #fft_shift_phasor(
-            #                            [self.psf_ny, self.pst_nx, 2],
-            #                            [self.sn_offset_y[i_t,k],
-            #                             self.sn_offset_x[i_t,k]],
-            #                            half=1, apodize=self.apodizer)
-            ptr[k] = self.FFT(psf[k,:,:] * phase_shift_apodize)
             
+            phase_shift_apodize = fft_shift_phasor(
+                                        [self.psf_ny, self.psf_nx],
+                                        [self.sn_offset_y[i_t,k],
+                                         self.sn_offset_x[i_t,k]],
+                                        half=1, apodize=self.apodizer)
+            ptr[k] = self.FFT(psf[k,:,:] * phase_shift_apodize)
+
         return self._convolve(ptr, x, job=job, offset=offset)
                             
     def _convolve(self, ptr, x, job=0, offset=None):
@@ -280,10 +280,10 @@ class DDT(object):
             if offset is None:
                 raise ValueError("<_convolve> job=2 need offset")
         
-            phase_shift_apodize = 1#fft_shift_phasor(
-            #                                   [self.psf_ny, self.psf_nx, 2], 
-            #                                   offset, half=1,
-            #                                   apodize=apodize)
+            phase_shift_apodize = fft_shift_phasor(
+                                               [self.psf_ny, self.psf_nx], 
+                                               offset, half=1,
+                                               apodize=self.apodizer)
             for k in range(number):
                 out[k,:,:] = self.FFT(ptr[k] * phase_shift_apodize *
                                       self.FFT(x[k,:,:]))    
