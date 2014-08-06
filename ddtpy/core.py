@@ -206,15 +206,14 @@ class DDT(object):
         y[:, :, self.range_y, self.range_x] = x
         return y
         
-    def H(self, x, i_t, job=0, offset=None):
+    def H(self, x, i_t, offset=None):
         """Convolve x with psf
         this is where ADR is treated as a phase shift in Fourier space.
         
         Parameters
         ----------
         x : 3-d array
-        i_t : int
-        job : int
+        i_t : int
         offset : 1-d array
         
         Returns
@@ -239,9 +238,9 @@ class DDT(object):
                                         half=1, apodize=self.apodizer)
             ptr[k] = self.FFT(psf[k,:,:] * phase_shift_apodize)
 
-        return self._convolve(ptr, x, job=job, offset=offset)
+        return self._convolve(ptr, x, offset=offset)
                             
-    def _convolve(self, ptr, x, job=0, offset=None):
+    def _convolve(self, ptr, x, offset=None):
         """This convolves two functions using DDT.FFT
         Will need to be adapted if other FFT needs to be an option
         
@@ -249,7 +248,6 @@ class DDT(object):
         ----------
         ptr : 1-d array
         x : 3-d array
-        job : int, see below
         offset : 1-d array
         
         Returns
@@ -265,21 +263,14 @@ class DDT(object):
         number = ptr.shape[0]
         out = np.zeros(x.shape)
         
-        if job == 0:
+        if offset == None:
             for k in range(number):
                 # TODO: Fix when FFT is sorted out:
                 #out[k,:,:] = self.FFT(ptr[k] * self.FFT(x[k,:,:]),2)
                 out[k,:,:] = self.FFT(ptr[k]*self.FFT(x[k,:,:]))
             return out
-        elif job == 1:
-            for k in range(number):
-                # out[k,:,:] = self.FFT(np.conj(ptr[k]) * self.FFT(x[k,:,:]),2)
-                out[k,:,:] = self.FFT(np.conj(ptr[k]) * self.FFT(x[k,:,:]))
-            return out
-        elif job == 2:
-            if offset is None:
-                raise ValueError("<_convolve> job=2 need offset")
-        
+
+        else:
             phase_shift_apodize = fft_shift_phasor(
                                                [self.psf_ny, self.psf_nx], 
                                                offset, half=1,
@@ -290,6 +281,4 @@ class DDT(object):
                 #out[k,:,:] = self.FFT(ptr[k] * phase_shift_apodize *
                 #                      self.FFT(x[k,:,:]),2)
             return out 
-        else: 
-            raise ValueError("unsupported JOB")
-            
+        

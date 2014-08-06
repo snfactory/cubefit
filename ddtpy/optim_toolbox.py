@@ -46,6 +46,7 @@ def penalty_g_all_epoch(x, ddt):
     if ddt.verb:
         print "<ddt_penalty_g>:r %s, wr %s" % (np.sum(r), np.sum(wr))
   
+    # Comment from Yorick DDT :
     # FIXME: The gradient MUST be reinitialized each time isn't it?
     grd = np.zeros(x.shape)
  
@@ -57,7 +58,7 @@ def penalty_g_all_epoch(x, ddt):
         #if ddt.verb:
         #    print "<ddt_penalty_g>: calculating gradient for i_t=%d" % i_t
         tmp_x = ddt.r_inv(np.array([2.*wr[i_n,:,:,:]]))[0]
-        grd += ddt.H(tmp_x, i_t, job=1)
+        grd += ddt.H(tmp_x, i_t)
   
     wr=[]
     tmp_x=[]

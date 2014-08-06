@@ -1,12 +1,13 @@
 import numpy as np
 import scipy.optimize
 from .data_toolbox import fft_shift_phasor
+
 def shift_galaxy(ddt, offset, galaxy=None):
     """Galaxy offset in SPAXELS
     Parameters
     ----------
     ddt : DDT object
-    offset : ? Presumably an array of 1-3 dimensions
+    offset : 1-d array
     galaxy : 3d array 
     
     Returns
@@ -19,21 +20,21 @@ def shift_galaxy(ddt, offset, galaxy=None):
   
     offset = offset
     dim_gal = galaxy.shape
-    
+    print offset, dim_gal
     phase_shift = fft_shift_phasor(dim_gal, offset, half=1)
 
     galaxy_fix = np.zeros(dim_gal)
 
     for i_l in range(dim_gal[0]):
-        # galaxy_fix[i_l,:,:] = ddt.FFT(ddt.FFT(galaxy[i_l,:,:])*phase_shift , 2)
+        #galaxy_fix[i_l,:,:] = ddt.FFT(ddt.FFT(galaxy[i_l,:,:])*phase_shift , 2)
         galaxy_fix[i_l,:,:] = ddt.FFT(ddt.FFT(galaxy[i_l,:,:])*phase_shift)
-        #print type(ddt.FFT(galaxy[i_l,:,:]))
+        
     
     return galaxy_fix
     
     
-def sn_galaxy_registration(ddt, i_t, verb=None, maxiter=None, job=None, 
-                           mask_sn=0, recalculate=None):
+def sn_galaxy_registration(ddt, i_t, verb=None, maxiter=None, 
+                           fit_flag = 'galaxy', mask_sn=0, recalculate=None):
     """          
     Warning: Offsets are in SPAXELS
           
@@ -41,66 +42,54 @@ def sn_galaxy_registration(ddt, i_t, verb=None, maxiter=None, job=None,
     ----------       
     mask_sn : 
         level at which the SN starts being masked
-    recalculate: 
+    recalculate: bool
         set it if you want to recalculate sky and SN each time
-    
+    fit_flag : 'sn' or 'galaxy'
+        register the sn or galaxy, keep the other fixed
     Returns
     -------
+    anew : 1-d array
+        fit of sn or galaxy position.
     Notes
     -----
-    job=0: fixed galaxy, registers SN
-    job=1: fixed SN, registers galaxy
-    job=2: registers both
-    a(1) sn_offset_x
-    a(2) sn_offet_y
-    a(3) galaxy_offset_x
-    a(4) galaxy_offset_y
+    a[0] offset_x
+    a[1] offset_y
     """
-    if job == 0:
-        print "<ddt_sn_galaxy_registration> SN registration"
-        a = np.array([0.,0.])
-
-    elif job == 1:
-        print "<ddt_sn_galaxy_registration> galaxy registration"
-        a = np.array([0.,0.])
-
-    elif job == 2:
-        print "<ddt_sn_galaxy_registration> galaxy and SN registration"
-        a = np.array([0.,0.,0.,0.])
-   
+    
+    a = np.array([0.,0.])
+       
     sqrt_weight = (ddt.weight[i_t,:,:,:])**0.5
   
     # TODO: Fix this once op_nllsq is sorted out.
     extra = {'ddt':ddt, 'i_t':i_t, 'data':ddt.data[i_t,:,:,:],
              'sqrt_weight':sqrt_weight, 'model':_sn_galaxy_registration_model,
-             'job':job, 'recalculate':recalculate, 'mask_sn':mask_sn}
+             'fit_flag': fit_flag, 'recalculate':recalculate, 'mask_sn':mask_sn}
   
     # TODO: FIND op_nllsq (optimpac probably)
     # Translation of this will probably depend on how optimpac wrapper works
     # - Using fmin_cg as temporary placeholder for optimpack function:
     #anew = op_nllsq(_registration_worker, a, extra=extra, verb=verb,
     #                maxstep=maxiter)
-    a0 = np.array([0.,0.])
-    anew = scipy.optimize.fmin_cg(_registration_worker, a0, args=extra, 
+    
+    anew = scipy.optimize.fmin_cg(_registration_worker, a, args=extra, 
                                   maxiter=maxiter)
     
-    if job == 0:
+    if fit_flag == 'sn':
         sn_offset = a
         galaxy_offset = np.array([0.,0.])
-    elif job == 1:
+    elif fit_flag == 'galaxy':
         galaxy_offset = a 
         sn_offset = np.array([0.,0.])
-    elif job == 2:
-        sn_offset = np.array([a[0], a[1]])
-        galaxy_offset = np.array([a[2], a[3]])
-
+    else:
+        raise ValueError("fit_flag must be sn or galaxy")
     model = make_offset_cube(ddt, i_t, galaxy_offset=galaxy_offset, 
                              sn_offset=sn_offset, recalculate=recalculate)
-    return anew, a, model
+    return anew
 
 
 # TODO: once op_llnsq above is sorted out, maybe this can be removed.
-def _sn_galaxy_registration_model(a, ddt, i_t, job=None, recalculate=None):
+def _sn_galaxy_registration_model(a, ddt, i_t, fit_flag='galaxy',
+                                  recalculate=None):
     """
     Parameters
     ----------
@@ -115,16 +104,13 @@ def _sn_galaxy_registration_model(a, ddt, i_t, job=None, recalculate=None):
     """
     sn_offset = np.array([0.,0.])
     galaxy_offset = array([0.,0.])
-    if not job:
+    if fit_flag == 'sn'
         sn_offset = a
-    elif job == 1:
+    elif fit_flag == 'galaxy'
         galaxy_offset = a 
-    elif job == 2:
-        sn_offset = np.array([a[0], a[1]])
-        galaxy_offset = np.array([a[2], a[3]])
     else:
         raise ValueError("<_ddt_sn_galaxy_registration_model> "+
-                         "job %s not implemented" % job)
+                         "fit_flag must be sn or galaxy")
   
 
     print  "sn_offset [%s, %s], galaxy_offset [%s, %s] \n" % (sn_offset[0],
@@ -145,7 +131,7 @@ def _registration_worker(a, extra):
     
     Returns
     -------
-    ?
+    wr : 3-d array
     """
     if extra['mask_sn']:
         # SN PSF convolved by delta function 
@@ -166,7 +152,7 @@ def _registration_worker(a, extra):
   
     wr = sqrt_weight*(extra['data'] - extra['model'](
                                             a, extra['ddt'], extra['i_t'], 
-                                            job=extra.job, 
+                                            fit_flag=extra['fit_flag'], 
                                             recalculate=extra['recalculate']))
   
     return wr

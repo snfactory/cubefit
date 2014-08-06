@@ -208,7 +208,7 @@ def make_sn_model(sn, ddt, i_t, offset=None):
     sn_model = np.zeros((ddt.nw,ddt.psf_ny, ddt.psf_nx))
     sn_model[:,ddt.model_sn_y, ddt.model_sn_x] = sn
     
-    return ddt.H(sn_model, i_t, job=2, offset=offset)
+    return ddt.H(sn_model, i_t, offset=offset)
     
     
 def extract_eta_sn_sky(ddt, i_t, galaxy=None, sn_offset=None,
