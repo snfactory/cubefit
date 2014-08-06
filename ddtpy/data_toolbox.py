@@ -68,12 +68,18 @@ def fft_shift_phasor(dimlist, offset, apodize=None, half=None):
     """
     
     ndims = len(dimlist)
+    if len(offset) > ndims:
+        raise ValueError("too many offsets")
+    elif len(offset) < ndims:
+        offset = offset + [0]*(ndims-len(offset))
+    print offset
     flag = 0 + 0j
     if apodize is None:
         #Computes multi-dimensional un-apodized shift phasor one
         #dimension at a time, starting with the last one. 
-        for k in range(ndims)[::-1]:
-            n = dimlist[k - 1]
+        for k in range(ndims):
+            n = dimlist[k]
+            print k, n
             u = np.arange(n/2+1) # positive frequencies 
             # TODO: Below, I think it should be (k+1) > 1, but then you get an
             # array that can't be combined appropriately back in core.H
@@ -101,13 +107,13 @@ def fft_shift_phasor(dimlist, offset, apodize=None, half=None):
                     z = np.outer(np.ones(u.size), z)
                 else:
                     z = np.ones(u.size)
-            
+            print z.shape
       
     
     elif callable(apodize):
         # Computes multi-dimensional apodized shift phasor one
         # dimension at a time, starting with the last one. 
-        for k in range(ndims)[::-1]:
+        for k in range(ndims):
             n = dimlist[k - 1]
             u = np.arange(0, n/2) # positive frequencies 
             if (n > 2 and (k > 1 or not half)):
