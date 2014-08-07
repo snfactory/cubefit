@@ -29,7 +29,7 @@ def read_datacube(filename):
         header = f[0].read_header()
         data = f[0].read()
         variance = f[1].read()
-
+    
     assert data.shape == variance.shape
 
     n = header["NAXIS3"]
@@ -61,7 +61,7 @@ def read_dataset(filenames):
 
     for i, filename in enumerate(filenames[1:]):
         data, weight, _ = read_datacube(filename)
-        alldata[i] = data
-        allweight[i] = weight
+        alldata[i+1] = data
+        allweight[i+1] = weight
 
     return alldata, allweight, wave

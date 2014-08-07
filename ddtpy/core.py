@@ -5,10 +5,11 @@ import json
 
 import numpy as np
 
-from .psf import params_from_gs, gaussian_plus_moffat_psf_4d
+from .psf import params_from_gs, gaussian_plus_moffat_psf_4d, roll_psf
 from .io import read_dataset, read_select_header_keys
 from .adr import calc_paralactic_angle, differential_refraction
-
+from .regul_toolbox import RegulGalaxyXY, RegulGalaxyLambda
+from .data_toolbox import sky_guess_all, fft_shift_phasor
 __all__ = ["DDT"]
 
 class DDT(object):
@@ -31,14 +32,20 @@ class DDT(object):
 
         # index of final ref. Subtract 1 due to Python zero-indexing.
         self.final_ref = conf["PARAM_FINAL_REF"]-1
+        # also want array with true/false for final refs.
+        self.is_final_ref = np.array(conf.get("PARAM_IS_FINAL_REF"))
 
-        # Load the header from the final ref or first cube
+        # Load the heidader from the final ref or first cube
         idx = self.final_ref if (self.final_ref >= 0) else 0
         self.header = read_select_header_keys(conf["IN_CUBE"][idx])
 
         # Load data from FITS files.
         self.data, self.weight, self.wave = read_dataset(conf["IN_CUBE"])
-
+        # TODO: why are there nans in here?
+        zz = np.where(np.isnan(self.data))
+        self.data[zz] = 0.0
+        self.weight[zz] = 0.0
+        
         # save sizes for convenience
         self.nt = len(self.data)
         self.nw = len(self.wave)
@@ -77,6 +84,7 @@ class DDT(object):
         self.model_sn = np.zeros((self.nt, self.nw))
         self.model_eta = np.ones(self.nt)
         self.model_final_ref_sky = np.zeros(self.nw)
+        self.n_iter_galaxy_prior = conf.get("N_ITER_GALAXY_PRIOR")
 
         # atmospheric differential refraction
         airmass = np.array(conf["PARAM_AIRMASS"])
@@ -109,6 +117,8 @@ class DDT(object):
         self.flag_apodizer = bool(conf.get("FLAG_APODIZER", 0))
 
         # TODO : setup FFT(s)
+        # Placeholder FFT:
+        self.FFT = np.fft.fft
 
         # this was done in ddt_setup_R in Yorick
         self.sn_offset_x_ref = deepcopy(self.target_xp)
@@ -143,7 +153,23 @@ class DDT(object):
         # I don't know why this is done.
         self.psf = roll_psf(self.psf, -self.model_sn_x, -self.model_sn_y)
         self.psf_rolled = True
+        
+        # This makes a first guess at the sky by recursively removing outliers
+        self.guess_sky = sky_guess_all(self.data, self.weight, self.nw, self.nt)
 
+        # equivalent of ddt_setup_regularization...
+        # In original, these use "sky=guess_sky", but I can't find this defined.
+        # Similarly, can't find DDT_CHEAT_NO_NORM
+        self.regul_galaxy_xy = RegulGalaxyXY(self.data[self.final_ref], 
+                                            self.weight[self.final_ref],
+                                            conf["MU_GALAXY_XY_PRIOR"],
+                                            sky=self.guess_sky[self.final_ref])
+        self.regul_galaxy_lambda = RegulGalaxyLambda(
+                                        self.data[self.final_ref], 
+                                        self.weight[self.final_ref],
+                                        conf["MU_GALAXY_LAMBDA_PRIOR"],
+                                        sky=self.guess_sky[self.final_ref]) 
+        self.verb = True
 
     def __str__(self):
         """Create a string representation.
@@ -179,3 +205,80 @@ class DDT(object):
         y = np.zeros(shape, dtype=np.float32)
         y[:, :, self.range_y, self.range_x] = x
         return y
+        
+    def H(self, x, i_t, offset=None):
+        """Convolve x with psf
+        this is where ADR is treated as a phase shift in Fourier space.
+        
+        Parameters
+        ----------
+        x : 3-d array
+        i_t : int
+        offset : 1-d array
+        
+        Returns
+        -------
+        3-d array
+        """
+        if not self.psf_rolled:
+            raise ValueError("<ddt_H> need the psf to be rolled!")
+        
+        psf = self.psf[i_t]
+        if len(x.shape) == 1:
+            x = x.reshape(self.model_gal.shape)
+        ptr = np.zeros(psf.shape)
+        number = ptr.shape[0]
+
+        for k in range(number):
+            
+            phase_shift_apodize = fft_shift_phasor(
+                                        [self.psf_ny, self.psf_nx],
+                                        [self.sn_offset_y[i_t,k],
+                                         self.sn_offset_x[i_t,k]],
+                                        half=1, apodize=self.apodizer)
+            ptr[k] = self.FFT(psf[k,:,:] * phase_shift_apodize)
+
+        return self._convolve(ptr, x, offset=offset)
+                            
+    def _convolve(self, ptr, x, offset=None):
+        """This convolves two functions using DDT.FFT
+        Will need to be adapted if other FFT needs to be an option
+        
+        Parameters
+        ----------
+        ptr : 1-d array
+        x : 3-d array
+        offset : 1-d array
+        
+        Returns
+        -------
+        out : 3-d array
+        
+        Notes
+        -----
+        job = 0: direct
+        job = 1: gradient
+        job = 2: add an offset, in SPAXELS
+        """
+        number = ptr.shape[0]
+        out = np.zeros(x.shape)
+        
+        if offset == None:
+            for k in range(number):
+                # TODO: Fix when FFT is sorted out:
+                #out[k,:,:] = self.FFT(ptr[k] * self.FFT(x[k,:,:]),2)
+                out[k,:,:] = self.FFT(ptr[k]*self.FFT(x[k,:,:]))
+            return out
+
+        else:
+            phase_shift_apodize = fft_shift_phasor(
+                                               [self.psf_ny, self.psf_nx], 
+                                               offset, half=1,
+                                               apodize=self.apodizer)
+            for k in range(number):
+                out[k,:,:] = self.FFT(ptr[k] * phase_shift_apodize *
+                                      self.FFT(x[k,:,:]))    
+                #out[k,:,:] = self.FFT(ptr[k] * phase_shift_apodize *
+                #                      self.FFT(x[k,:,:]),2)
+            return out 
+        
