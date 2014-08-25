@@ -3,7 +3,7 @@ from __future__ import division
 import math
 import numpy as np
 
-def params_from_gs(es_psf, wave):
+def params_from_gs(es_psf, wave, wave_ref):
     """Return arrays of ellipticity, alpha PSF parameters.
 
     Parameters
@@ -11,6 +11,7 @@ def params_from_gs(es_psf, wave):
     es_psf : 2-d array
 
     wave : 1-d array
+    wave_ref : float
 
     Returns
     -------
@@ -18,9 +19,7 @@ def params_from_gs(es_psf, wave):
     alpha : 2-d array
     """
 
-    WAVE_REF = 5000.
-
-    relwave = wave / WAVE_REF
+    relwave = wave / wave_ref
   
     # one ellipticity per time (constant across wavelength)
     ellipticity = es_psf[:, 0]
@@ -31,7 +30,7 @@ def params_from_gs(es_psf, wave):
     # duplicate ellipticity for each wavelength
     ellipticity = np.repeat(ellipticity[:, np.newaxis], len(wave), axis=1)
     
-    relwave = wave / WAVE_REF - 1.
+    relwave = wave / wave_ref - 1.
     alpha = (a0[:, np.newaxis] +
              a1[:, np.newaxis] * relwave +
              a2[:, np.newaxis] * relwave**2)
