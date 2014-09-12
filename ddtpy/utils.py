@@ -1,95 +1,141 @@
 """General numeric utilities."""
 
 import numpy as np
-    
-def fft_shift_phasor(dimlist, offset, apodize=None, half=None):
+from numpy import fft
+
+
+def stringify(obj):
+    """Create a string representation.
+
+    For now this just lists all the members of the object and for arrays,
+    their shapes.
+    """
+
+    lines = ["Members:"]
+    for name, val in obj.__dict__.iteritems():
+        if isinstance(val, np.ndarray):
+            info = "{0:s} array".format(val.shape)
+        else:
+            info = repr(val)
+        lines.append("  {0:s} : {1}".format(name, info))
+    return "\n".join(lines)
+
+
+def fft_shift_phasor_2d(shape, offset):
     """Return a complex phasor suitable to fine shift an array be OFFSET
     
     Parameters
     ----------
-    dimlist : 
-    offset : 
-    apodize : fn
-    half : boolean
+    shape : iterable (int)
+        Length 2 iterable giving shape of array.
+    offset : iterable (float)
+        Offset in array elements in each dimension.
+
     Returns
     -------
+    z : np.ndarray (complex)
+        Complex array with shape ``shape``.
+
+    Notes
+    -----
+
+    ABOUT THE NYQUIST FREQUENCY
+
+    When fine shifting a sampled function by multiplying its FFT by a
+    phase tilt, there is an issue about the Nyquist frequency for a
+    real valued function when the number of samples N is even.  In
+    this case, the Fourier transform of the function at Nyquist
+    frequel N/2 must be real because the Fourier transform of the
+    function is Hermitian and because +/- the Nyquist frequency is
+    supported by the same frequel.  When the shift is not a multiple
+    of the sampling step size, the phasor violates this requirement.
+    To solve for this issue with have tried different solutions:
+ 
+      (a) Just take the real part of the phasor at the Nyquist
+          frequency.  If FFTW is used, this is the same as doing
+          nothing special with the phasor at Nyquist frequency.
+ 
+      (b) Set the phasor to be 0 at the Nyquist frequency.
+ 
+      (c) Set the phasor to be +/- 1 at the Nyquist frequency by
+          rounding the phase at this frequency to the closest multiple
+          of PI (same as rounding the shift to the closest integer
+          value to compute the phasor at the Nyquist frequency).
+ 
+      (d) Set the phasor to be 1 at the Nyquist frequency.
+ 
+    The quality of the approximation can be assessed by computing
+    the corresponding impulse response.
+ 
+    The best method in terms of least amplitude of the side lobes is
+    clearly (a), then (b), then (c) then (d).  The impulse response
+    looks like a sinc for (a) and (b) whereas its shows strong
+    distorsions around shifts equal to (k + 1/2)*s, where k is
+    integer and s is the sample step size, for methods (c) and (d).
+    The impulse response cancels at integer multiple of the sample
+    step size for methods (a), (c) and (d) -- making them suitable as
+    interpolation functions -- not for (b) which involves some
+    smoothing (the phasor at Nyquist frequency is set to zero).
+ 
     """
     
-    ndims = len(dimlist)
-    if len(offset) > ndims:
-        raise ValueError("too many offsets")
-    elif len(offset) < ndims:
-        offset = offset + [0]*(ndims-len(offset))
-    print offset
-    flag = 0 + 0j
-    if apodize is None:
-        #Computes multi-dimensional un-apodized shift phasor one
-        #dimension at a time, starting with the last one. 
-        for k in range(ndims):
-            n = dimlist[k]
-            print k, n
-            u = np.arange(n/2+1) # positive frequencies 
-            # TODO: Below, I think it should be (k+1) > 1, but then you get an
-            # array that can't be combined appropriately back in core.H
-            if (n > 2 and ((k + 1 > 0) or (not half))):
-                # append negative frequencies 
-                u = np.hstack([u, np.arange(-((n - 1)/2),0)])
-            off = offset[k] % n
-            if off:
-                phase = ((2*np.pi/n)*off)*u
-                phasor = np.cos(phase) - 1j*np.sin(phase)
-                if (half and (n > 1) and not (n%2)):
-                    # For Hermitian array, deal with Nyquist
-                    # frequency along dimension of even length. 
-                    nyquist = n/2 - 1
-                    phasor[nyquist] = np.cos(np.pi*off)
-        
-                if flag:
-                    z = np.outer(z[None,:], phasor) #np.array([z])*phasor;
-                else:                    
-                    z = phasor
-                    flag = 1 + 0j
-        
-            else:
-                if flag:
-                    z = np.outer(np.ones(u.size), z)
-                else:
-                    z = np.ones(u.size)
-            print z.shape
-      
-    
-    elif callable(apodize):
-        # Computes multi-dimensional apodized shift phasor one
-        # dimension at a time, starting with the last one. 
-        for k in range(ndims):
-            n = dimlist[k - 1]
-            u = np.arange(0, n/2) # positive frequencies 
-            if (n > 2 and (k > 1 or not half)):
-                # append negative frequencies */
-                u.append(np.arange(-((n - 1)/2), -1))
-      
-            filter = apodize(u, n)
-            off = offset[k] % n
-            if off:
-                phase = ((2*np.pi/n)*off)*u
-                phasor = np.cos(phase) - 1j*np.sin(phase)
-                if (half and n > 1 and not (n % 2)):
-                    # For Hermitian array, deal with Nyquist
-                    # frequency along dimension of even length.
-                    nyquist = n/2 
-                    phasor[nyquist] = np.cos(np.pi*off)
-        
-                filter *= phasor
-      
-            if flag:
-                z = np.array([z])*filter
-            else:
-                z = filter
-                flag = 1 + 0j
-      
-    
-    else:
-        raise ValueError("APODIZE must be nil or a function")
-  
-    return z
+    if not len(offset) == len(shape) == 2:
+        raise ValueError("length of offset and shape must be 2")
 
+    m, n = shape
+    offm, offn = offset
+
+    # fftfreq() gives frequency corresponding to each array element in
+    # an FFT'd array (between -0.5 and 0.5). Multiplying by 2pi expands
+    # this to (-pi, pi). Finally multiply by offset in array elements.
+    fm = 2. * np.pi * fft.fftfreq(m) * (offm % m)
+    fn = 2. * np.pi * fft.fftfreq(n) * (offn % n)
+
+    phasorm =  np.cos(fm) - 1j*np.sin(fm)
+    phasorn =  np.cos(fn) - 1j*np.sin(fn)
+
+    # This is the part where we reset the phasor at the nyquist frequency
+    # to be real (see comments above).
+    if m % 2 == 0:
+        phasorm[m/2] = np.real(phasorm[m/2])
+    if n % 2 == 0:
+        phasorn[n/2] = np.real(phasorn[n/2])
+
+    return np.outer(phasorm, phasorn)
+
+
+def fft_convolve_shift(arr, kernel, offset):
+    """
+    Apply a convolution and a shift to the 
+This convolves two functions using FFT
+    Will need to be adapted if other FFT needs to be an option
+
+    Parameters
+    ----------
+    ptr : 1-d array
+    x : 3-d array
+    offset : 1-d array
+
+    Returns
+    -------
+    out : 3-d array
+
+    Notes
+    -----
+    job = 0: direct
+    job = 1: gradient
+    job = 2: add an offset, in SPAXELS
+    """
+    number = ptr.shape[0]
+    out = np.zeros(x.shape)
+
+    phasor = fft_shift_phasor(
+                                           [self.psf_ny, self.psf_nx], 
+                                           offset, half=1,
+                                           apodize=self.apodizer)
+        for k in range(number):
+            out[k,:,:] = self.FFT(ptr[k] * phase_shift_apodize *
+                                  self.FFT(x[k,:,:]))    
+            #out[k,:,:] = self.FFT(ptr[k] * phase_shift_apodize *
+            #                      self.FFT(x[k,:,:]),2)
+        return out 

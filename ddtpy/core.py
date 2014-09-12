@@ -4,6 +4,7 @@ from copy import deepcopy
 import json
 
 import numpy as np
+from numpy import fft
 
 from .psf import params_from_gs, gaussian_plus_moffat_psf_4d, roll_psf
 from .io import read_dataset, read_select_header_keys
@@ -11,23 +12,6 @@ from .adr import calc_paralactic_angle, differential_refraction
 from .data_toolbox import sky_guess_all, fft_shift_phasor
 
 __all__ = ["main"]
-
-
-def stringify(obj):
-    """Create a string representation.
-
-    For now this just lists all the members of the object and for arrays,
-    their shapes.
-    """
-
-    lines = ["Members:"]
-    for name, val in obj.__dict__.iteritems():
-        if isinstance(val, np.ndarray):
-            info = "{0:s} array".format(val.shape)
-        else:
-            info = repr(val)
-        lines.append("  {0:s} : {1}".format(name, info))
-    return "\n".join(lines)
 
 
 class DDTData(object):
@@ -86,11 +70,13 @@ class DDTModel(object):
         relative to reference wavelength.
     spaxel_size : float
         Spaxel size in arcseconds.
+    mu_xy : float
+    mu_wave : float
     """
     MODEL_SHAPE = 32, 32
 
     def __init__(self, shape, psf_ellipticity, psf_alpha, adr_dx, adr_dy,
-                 spaxel_size)):
+                 spaxel_size, mu_xy, mu_wave)):
 
         ny, nx = MODEL_SHAPE
         nt, nw = shape
@@ -134,6 +120,8 @@ class DDTModel(object):
         self.adr_dx = adr_dx
         self.adr_dy = adr_dy
         self.spaxel_size = spaxel_size
+        self.mu_xy = mu_xy
+        self.mu_wave = mu_wave
 
 
 def main(filename):
@@ -232,7 +220,13 @@ def main(filename):
 
     # Initialize model
     model = DDTModel((data.nt, data.nw), psf_ellipticity, psf_alpha,
-                     adr_dx, adr_dy, spaxel_size)
+                     adr_dx, adr_dy, spaxel_size,
+                     conf["MU_GALAXY_XY_PRIOR"],
+                     conf["MU_GALAXY_LAMBDA_PRIOR"])
+
+    # Make a first guess at the sky level based on the data.
+    self.guess_sky = sky_guess_all(self.data, self.weight, self.nw, self.nt)
+
 
     # TODO : I Don't think this is needed anymore.                            
     # flag_apodizer = bool(conf.get("FLAG_APODIZER", 0))
@@ -248,10 +242,6 @@ def main(filename):
 # -----------------------------------------------------------------------------
 # old 
 # -----------------------------------------------------------------------------
-
-        # TODO : setup FFT(s)
-        # Placeholder FFT:
-        self.FFT = np.fft.fft
 
 
         # if no pointing error, the supernova is at  
@@ -278,15 +268,20 @@ def main(filename):
         # equivalent of ddt_setup_regularization...
         # In original, these use "sky=guess_sky", but I can't find this defined.
         # Similarly, can't find DDT_CHEAT_NO_NORM
-        self.regul_galaxy_xy = RegulGalaxyXY(self.data[self.final_ref], 
-                                            self.weight[self.final_ref],
-                                            conf["MU_GALAXY_XY_PRIOR"],
-                                            sky=self.guess_sky[self.final_ref])
-        self.regul_galaxy_lambda = RegulGalaxyLambda(
-                                        self.data[self.final_ref], 
-                                        self.weight[self.final_ref],
-                                        conf["MU_GALAXY_LAMBDA_PRIOR"],
-                                        sky=self.guess_sky[self.final_ref]) 
+        
+        # These are no longer necessary because regularization is done
+        # in the "penalty_g_all_epoch() function (in about 3 lines)
+
+        #self.regul_galaxy_xy = RegulGalaxyXY(self.data[self.final_ref], 
+        #                                    self.weight[self.final_ref],
+        #                                    conf["MU_GALAXY_XY_PRIOR"],
+        #                                    sky=self.guess_sky[self.final_ref])
+        #self.regul_galaxy_lambda = RegulGalaxyLambda(
+        #                                self.data[self.final_ref], 
+        #                                self.weight[self.final_ref],
+        #                                conf["MU_GALAXY_LAMBDA_PRIOR"],
+        #                                sky=self.guess_sky[self.final_ref]) 
+
         self.verb = True
 
 
@@ -339,7 +334,7 @@ def main(filename):
                                         [self.sn_offset_y[i_t,k],
                                          self.sn_offset_x[i_t,k]],
                                         half=1, apodize=self.apodizer)
-            ptr[k] = self.FFT(psf[k,:,:] * phase_shift_apodize)
+            ptr[k] = fft.fft(psf[k,:,:] * phase_shift_apodize)
 
         return self._convolve(ptr, x, offset=offset)
                             
@@ -370,7 +365,7 @@ def main(filename):
             for k in range(number):
                 # TODO: Fix when FFT is sorted out:
                 #out[k,:,:] = self.FFT(ptr[k] * self.FFT(x[k,:,:]),2)
-                out[k,:,:] = self.FFT(ptr[k]*self.FFT(x[k,:,:]))
+                out[k,:,:] = fft.fft(ptr[k]*fft.fft(x[k,:,:]))
             return out
 
         else:

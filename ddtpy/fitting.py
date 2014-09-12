@@ -22,7 +22,7 @@ def calc_residual(ddt, galaxy=None, sn=None, sky=None, eta=None):
     resid_dict : dict
         Dictionary including residual, cube, data, other stuff
     """
-        
+
     o = np.zeros_like(ddt.data)
     m = np.zeros_like(ddt.data)
     
@@ -504,11 +504,8 @@ def penalty_g_all_epoch(x, ddt):
     #h_set, ddt.ddt_model, lkl = lkl_err   
     #h_set, ddt.ddt_model, rgl = rgl_err
   
-    grd += grd2;
+    grd += grd2
 
-    if ddt.verb:
-        print "<ddt_penalty_g>: lkl %s, rgl %s \n" % (lkl_err, rgl_err)
-  
     return rgl_err + lkl_err
 
 def fit_model_all_epoch(ddt, maxiter=None, xmin=None):
