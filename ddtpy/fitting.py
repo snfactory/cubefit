@@ -544,4 +544,3 @@ def fit_model_all_epoch(ddt, maxiter=None, xmin=None):
     
     ddt.model_gal = x_new
     sn_sky = extract_eta_sn_sky_all(ddt, update_ddt=True, no_eta=True)
-    

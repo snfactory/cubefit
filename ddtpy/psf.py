@@ -37,37 +37,31 @@ def params_from_gs(es_psf, wave, wave_ref):
 
     return ellipticity, alpha
 
-def gaussian_plus_moffat_psf_4d(x, y, ellipticity, alpha, angle=None):
+def gaussian_plus_moffat_psf_4d(shape, x0, y0, ellipticity, alpha,
+                                angle=None):
     """Create a 2-d PSF for a 2-d array of parameters.
 
     Parameters
     ----------
-    x, y : 1-d array of int
-        Coordinates of each array element in x and y. The PSF is centered
-        at coordinates (x,y) = (0.,0.).
+    shape : 2-tuple
+        (ny, nx) shape of spatial component of output array.
+    x0, y0 : float
+        Center of PSF in array coordinates. (0, 0) = centered on lower left
+        pixel.
     ellipticity : 2-d array
     alpha : 2-d array
 
     Returns
     -------
-    x : 1-d array of int
-    y : 1-d array of int
     psf : 4-d array
-
-    Notes
-    -----
-    (0.,0.) is at the center of the field
-    position of the center of the PSF by definition 
-    sn_x = int((n_x + 1.0)/2.);
-    sn_y = int((n_y + 1.0)/2.);
+        Shape is (nt, nw, ny, nx) where (nt, nw) is the shape of ellipticity
+        and alpha.
     """
 
     assert ellipticity.shape == alpha.shape
 
     nt, nw = ellipticity.shape
-    ny = len(y)
-    nx = len(x)
-
+    ny, nx = shape
     if angle is None:
         angle = np.zeros(nt)
 
@@ -76,24 +70,24 @@ def gaussian_plus_moffat_psf_4d(x, y, ellipticity, alpha, angle=None):
 
     for i_t in range(nt):
         for i_w in range(nw):
-            e = ellipticity[i_t, i_w]
-            a = alpha[i_t, i_w]
-            slicepsf = gaussian_plus_moffat_psf(x, y, 0., 0., e, a,
-                                                angle=angle[i_t])
-            psf[i_t, i_w, :, :] = slicepsf / np.sum(slicepsf)
+            slicepsf = gaussian_plus_moffat_psf(shape, x0, y0,
+                                                ellipticity[i_t, i_w],
+                                                alpha[i_t, i_w], angle[i_t])
+            slicepsf /= np.sum(slicepsf)  # normalize array sum to 1.0.
+            psf[i_t, i_w, :, :] = slicepsf
 
     return psf
 
-def gaussian_plus_moffat_psf(x, y, x0, y0, ellipticity, alpha, angle=0.):
+def gaussian_plus_moffat_psf(shape, x0, y0, ellipticity, alpha, angle):
     """Evaluate a gaussian+moffat function on a 2-d grid. 
 
     Parameters
     ----------
-    x : 1-d array
-        x coordinates of output array
-    y : 1-d array
-        y coordinates of output array
+    shape : 2-tuple
+        (ny, nx) of output array.
     x0, y0 : float
+        Center of PSF in array coordinates. (0, 0) = centered on lower left
+        pixel.
     ellipticity: float
     alpha : float
     angle : float
@@ -104,6 +98,7 @@ def gaussian_plus_moffat_psf(x, y, x0, y0, ellipticity, alpha, angle=0.):
         The shape will be (len(y), len(x)) 
     """
 
+    ny, nx = shape
     alpha = abs(alpha)
     ellipticity = abs(ellipticity)
   
@@ -120,10 +115,9 @@ def gaussian_plus_moffat_psf(x, y, x0, y0, ellipticity, alpha, angle=0.):
     beta  = b0 + b1*alpha
     eta   = e0 + e1*alpha
 
-    # In the next line, (x-x0) and (y-y0) are both 1-d arrays.
-    # Output arrays are 2-d, both with shape (len(y), len(x)).
+    # In the next line, output arrays are 2-d, both with shape (ny, nx).
     # dx, for example, gives the dx value at each point in the grid.
-    dx, dy = np.meshgrid(x-x0, y-y0)
+    dx, dy = np.meshgrid(np.arange(nx) - x0, np.arange(ny) - y0)
 
     # Offsets in rotated coordinate system (dx', dy')
     dx_prime = dx * math.cos(angle) - dy * math.sin(angle)

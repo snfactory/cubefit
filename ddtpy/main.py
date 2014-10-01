@@ -7,121 +7,11 @@ import numpy as np
 from numpy import fft
 
 from .psf import params_from_gs, gaussian_plus_moffat_psf_4d, roll_psf
-from .io import read_dataset, read_select_header_keys
+from .model import DDTModel
+from .data import read_dataset, read_select_header_keys, DDTData
 from .adr import calc_paralactic_angle, differential_refraction
-from .data_toolbox import sky_guess_all, fft_shift_phasor
 
 __all__ = ["main"]
-
-
-class DDTData(object):
-    """This class is the equivalent of `ddt.ddt_data` in the Yorick version.
-
-    Parameters
-    ----------
-    data : ndarray (4-d)
-    weight : ndarray (4-d)
-    wave : ndarray (1-d)
-    is_final_ref : ndarray (bool)
-    master_final_ref : int
-    header : dict
-    spaxel_size : float
-    """
-    
-    def __init__(self, data, weight, wave, is_final_ref, master_final_ref,
-                 header, spaxel_size):
-
-        if len(wave) != data.shape[1]:
-            raise ValueError("length of wave must match data axis=1")
-
-        if len(is_final_ref) != data.shape[0]:
-            raise ValueError("length of is_final_ref and data must match")
-
-        if data.shape != weight.shape:
-            raise ValueError("shape of weight and data must match")
-
-        self.data = data
-        self.weight = weight
-        self.wave = wave
-        self.nt, self.nw, self.ny, self.nx = self.data.shape
-
-        self.is_final_ref = is_final_ref
-        self.master_final_ref = master_final_ref
-        self.header = header
-        self.spaxel_size = spaxel_size
-
-
-
-
-class DDTModel(object):
-    """This class is the equivalent of everything else that isn't data
-    in the Yorick version.
-
-    Parameters
-    ----------
-    shape : 2-tuple of int
-        Model dimensions in (time, wave). Time and wave must match
-        that of the data.
-    psf_ellipticity, psf_alpha : np.ndarray (2-d)
-        Parameters characterizing the PSF at each time, wavelength. Shape
-        of both must match `shape` parameter.
-    adr_dx, adr_dy : np.ndarray (2-d)
-        Atmospheric differential refraction in x and y directions, in spaxels,
-        relative to reference wavelength.
-    spaxel_size : float
-        Spaxel size in arcseconds.
-    mu_xy : float
-    mu_wave : float
-    """
-    MODEL_SHAPE = 32, 32
-
-    def __init__(self, shape, psf_ellipticity, psf_alpha, adr_dx, adr_dy,
-                 spaxel_size, mu_xy, mu_wave)):
-
-        ny, nx = MODEL_SHAPE
-        nt, nw = shape
-
-        if psf_ellipticity.shape != shape:
-            raise ValueError("psf_ellipticity has wrong shape")
-        if psf_alpha.shape != shape:
-            raise ValueError("psf_alpha has wrong shape")
-
-        self.nt = nt
-        self.nw = nw
-        self.ny = ny
-        self.nx = nx
-        self.gal = np.zeros((nw, ny, nx))
-        self.galprior = np.zeros((nw, ny, nx))
-        self.sky = np.zeros((nt, nw))
-        self.sn = np.zeros((nt, nw))
-        self.eta = np.ones(nt)
-        self.final_ref_sky = np.zeros(nw)
-
-        # initialize PSF part of the model
-
-        # Make up a coordinate system for the model array
-        offx = int((nx-1) / 2.)
-        offy = int((ny-1) / 2.)
-        xcoords = np.arange(-offx, nx - offx)  # x coordinates on array
-        ycoords = np.arange(-offy, ny - offy)  # y coordinates on array
-        self.psf = gaussian_plus_moffat_psf_4d(xcoords, ycoords,
-                                               psf_ellipticity, psf_alpha)
-
-        # sn is "by definition" at array position where coordinates = (0,0)
-        # model_sn_x = offx
-        # model_sn_y = offy
-
-        # This moves the center of the PSF from array coordinates
-        # (model_sn_x, model_sn_y) -> (0, 0) [lower left pixel]
-        # I don't know why this is done.
-        self.psf = roll_psf(self.psf, -self.model_sn_x, -self.model_sn_y)
-        self.psf_rolled = True
-
-        self.adr_dx = adr_dx
-        self.adr_dy = adr_dy
-        self.spaxel_size = spaxel_size
-        self.mu_xy = mu_xy
-        self.mu_wave = mu_wave
 
 
 def main(filename):
@@ -204,19 +94,16 @@ def main(filename):
     dec = np.deg2rad(np.array(conf["PARAM_DEC"])) # config files in degrees
     tilt = conf["PARAM_MLA_TILT"]
 
-    # differential refraction as a function of time, wavelength (2-d array)
-    # in arcseconds.
+    # differential refraction as a function of time and wavelength,
+    # in arcseconds (2-d array).
     delta_r = differential_refraction(airmass, p, t, h, ddtdata.wave, wave_ref)
     delta_r /= spaxel_size  # convert from arcsec to spaxels
     paralactic_angle = calc_paralactic_angle(airmass, ha, dec, tilt)
     adr_dx = -delta_r * np.sin(paralactic_angle)[:, None]  # O'xp <-> - east
     adr_dy = delta_r * np.cos(paralactic_angle)[:, None]
 
-    # Get initial position of SN.
-    target_xp = np.asarray(conf.get("PARAM_TARGET_XP",
-                                    np.zeros_like(airmass)))
-    target_yp = np.asarray(conf.get("PARAM_TARGET_YP",
-                                    np.zeros_like(airmass)))
+    # Make a first guess at the sky level based on the data.
+    sky = data.guess_sky(2.0)
 
     # Initialize model
     model = DDTModel((data.nt, data.nw), psf_ellipticity, psf_alpha,
@@ -224,8 +111,14 @@ def main(filename):
                      conf["MU_GALAXY_XY_PRIOR"],
                      conf["MU_GALAXY_LAMBDA_PRIOR"])
 
-    # Make a first guess at the sky level based on the data.
-    self.guess_sky = sky_guess_all(self.data, self.weight, self.nw, self.nt)
+    # If target positions are given in the config file, set them in
+    # the model.  (Otherwise, the positions default to zero in all
+    # exposures.)
+    if "PARAM_TARGET_XP" in conf:
+        model.data_xctr[:] = np.array(conf["PARAM_TARGET_XP"])
+    if "PARAM_TARGET_YP" in conf:
+        model.data_yctr[:] = np.array(conf["PARAM_TARGET_YP"])
+
 
 
     # TODO : I Don't think this is needed anymore.                            
@@ -261,9 +154,6 @@ def main(filename):
         #     self.psf_enlarge = None
         # else:
         #     raise RuntimeError("FLAG_APODIZER >= 2 not implemented")
-
-        # This makes a first guess at the sky by recursively removing outliers
-        self.guess_sky = sky_guess_all(self.data, self.weight, self.nw, self.nt)
 
         # equivalent of ddt_setup_regularization...
         # In original, these use "sky=guess_sky", but I can't find this defined.
@@ -378,58 +268,4 @@ def main(filename):
                                       self.FFT(x[k,:,:]))    
                 #out[k,:,:] = self.FFT(ptr[k] * phase_shift_apodize *
                 #                      self.FFT(x[k,:,:]),2)
-            return out 
-
-
-def sky_guess_all(ddt_data, ddt_weight, nw, nt):
-    """guesses sky with lower signal spaxels compatible with variance
-    Parameters
-    ----------
-    ddt_data, ddt_weight : 4d arrays
-    nw, nt : int
-    Returns
-    -------
-    sky : 2d array
-    Notes
-    -----
-    sky_cut: number of sigma used for the sky guess, was unused option in DDT
-    """
-
-    sky = np.zeros((nt, nw))
-    sky_cut = 2.0
-    
-    for i_t in range(nt):
-        data = ddt_data[i_t]
-        weight = ddt_weight[i_t]
-        
-        var = 1./weight
-        ind = np.zeros(data.size)
-        prev_npts = 0
-        niter_max = 10
-        niter = 0
-        nxny = data.shape[1]*data.shape[2]
-        while (ind.size != prev_npts) and (niter < niter_max):
-            prev_npts = ind.size
-            #print "<ddt_sky_guess> Sky: prev_npts %d" % prev_npts
-            I = (data*weight).sum(axis=-1).sum(axis=-1)
-            i_Iok = np.where(weight.sum(axis=-1).sum(axis=-1) != 0.0)
-            if i_Iok[0].size != 0:
-                I[i_Iok] /= weight.sum(axis=-1).sum(axis=-1)[i_Iok]
-                sigma = (var.sum(axis=-1).sum(axis=-1)/nxny)**0.5
-                ind = np.where(abs(data - I[:,None,None]) > 
-                               sky_cut*sigma[:,None,None])
-                if ind[0].size != 0:
-                    data[ind] = 0.
-                    var[ind] = 0.
-                    weight[ind] = 0.
-                else:
-                    #print "<ddt_sky_guess> no more ind"
-                    break
-            else:
-                break
-            niter += 1
-                
-        sky[i_t] = I
-        
-    return sky
-    
+            return out
