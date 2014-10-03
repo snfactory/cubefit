@@ -20,6 +20,7 @@ class DDTModel(object):
         Spaxel size in arcseconds.
     mu_xy : float
     mu_wave : float
+    sky : np.ndarray (2-d)
 
     Notes
     -----
@@ -39,7 +40,7 @@ class DDTModel(object):
     MODEL_SHAPE = (32, 32)
 
     def __init__(self, shape, psf_ellipticity, psf_alpha, adr_dx, adr_dy,
-                 spaxel_size, mu_xy, mu_wave)):
+                 spaxel_size, mu_xy, mu_wave, sky):
 
         ny, nx = MODEL_SHAPE
         nt, nw = shape
@@ -58,7 +59,7 @@ class DDTModel(object):
         # Galaxy and sky part of the model
         self.gal = np.zeros((nw, ny, nx))
         self.galprior = np.zeros((nw, ny, nx))
-        self.sky = np.zeros((nt, nw))
+        self.sky = sky
         self.sn = np.zeros((nt, nw))
         self.eta = np.ones(nt)  # TODO: what is eta again?
         self.final_ref_sky = np.zeros(nw)

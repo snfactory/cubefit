@@ -107,13 +107,16 @@ class DDTData(object):
         self.header = header
         self.spaxel_size = spaxel_size
 
-    def guess_sky(self, nsigma):
+    def guess_sky(self, sig, maxiter=10):
         """Guess sky based on lower signal spaxels compatible with variance
 
         Parameters
         ----------
-        nsigma : float
-            Number of sigma to cut on.
+        sig : float
+            Number of standard deviations (not variances) to use as
+            the clipping limit (on individual pixels).
+        maxiter : int
+            Maximum number of sigma-clipping interations. Default is 10.
 
         Returns
         -------
@@ -121,44 +124,44 @@ class DDTData(object):
             Sky level for each epoch and wavelength. Shape is (nt, nw).
         """
 
-        maxiter = 10
-        sky = np.zeros((nt, nw), dtype=np.float64)
+        nspaxels = self.data.shape[2] * self.data.shape[3]
+        sky = np.zeros((self.nt, self.nw), dtype=np.float64)
 
-        for i_t in range(nt):
-            data = self.data[i_t]
-            weight = self.weight[i_t]
-
+        for i in range(nt):
+            data = self.data[i]
+            weight = np.copy(self.weight[i])
             var = 1.0 / weight
-            ind = np.zeros(data.size)
-            formersize = None
-            nspaxels = data.shape[1] * data.shape[2]
 
-            # Loop until ind stops changing size or we do too many iterations.
-            niter = 0
-            while (ind.size != formersize) and (niter < maxiter):
-                formersize = ind.size
+            # Loop until ind stops changing size or until a maximum
+            # number of iterations.
+            avg = None
+            oldmask = None
+            mask = None
+            for j in range(maxiter):
+                oldmask = mask
+                
+                # weighted average spectrum (masked array).
+                # We use a masked array because some of the wavelengths 
+                # may have all-zero weights for every pixel.
+                # The masked array gets propagated so that `mask` is a
+                # masked array of booleans!
+                avg = np.ma.average(data, weights=weight, axis=(1, 2))
+                deviation = data - avg[:, None, None]
+                mask = deviation**2 > sig**2 * var
 
-                I = (data * weight).sum(axis=(1, 2))
-                J = weight.sum(axis=(1, 2))
-                i_Iok = np.where(J != 0.0)
-
-                # if there are any wavelengths where weight is not zero
-                # (presumably there are)
-                if i_Iok[0].size != 0:
-                    I[i_Iok] /= weight.sum(axis=-1).sum(axis=-1)[i_Iok]
-                    sigma = (var.sum(axis=-1).sum(axis=-1)/nxny)**0.5
-                    ind = np.where(abs(data - I[:,None,None]) > 
-                                   nsigma*sigma[:,None,None])
-                    if ind[0].size != 0:
-                        data[ind] = 0.
-                        var[ind] = 0.
-                        weight[ind] = 0.
-                    else:
-                        break
-                else:
+                # Break if the mask didn't change.
+                if (oldmask is not None and
+                    (mask.data == oldmask.data).all() and
+                    (mask.mask == oldmask.mask).all()):
                     break
-                niter += 1
 
-            sky[i_t] = I
+                # set weights of masked pixels to zero. masked elements
+                # of the mask are *not* changed.
+                weight[mask] = 0.0
+                var[mask] = 0.0
+
+            # convert to normal (non-masked) array. Masked wavelengths are 
+            # set to zero in this process.
+            sky[i] = np.asarray(avg)
 
         return sky

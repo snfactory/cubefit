@@ -6,7 +6,7 @@ import json
 import numpy as np
 from numpy import fft
 
-from .psf import params_from_gs, gaussian_plus_moffat_psf_4d, roll_psf
+from .psf import params_from_gs, gaussian_plus_moffat_psf_4d
 from .model import DDTModel
 from .data import read_dataset, read_select_header_keys, DDTData
 from .adr import calc_paralactic_angle, differential_refraction
@@ -36,7 +36,7 @@ def main(filename):
     wave_ref = conf.get("PARAM_LAMBDA_REF", 5000.)
 
     # index of final ref. Subtract 1 due to Python zero-indexing.
-    master_final_ref = conf["PARAM_FINAL_REF"]-1
+    master_final_ref = conf["PARAM_FINAL_REF"] - 1
 
     # also want array with true/false for final refs.
     is_final_ref = np.array(conf.get("PARAM_IS_FINAL_REF"))
@@ -59,11 +59,12 @@ def main(filename):
     ddtdata = DDTData(data, weight, wave, is_final_ref, master_final_ref,
                       header, spaxel_size)
 
-    # Load PSF model parameters. Currently, the PSF in the model is represented
-    # by an arbitrary 4-d array that is constructed here. The PSF depends
-    # on some aspects of the data, such as wavelength.
-    # If different types of PSFs need to do different things, we may wish to
-    # represent the PSF with a class, called something like GaussMoffatPSF.
+    # Load PSF model parameters. Currently, the PSF in the model is
+    # represented by an arbitrary 4-d array that is constructed
+    # here. The PSF depends on some aspects of the data, such as
+    # wavelength.  If different types of PSFs need to do different
+    # things, we may wish to represent the PSF with a class, called
+    # something like GaussMoffatPSF.
     #
     # GS-PSF --> ES-PSF
     # G-PSF --> GR-PSF
@@ -109,7 +110,7 @@ def main(filename):
     model = DDTModel((data.nt, data.nw), psf_ellipticity, psf_alpha,
                      adr_dx, adr_dy, spaxel_size,
                      conf["MU_GALAXY_XY_PRIOR"],
-                     conf["MU_GALAXY_LAMBDA_PRIOR"])
+                     conf["MU_GALAXY_LAMBDA_PRIOR"], sky)
 
     # If target positions are given in the config file, set them in
     # the model.  (Otherwise, the positions default to zero in all
@@ -172,7 +173,6 @@ def main(filename):
         #                                conf["MU_GALAXY_LAMBDA_PRIOR"],
         #                                sky=self.guess_sky[self.final_ref]) 
 
-        self.verb = True
 
 
     # TODO: make a better name for this.
