@@ -96,7 +96,7 @@ def make_cube(ddt, i_t, galaxy=None, sn=None, sky=None, eta=None,
                    ddt.model_sn_y)
     
     # TODO: Hack below to use ddt.r on 3-d array
-    return ddt.r(np.array([ddt.H(model, i_t)]))[0]
+    return ddt.r(np.array([model.psf_convolve(model, i_t)]))[0]
 
 
 def make_all_cube(ddt, galaxy=None, sn=None, sky=None, eta=None):
@@ -132,7 +132,7 @@ def make_all_cube(ddt, galaxy=None, sn=None, sky=None, eta=None):
         i_t = i_fit[i_n]
         model = make_g(galaxy, sn[i_t,:], sky[i_t,:], eta[i_t], 
                        ddt.model_sn_x, ddt.model_sn_y) 
-        cube[i_t,:,:,:] = ddt.r(np.array([ddt.H(model, i_t)]))[0]
+        cube[i_t,:,:,:] = ddt.r(np.array([model.psf_convolve(model, i_t)]))[0]
         del model
     
     return cube
@@ -172,7 +172,7 @@ def make_offset_cube(ddt,i_t, sn_offset=None, galaxy_offset=None,
     if sn_offset is None:
         sn_offset = np.array([0.,0.])
   
-    model = make_galaxy_model(ddt.model_gal, ddt, i_t, 
+    model = model.psf_convolve(ddt.model_gal, i_t, 
                               offset=galaxy_offset)
     # recalculate the best SN
     if recalculate:
@@ -192,16 +192,6 @@ def make_offset_cube(ddt,i_t, sn_offset=None, galaxy_offset=None,
 
     return ddt.r(model)
     
-def make_galaxy_model(galaxy, ddt, i_t, offset=None):
-    """offsets in spaxels
-    Notes
-    -----
-    This fn is probably unnecessary since it is now basically only one line.
-    """
-    if not isinstance(offset, np.ndarray):
-        offset = np.array([0., 0.,])
-
-    return ddt.H(galaxy, i_t, 2, offset=offset)
 
 def make_sn_model(sn, ddt, i_t, offset=None):
     """offsets in spaxels
@@ -211,228 +201,24 @@ def make_sn_model(sn, ddt, i_t, offset=None):
     sn_model = np.zeros((ddt.nw,ddt.psf_ny, ddt.psf_nx))
     sn_model[:,ddt.model_sn_y, ddt.model_sn_x] = sn
     
-    return ddt.H(sn_model, i_t, offset=offset)
+    return model.psf_convolve(sn_model, i_t, offset=offset)
     
     
-def extract_eta_sn_sky(ddt, i_t, galaxy=None, sn_offset=None,
-                       galaxy_offset=None, no_eta=None, i_t_is_final_ref=None,
-                       update_ddt=None, ddt_data=None,
-                       calculate_variance=None):
-    """calculates sn and sky
-    calculates the optimal SN and Sky in the chi^2 sense for given
-    PSF and galaxy, including a possible offset of the supernova
     
-    Maybe this can be compressed?
-
-    Sky is sky per spaxel
-    Parameters
-    ----------
-    ddt : DDT object
-    i_t : int
-    a bunch of optional stuff
-    Returns
-    -------
-    extract_dict : dict
-        Includes new sky and sn
-    Notes
-    -----
-    Updates ddt if 'update_ddt' is True
-    """
-    
-    if ddt_data is None:
-        d = ddt.data[i_t,:,:,:]
-        w = ddt.weight[i_t,:,:,:]
-    else:
-        print "<extract_eta_sn_sky> Need to add weight keyword then"
-        d = ddt_data[i_t,:,:,:]
-        #w = ddt_data.weight[i_t,:,:,:]  
-    if not isinstance(sn_offset, np.ndarray):
-        sn_offset = np.array([0., 0.])
-    if not isinstance(galaxy_offset, np.ndarray):
-        galaxy_offset = np.array([0., 0.])
-    if not isinstance(galaxy, np.ndarray):
-        galaxy = ddt.model_gal
-
-    galaxy_model = make_galaxy_model(galaxy, ddt, i_t, offset=galaxy_offset)
-    z_jlt = ddt.r(np.array([galaxy_model]))[0]
-    
-    # FIXME: eta won't be fitted on multiple final refs
-    if i_t_is_final_ref:
-        wd = (w*d)
-        wz = (w*z_jlt)
-        if calculate_variance:
-            v = 1/w
-            w2d = w*w*v
-            sky_var = ((w2d.sum(axis=-1).sum(axis=-1))/
-                       ((w*w).sum(axis=-1).sum(axis=-1)))
-        else:
-            sky_var = np.ones(ddt.nw)
-    
-        #/* We fix the sky in the final ref used for fitting */
-        i_final_ref = (ddt.final_ref if type(ddt.final_ref) == int else
-                       ddt.final_ref[0])
-        if ( i_t == i_final_ref):
-            if 0: #ddt.fit_final_ref_sky:
-                print ("<ddt_extract_eta_sn_sky>: "+
-                      "calculating sky on final ref %d" % i_t)
-                sky = ((wd-wz).sum(axis=-1).sum(axis=-1)/
-                       w.sum(axis=-1).sum(axis=-1))
-            else:
-                print ("<ddt_extract_eta_sn_sky>: "+
-                       "using final_ref_sky on exp %d" % i_t)
-                sky = ddt.model_final_ref_sky
-                # FIXME: here the variance is wrong,
-                # since the sky has been estimated on the signal 
-                sky_var = np.ones(ddt.nw)
-      
-        else:
-            print "<ddt_extract_eta_sn_sky>: calculating sky on exp %d" % i_t
-            sky = (wd-wz).sum(axis=-1).sum(axis=-1)/w.sum(axis=-1).sum(axis=-1)
-            
-        sn  = np.zeros(ddt.nw)
-        sn_var = np.ones(ddt.nw)
-        eta = 1.
-        
-    else:
-        #print "<ddt_extract_eta_sn_sky>: working on SN+Galaxy exposure %d" % i_t
-        sn_psf = make_sn_model(np.ones(ddt.nw), ddt, i_t, offset=sn_offset)
-        y_jlt = ddt.r(np.array([sn_psf]))[0]
-    
-        A22 = w
-        A12 = w * y_jlt
-        A11 = A12 * y_jlt
-    
-        A11 = A11.sum(axis=-1).sum(axis=-1)
-        A12 = -1.*A12.sum(axis=-1).sum(axis=-1)
-        A21 = A12
-        A22 = A22.sum(axis=-1).sum(axis=-1)
-    
-        denom = A11*A22 - A12*A21;
-        """ There are some cases where we have slices with only 0 values and
-        weights. Since we don't mix wavelengthes in this calculation, we put a 
-        dummy value for denom and then put the sky and sn values to 0
-        * FIXME: The weight of the full slice where that happens is supposed to
-              be 0, therefore the value of sky and sn for this wavelength 
-              should not matter
-        """
-        i_bad = np.where(denom == 0)
-        if isinstance(i_bad, np.ndarray):
-            print ("<ddt_extract_eta_sn_sky> WARNING: "+
-                   "found null denominator in %d slices \n" % i_bad.size)
-            denom[i_bad] = 1.
-      
-            if sum(w.sum(axis=-1).sum(axis=-1)[i_bad]) != 0.0:
-                raise ValueError("<ddt_extract_eta_sn_sky> ERROR: "+
-                                 "found null denom for slices with non null "+
-                                 "weight")
-      
-    
-        # w2d, w2dy w2dz are used to calculate the variance using 
-        # var(alpha x) = alpha^2 var(x)*/
-        wd = (w*d)
-        wdy = (wd*y_jlt)
-        wdz = (wd*z_jlt)
-
-        wd = wd.sum(axis=-1).sum(axis=-1)
-        wdy = wdy.sum(axis=-1).sum(axis=-1)
-        wdz = wdz.sum(axis=-1).sum(axis=-1)
-
-        wz = (w*z_jlt)
-        wzy = wz*y_jlt
-        wzz = (wz*z_jlt)
-        wz = wz.sum(axis=-1).sum(axis=-1)
-        wzy = wzy.sum(axis=-1).sum(axis=-1)
-        wzz = wzz.sum(axis=-1).sum(axis=-1)
-    
-        b_sky = wd*A11 + wdy*A12
-        b_sky /= denom
-        c_sky = wz*A11 + wzy*A12
-        c_sky /= denom
-    
-        b_sn = wd*A21 + wdy*A22
-        b_sn /= denom
-        c_sn = wz*A21 + wzy*A22
-        c_sn /= denom
-    
-        if no_eta:
-            sky = b_sky - c_sky
-            sn = b_sn - c_sn
-
-            if calculate_variance:
-                v = 1/w
-                w2d = w*w*v    
-                w2dy = w2d *  y_jlt * y_jlt 
-                w2dz = w2d * z_jlt * z_jlt
-                w2d = w2d.sum(axis=-1).sum(axis=-1)
-                w2dy = w2dy.sum(axis=-1).sum(axis=-1)
-                w2dz = w2dz.sum(axis=-1).sum(axis=-1)
-
-                b2_sky = w2d*A11*A11 + w2dy*A12*A12
-                b2_sky /= denom**2
-
-                b_sn = w2d*(A21**2) + w2dy*(A22**2)
-                b_sn /= denom**2
-                
-                sky_var = b_sky
-                sn_var = b_sn
-            else:
-                sky_var = np.ones(sky.shape)
-                sn_var = np.ones(sn.shape)
-          
-            if isinstance(i_bad,np.ndarray):
-                print ("<ddt_extract_eta_sn_sky> WARNING: "+
-                       "due to null denom, putting some sn and sky values to 0")
-                sky[i_bad] = 0.
-                sn[i_bad]  = 0.
-                sky_var[i_bad] = 0.
-                sn_var[i_bad] = 0.
-           
-          
-            eta = 1.
-            eta_denom = 1.
-        else:
-            eta = wdz - wz*b_sky - wzy*b_sn
-            eta_denom = wzz - wz*c_sky - wzy * c_sn
-            if isinstance(i_bad,np.ndarray):
-                eta_denom[i_bad] = 1.
-      
-            eta = eta(sum)/eta_denom.sum()
-            sky = b_sky - eta*c_sky
-            sn = b_sn - eta*c_sn
-            if calculate_variance:
-                print ("WARNING: variance calculation with "+
-                       "eta calculation not implemented")
-                sky_var = np.ones(sky.shape)
-                sn_var = np.ones(sn.shape)
-            else:
-                sky_var = np.ones(sky.shape)
-                sn_var = np.ones(sn.shape)
-      
-            if isinstance(i_bad, np.ndarray):
-                print ("<ddt_extract_eta_sn_sky> WARNING: due to null denom,"+
-                       "putting some eta, sn and sky values to 0")
-                sky[i_bad] = 0.
-                sn[i_bad] = 0.
-                eta[i_bad] = 0.
-                sky_var[i_bad] = 0.
-                sn_var[i_bad] = 0.
-    
-    
-    if update_ddt:
-    
-        ddt.model_sn[i_t] = sn
-        ddt.model_sky[i_t] = sky
-        ddt.model_eta[i_t] = eta
-        # TODO: Fill in sn_var and sky_var.
-
-                          
-    extract_dict = {'sky': sky, 'sn': sn}
-    return extract_dict # What do I want here? So far no other attributes used
-    
-def penalty_g_all_epoch(x, ddt):
+def penalty_g_all_epoch(x, model, data):
     """if i_t is not set, fits all the datacubes at once, else fits the 
         datacube considered
-        
+    Parameters
+    ----------
+    x : 3-d array 
+        model of galaxy
+    model : DDTModel 
+    data : DDTData
+    
+    Returns
+    -------
+    penalty : float
+    
     Notes
     -----
     This function is only called in fit_model_all_epoch
@@ -447,13 +233,13 @@ def penalty_g_all_epoch(x, ddt):
     
     print "Fitting simultaneously %d exposures" % (ddt.nt)
     # TODO i_fit is an option in DDT (could be only some phases) (was ddt.i_fit)
-    i_fit = np.arange(ddt.nt)
+    i_fit = np.arange(data.nt)
     # Extracts sn and sky 
     n_fit = (i_fit).size
     print np.where(x != 0)
     for i_n in range(n_fit):
         i_t = i_fit[i_n]
-        sn_sky = extract_eta_sn_sky(ddt, i_t, no_eta=True,
+        sn_sky = extract_eta_sn_sky(data, model, i_t, no_eta=True,
                                     galaxy=x,
                                     i_t_is_final_ref=ddt.is_final_ref[i_t],
                                     update_ddt=True)
@@ -481,7 +267,7 @@ def penalty_g_all_epoch(x, ddt):
         #if ddt.verb:
         #    print "<ddt_penalty_g>: calculating gradient for i_t=%d" % i_t
         tmp_x = ddt.r_inv(np.array([2.*wr[i_n,:,:,:]]))[0]
-        grd += ddt.H(tmp_x, i_t)
+        grd += model.psf_convolve(tmp_x, i_t)
   
     wr=[]
     tmp_x=[]
@@ -540,7 +326,7 @@ def fit_model_all_epoch(ddt, maxiter=None, xmin=None):
         #x_new = op_mnb(penalty, x, extra=ddt, xmin=xmin, maxiter=maxiter,
         #               method=method, mem=mem,
         #               verb=ddt.verb, ftol=ftol)
-        x_new = scipy.optimize.fmin_cg(penalty, x, args=(ddt,)) 
+        x_new = scipy.optimize.fmin_l_bfgs_b(penalty, x, args=(ddt,), approx_grad = True) 
     
     ddt.model_gal = x_new
     sn_sky = extract_eta_sn_sky_all(ddt, update_ddt=True, no_eta=True)
