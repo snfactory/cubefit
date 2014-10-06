@@ -31,7 +31,7 @@ def calc_residual(ddt, galaxy=None, sn=None, sky=None, eta=None):
         galaxy = ddt.model_gal
         
     for i_t in range(ddt.nt):
-        # TODO: In DDT, seems like final_ref is list, in example file, it's int
+        
         i_final_ref = (ddt.final_ref if type(ddt.final_ref) == int 
                        else ddt.final_ref[0])
         tmp_galaxy = shift_galaxy(ddt,
@@ -158,6 +158,48 @@ def make_g(galaxy, sn, sky, eta, sn_x, sn_y):
     
     return model
     
+def make_model_cube(model, data, galaxy=None, sn=None, sky=None, eta=None):
+    """Makes a cube out of model parts, returns part of model that overlaps
+    with the data.
+    Replaces make_all_cube/make_cube/make_g
+    
+    Parameters
+    ----------
+    model : DDTModel
+    galaxy : 3d array
+    sn : 1d array
+    sky : 1d array
+    eta : 1d array or float?
+    
+    Returns
+    -------
+    4-d array 
+        A cube for each exposure
+    """
+    if not isinstance(galaxy, np.ndarray):
+        galaxy = model.gal
+  
+    if not isinstance(sn, np.ndarray):
+        sn = model.sn
+  
+    if not isinstance(sky, np.ndarray):
+        sky = model.sky
+  
+    if not isinstance(eta, np.ndarray):
+        eta = model.eta
+
+    full_cube = np.zeros_like(data.data)
+    
+    i_fit = np.arange(data.nt)
+    for i_t in i_fit:
+        model_i_t = galaxy*eta[i_t] + sky[i_t,:,None,None]
+        model_i_t[:,model.model_sn_y, model.model_sn_x] += sn[i_t]
+        full_cube[i_t,:,:,:] = model.psf_convolve(model_i_t, i_t)
+        
+    cube = ddt.r(full_cube)
+    return cube
+
+    
         
 def make_offset_cube(ddt,i_t, sn_offset=None, galaxy_offset=None,
                      recalculate=None):
@@ -231,28 +273,28 @@ def penalty_g_all_epoch(x, model, data):
     *       5. compute gradient by transposing steps 3, 2, and 1
     """
     
-    print "Fitting simultaneously %d exposures" % (ddt.nt)
+    print "Fitting simultaneously %d exposures" % (data.nt)
     # TODO i_fit is an option in DDT (could be only some phases) (was ddt.i_fit)
     i_fit = np.arange(data.nt)
     # Extracts sn and sky 
     n_fit = (i_fit).size
-    print np.where(x != 0)
+    
     for i_n in range(n_fit):
         i_t = i_fit[i_n]
-        sn_sky = extract_eta_sn_sky(data, model, i_t, no_eta=True,
+        sn_sky = extract_eta_sn_sky(data, i_t, no_eta=True,
                                     galaxy=x,
-                                    i_t_is_final_ref=ddt.is_final_ref[i_t],
+                                    i_t_is_final_ref=data.is_final_ref[i_t],
                                     update_ddt=True)
     
     # calculate residual 
     # ddt_make_all_cube uses ddt.i_fit and only calculates those*/  
-    x = x.reshape(ddt.model_gal.shape)
-    r = make_all_cube(ddt, galaxy=x, sn=ddt.model_sn, sky=ddt.model_sky,
-                          eta=ddt.model_eta)
-    r = r[i_fit] - ddt.data[i_fit]
-    wr = ddt.weight[i_fit] * r
+    x = x.reshape(model.gal.shape)
+    r = make_all_cube(ddt, galaxy=x, sn=model.sn, sky=model.sky,
+                          eta=model.eta)
+    r = r[i_fit] - data.data[i_fit]
+    wr = data.weight[i_fit] * r
     
-    if ddt.verb:
+    if model.verb:
         print "<ddt_penalty_g>:r %s, wr %s" % (np.sum(r), np.sum(wr))
   
     # Comment from Yorick DDT :
@@ -266,13 +308,13 @@ def penalty_g_all_epoch(x, model, data):
         i_t = i_fit[i_n]
         #if ddt.verb:
         #    print "<ddt_penalty_g>: calculating gradient for i_t=%d" % i_t
-        tmp_x = ddt.r_inv(np.array([2.*wr[i_n,:,:,:]]))[0]
+        tmp_x = main.r_inv(np.array([2.*wr[i_n,:,:,:]]))[0]
         grd += model.psf_convolve(tmp_x, i_t)
   
     wr=[]
     tmp_x=[]
         
-    galdiff = x - ddt.model_galprior
+    galdiff = x - model.galprior
 
     # Regularization
     dw = galdiff[1:, :, :] - galdiff[:-1, :, :]
@@ -294,7 +336,7 @@ def penalty_g_all_epoch(x, model, data):
 
     return rgl_err + lkl_err
 
-def fit_model_all_epoch(ddt, maxiter=None, xmin=None):
+def fit_model_all_epoch(model, data, maxiter=None, xmin=None):
     """fits galaxy (and thus extracts sn and sky)
     
     Parameters
@@ -312,7 +354,7 @@ def fit_model_all_epoch(ddt, maxiter=None, xmin=None):
     """
     
     penalty = penalty_g_all_epoch
-    x = copy.copy(ddt.model_gal)
+    x = copy.copy(model.gal)
     
     # TODO : This obviously needs to be fixed:
     #method = (OP_FLAG_UPDATE_WITH_GP |
@@ -326,7 +368,8 @@ def fit_model_all_epoch(ddt, maxiter=None, xmin=None):
         #x_new = op_mnb(penalty, x, extra=ddt, xmin=xmin, maxiter=maxiter,
         #               method=method, mem=mem,
         #               verb=ddt.verb, ftol=ftol)
-        x_new = scipy.optimize.fmin_l_bfgs_b(penalty, x, args=(ddt,), approx_grad = True) 
+        x_new = scipy.optimize.fmin_l_bfgs_b(penalty, x, args=(model, data), 
+                                             approx_grad=True) 
     
-    ddt.model_gal = x_new
-    sn_sky = extract_eta_sn_sky_all(ddt, update_ddt=True, no_eta=True)
+    model.gal = x_new
+    sn_sky = extract_eta_sn_sky_all(data, update_ddt=True, no_eta=True)
