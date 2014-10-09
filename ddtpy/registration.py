@@ -152,7 +152,7 @@ def _registration_worker(a, extra):
   
     wr = sqrt_weight*(extra['data'] - extra['model'](
                                             a, extra['ddt'], extra['i_t'], 
-                                            fit_flag=extra['fit_flag'], 
+                                            fit_flag=extra['fit_flag'], 
                                             recalculate=extra['recalculate']))
   
     return wr

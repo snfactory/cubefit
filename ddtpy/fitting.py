@@ -160,8 +160,8 @@ def make_g(galaxy, sn, sky, eta, sn_x, sn_y):
     
 def make_model_cube(model, data, galaxy=None, sn=None, sky=None, eta=None):
     """Makes a cube out of model parts, returns part of model that overlaps
-    with the data.
-    Replaces make_all_cube/make_cube/make_g
+    with the data. Replaces make_all_cube/make_cube/make_g, provides only part 
+    needed in calc_residual.
     
     Parameters
     ----------
@@ -178,13 +178,10 @@ def make_model_cube(model, data, galaxy=None, sn=None, sky=None, eta=None):
     """
     if not isinstance(galaxy, np.ndarray):
         galaxy = model.gal
-  
     if not isinstance(sn, np.ndarray):
         sn = model.sn
-  
     if not isinstance(sky, np.ndarray):
         sky = model.sky
-  
     if not isinstance(eta, np.ndarray):
         eta = model.eta
 
@@ -196,7 +193,7 @@ def make_model_cube(model, data, galaxy=None, sn=None, sky=None, eta=None):
         model_i_t[:,model.model_sn_y, model.model_sn_x] += sn[i_t]
         full_cube[i_t,:,:,:] = model.psf_convolve(model_i_t, i_t)
         
-    cube = ddt.r(full_cube)
+    cube = main.r(full_cube)
     return cube
 
     
@@ -277,10 +274,8 @@ def penalty_g_all_epoch(x, model, data):
     # TODO i_fit is an option in DDT (could be only some phases) (was ddt.i_fit)
     i_fit = np.arange(data.nt)
     # Extracts sn and sky 
-    n_fit = (i_fit).size
     
-    for i_n in range(n_fit):
-        i_t = i_fit[i_n]
+    for i_t in i_fit:
         sn_sky = extract_eta_sn_sky(data, i_t, no_eta=True,
                                     galaxy=x,
                                     i_t_is_final_ref=data.is_final_ref[i_t],
@@ -289,8 +284,8 @@ def penalty_g_all_epoch(x, model, data):
     # calculate residual 
     # ddt_make_all_cube uses ddt.i_fit and only calculates those*/  
     x = x.reshape(model.gal.shape)
-    r = make_all_cube(ddt, galaxy=x, sn=model.sn, sky=model.sky,
-                          eta=model.eta)
+    r = make_model_cube(model, data, galaxy=x, sn=model.sn, sky=model.sky,
+                        eta=model.eta)
     r = r[i_fit] - data.data[i_fit]
     wr = data.weight[i_fit] * r
     
@@ -303,9 +298,8 @@ def penalty_g_all_epoch(x, model, data):
  
     # Likelihood 
     lkl_err = np.sum(wr*r)
-    n_fit = i_fit.size
-    for i_n in range(n_fit):
-        i_t = i_fit[i_n]
+    
+    for i_t in i_fit:
         #if ddt.verb:
         #    print "<ddt_penalty_g>: calculating gradient for i_t=%d" % i_t
         tmp_x = main.r_inv(np.array([2.*wr[i_n,:,:,:]]))[0]
