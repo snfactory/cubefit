@@ -14,9 +14,10 @@ Currently written for Python 2.7.
 
 * numpy
 * fitsio - https://github.com/esheldon/fitsio
-* pyfftw - https://github.com/hgomersall/pyFFTW
 
-Note that PyFFTW is a wrapper for `fftw` while `numpy.fft` or `scipy.fftpack`
-are wrappers for other FFT libraries. FFTW is supposedly the fastest. We're
-using PyFFTW because the original Yorick code uses a FFTW wrapper and we don't
-want the python code to be slower (if FFT is indeed the bottleneck).
+
+**FFT libraries** - Currently we're just using `numpy.fft`. Note that
+PyFFTW is a wrapper for `fftw` while `numpy.fft` or `scipy.fftpack`
+are wrappers for other FFT libraries. FFTW is supposedly the
+fastest. We're The original Yorick code uses a FFTW wrapper and we may
+want to switch at some point.

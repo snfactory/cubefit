@@ -240,7 +240,7 @@ def penalty_g_all_epoch(x, model, data):
     for i_n in range(n_fit):
         i_t = i_fit[i_n]
         sn_sky = extract_eta_sn_sky(data, model, i_t, no_eta=True,
-                                    galaxy=x,
+                                    gal_model=x,
                                     i_t_is_final_ref=ddt.is_final_ref[i_t],
                                     update_ddt=True)
     

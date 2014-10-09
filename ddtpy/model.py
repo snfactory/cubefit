@@ -1,4 +1,6 @@
-from numpy import fft
+
+import numpy as np
+from numpy.fft import fft2, ifft2
 
 
 class DDTModel(object):
@@ -19,8 +21,14 @@ class DDTModel(object):
     spaxel_size : float
         Spaxel size in arcseconds.
     mu_xy : float
+        Hyperparameter in spatial (x, y) coordinates. Used in penalty function
+        when fitting model.
     mu_wave : float
+        Hyperparameter in wavelength coordinate. Used in penalty function
+        when fitting model.
     sky : np.ndarray (2-d)
+        Initial guess at sky. Sky is a spatially constant value, so the
+        shape is the same as ``shape``.
 
     Notes
     -----
@@ -64,9 +72,17 @@ class DDTModel(object):
         self.eta = np.ones(nt)  # eta = transmission
         self.final_ref_sky = np.zeros(nw)
 
+        # Coordinates of model grid
+        array_xctr = (nx - 1) / 2.0
+        array_yctr = (ny - 1) / 2.0
+        self.xcoords = np.arange(nx, dtype=np.float64) - array_xctr
+        self.ycoords = np.arange(ny, dtype=np.float64) - array_yctr
+
         # PSF part of the model
-        self.psf = gaussian_plus_moffat_psf_4d(MODEL_SHAPE, 15.5, 15.5,
+        self.psf = gaussian_plus_moffat_psf_4d(MODEL_SHAPE, array_xctr,
+                                               array_yctr,
                                                psf_ellipticity, psf_alpha)
+
         # This moves the center of the PSF from array coordinates
         # (model_sn_x, model_sn_y) -> (0, 0) [lower left pixel]
         # We suppose this is done because it is needed for convolution.
@@ -90,14 +106,77 @@ class DDTModel(object):
         # model_sn_x = offx
         # model_sn_y = offy
 
-    
-
         self.adr_dx = adr_dx
         self.adr_dy = adr_dy
         self.spaxel_size = spaxel_size
         self.mu_xy = mu_xy
         self.mu_wave = mu_wave
+    
+    def evaluate(self, i_t, xcoords, ycoords):
+        """Evalute the model at the given coordinates for a single epoch.
+
+        Parameters
+        ----------
+        i_t : int
+            Epoch index.
+        xcoords : np.ndarray (1-d)
+        ycoords : np.ndarray (1-d)
+
+        Returns
+        -------
+        x : np.ndarray (3-d)
+            Shape is (nw, len(ycoords), len(xcoords)).
+        """
+
+        # Currently, by design, the coordinate system and model match
+        # the spaxel size of the data. Thus, the data array will have
+        # equal spacing with all spacings equal to 1.0. This is a
+        # requirement for the Fourier-space shifting used here.
+        if not (np.all(np.diff(xcoords) == 1.0) and
+                np.all(np.diff(ycoords) == 1.0)):
+            raise ValueError("xcoords and y coords must have equal spacing, "
+                             "with all spacings equal to 1.0")
+
+        if (xcoords[0] < self.xcoords[0] or xcoords[-1] > self.xcoords[-1] or
+            ycoords[0] < self.ycoords[0] or ycoords[-1] > self.ycoords[-1]):
+            raise ValueError("requested coordinates out of model bounds")
         
+        # Figure out the shift needed to put the model onto the requested
+        # coordinates.
+        xshift = xcoords[0] - self.xcoords[0]
+        yshift = ycoords[0] - self.ycoords[0]
+        
+        # split shift into integer and sub-integer components
+        # This is so that we can first apply a fine-shift in Fourier space
+        # and later take a sub-array of the model.
+        xshift_int = int(xshift + 0.5)
+        xshift_fine = xshift - xshift_int
+        yshift_int = int(yshift + 0.5)
+        yshift_fine = yshift - yshift_int
+
+        
+        shift_phasor = fft_shift_phasor_2d(self.MODEL_SHAPE,
+                                           (yshift_fine, xshift_fine))
+
+        # get shifted and convolved galaxy
+        psf = self.psf[i_t]
+        gal_shift_conv = np.empty((self.nw, self.ny, self.nx),
+                                  dtype=np.float64)
+        for j in range(self.nw):
+            gal_shift_conv[j, :, :] = ifft2(fft2(psf[j, :, :]) * shift_phasor *
+                                            fft2(self.gal[j, :, :]))
+
+        # TODO: add ADR!
+
+        # TODO: add SN
+
+        # Return a subarray based on the integer shift
+        xslice = slice(xshift_int, xshift_int + len(xcoords))
+        yslice = slice(yshift_int, yshift_int + len(ycoords))
+
+        return gal_shift_conv[:, yslice, xslice]
+
+
     def psf_convolve(self, x, i_t, offset=None):
         """Convolve x with psf
         this is where ADR is treated as a phase shift in Fourier space.
@@ -136,97 +215,86 @@ class DDTModel(object):
         
         if offset == None:
             for k in range(self.nw):
-                out[k,:,:] = fft.ifft2(fft.fft2(psf[k,:,:])*fft.fft2(x[k,:,:]))
-            return out
-
+                out[k,:,:] = fft.ifft2(fft.fft2(psf[k,:,:]) *
+                                       fft.fft2(x[k,:,:]))
         else:
             phase_shift = fft_shift_phasor_2d([self.ny, self.nx], offset)
             for k in range(self.nw):
-                out[k,:,:] = fft.ifft2(fft.fft2(psf[k,:,:]) * 
-                                       phase_shift *
-                                       fft.fft2(x[k,:,:]))    
-                
-            return out
-            
-    def extract_eta_sn_sky(self, data, i_t, galaxy=None, sn_offset=None,
-                       galaxy_offset=None, no_eta=None, i_t_is_final_ref=None,
-                       update_ddt=None,
-                       calculate_variance=None):
-        """calculates sn and sky
+                out[k,:,:] = fft.ifft2(fft.fft2(psf[k,:,:]) * phase_shift *
+                                       fft.fft2(x[k,:,:]))
+        return out
+
+    def extract_eta_sn_sky(self, data, i_t, gal_model=None,
+                           sn_offset=np.array([0., 0.]), gal_offset=None,
+                           no_eta=None, calc_variance=None):
+        """Update the transmission, SN level and sky level for a single epoch,
+        given the current PSF and galaxy and input data.
+
         calculates the optimal SN and Sky in the chi^2 sense for given
         PSF and galaxy, including a possible offset of the supernova
         
-        Maybe this can be compressed?
-
-        Sky is sky per spaxel
         Parameters
         ----------
-        ddt : DDT object
+        data : DDTData
+            The data.
         i_t : int
-        a bunch of optional stuff
-        Returns
-        -------
-        extract_dict : dict
-            Includes new sky and sn
-        Notes
-        -----
-        Updates ddt if 'update_ddt' is True
+            The index of the epoch for which to extract eta, SN and sky
         """
         
-        d = data.data[i_t,:,:,:]
-        w = data.weight[i_t,:,:,:]
+        d = data.data[i_t, :, :, :]
+        w = data.weight[i_t, :, :, :]
         
-        if not isinstance(sn_offset, np.ndarray):
-            sn_offset = np.array([0., 0.])
-        if not isinstance(galaxy_offset, np.ndarray):
-            galaxy_offset = np.array([0., 0.])
-        if galaxy is None:
-            galaxy = ddt.model_gal
+        if gal_model is None:
+            gal_model = self.gal
 
-        galaxy_model = model.psf_convolve(galaxy, i_t, offset=galaxy_offset)
-        z_jlt = ddt.r(np.array([galaxy_model]))[0]
-        
+        # convolve galaxy model with PSF model
+        gal_conv = self.psf_convolve(gal_model, i_t, offset=gal_offset)
+
+        # this extracts just the part of the model that overlaps the data
+        # FORMERLY: z_jlt = ddt.r(np.array([galaxy_model]))[0]
+        z = gal_conv[:, 8:23, 8:23]
+        # TODO : fix the above... how is this slicing supposed to work?
+
         # FIXME: eta won't be fitted on multiple final refs
-        if i_t_is_final_ref:
-            wd = (w*d)
-            wz = (w*z_jlt)
-            if calculate_variance:
-                v = 1/w
-                w2d = w*w*v
-                sky_var = ((w2d.sum(axis=-1).sum(axis=-1))/
-                           ((w*w).sum(axis=-1).sum(axis=-1)))
-            else:
-                sky_var = np.ones(ddt.nw)
-        
-            #/* We fix the sky in the final ref used for fitting */
-            i_final_ref = (ddt.final_ref if type(ddt.final_ref) == int else
-                           ddt.final_ref[0])
-            if ( i_t == i_final_ref):
-                if 0: #ddt.fit_final_ref_sky:
-                    print ("<ddt_extract_eta_sn_sky>: "+
-                          "calculating sky on final ref %d" % i_t)
-                    sky = ((wd-wz).sum(axis=-1).sum(axis=-1)/
-                           w.sum(axis=-1).sum(axis=-1))
-                else:
-                    print ("<ddt_extract_eta_sn_sky>: "+
-                           "using final_ref_sky on exp %d" % i_t)
-                    sky = ddt.model_final_ref_sky
-                    # FIXME: here the variance is wrong,
-                    # since the sky has been estimated on the signal 
-                    sky_var = np.ones(ddt.nw)
+        if data.is_final_ref[i_t]:
+
+            # Fix the sky in the final ref used for fitting.
+            if i_t == data.master_final_ref:
+                sky = self.final_ref_sky
+            
+                # FIXME: here the variance is wrong,
+                # since the sky has been estimated on the signal 
+                sky_var = np.ones(self.nw) 
           
             else:
-                print "<ddt_extract_eta_sn_sky>: calculating sky on exp %d" % i_t
-                sky = (wd-wz).sum(axis=-1).sum(axis=-1)/w.sum(axis=-1).sum(axis=-1)
-                
-            sn  = np.zeros(ddt.nw)
-            sn_var = np.ones(ddt.nw)
-            eta = 1.
-            
+                # sky is just weighted average of data - galaxy model, since 
+                # there is no SN in a final ref.
+                sky = np.average(d - z, weights=w, axis=(1, 2))
+                if calc_variance:
+                    sky_var = w.sum(axis=(1, 2)) / (w**2).sum(axis=(1, 2))
+                else:
+                    sky_var = np.ones(self.nw)
+
+            # For a final ref, the SN is zero.
+            sn  = np.zeros(self.nw)
+            sn_var = np.ones(self.nw)
+            eta = 1.0
+        
+        # If the epoch is *not* a final ref, the SN is not zero, so we have
+        # to do a lot more work.
         else:
-            #print "<ddt_extract_eta_sn_sky>: working on SN+Galaxy exposure %d" % i_t
-            sn_psf = make_sn_model(np.ones(ddt.nw), ddt, i_t, offset=sn_offset)
-            y_jlt = ddt.r(np.array([sn_psf]))[0]
+            # create a SN model: all zeros except the "center" spaxel, where
+            # "center" is the lower index if the model is an even number
+            # of spaxels wide (e.g, 15 for n=32, 16 for n=33).
+            i_x = int((self.nx - 1) / 2.)
+            i_y = int((self.ny - 1) / 2.)
+            sn_model = np.zeros((self.nw, self.ny, self.nx), dtype=np.float64)
+            sn_model[:, i_y, i_x] = 1.0
+    
+            sn_conv = model.psf_convolve(sn_model, i_t, offset=sn_offset)
+
+            sn_conv = make_sn_model(np.ones(ddt.nw), ddt, i_t, offset=sn_offset)
+            y_jlt = ddt.r(np.array([sn_conv]))[0]
         
             A22 = w
             A12 = w * y_jlt
@@ -288,7 +356,7 @@ class DDTModel(object):
                 sky = b_sky - c_sky
                 sn = b_sn - c_sn
 
-                if calculate_variance:
+                if calc_variance:
                     v = 1/w
                     w2d = w*w*v    
                     w2dy = w2d *  y_jlt * y_jlt 
@@ -329,7 +397,7 @@ class DDTModel(object):
                 eta = eta(sum)/eta_denom.sum()
                 sky = b_sky - eta*c_sky
                 sn = b_sn - eta*c_sn
-                if calculate_variance:
+                if calc_variance:
                     print ("WARNING: variance calculation with "+
                            "eta calculation not implemented")
                     sky_var = np.ones(sky.shape)
