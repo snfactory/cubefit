@@ -112,7 +112,7 @@ class DDTModel(object):
         self.mu_xy = mu_xy
         self.mu_wave = mu_wave
     
-    def evaluate(self, i_t, xcoords, ycoords):
+    def evaluate(self, i_t, xcoords, ycoords, which='galaxy'):
         """Evalute the model at the given coordinates for a single epoch.
 
         Parameters
@@ -121,6 +121,9 @@ class DDTModel(object):
             Epoch index.
         xcoords : np.ndarray (1-d)
         ycoords : np.ndarray (1-d)
+        which : {'galaxy', 'snscaled'}
+            Which part of the model to evaluate: galaxy-only or SN scaled to
+            flux of 1.0?
 
         Returns
         -------
@@ -159,21 +162,24 @@ class DDTModel(object):
 
         # get shifted and convolved galaxy
         psf = self.psf[i_t]
-        gal_shift_conv = np.empty((self.nw, self.ny, self.nx),
-                                  dtype=np.float64)
+        target_shift_conv = np.empty((self.nw, self.ny, self.nx),
+                                     dtype=np.float64)
         for j in range(self.nw):
-            gal_shift_conv[j, :, :] = ifft2(fft2(psf[j, :, :]) * shift_phasor *
-                                            fft2(self.gal[j, :, :]))
+            if which == 'galaxy':
+                target_shift_conv[j, :, :] = ifft2(fft2(psf[j, :, :]) *
+                                                   shift_phasor *
+                                                   fft2(self.gal[j, :, :]))
+            elif which == 'snscaled':
+                target_shift_conv[j, :, :] = ifft2(fft2(psf[j, :, :]) *
+                                                   shift_phasor)
 
         # TODO: add ADR!
-
-        # TODO: add SN
 
         # Return a subarray based on the integer shift
         xslice = slice(xshift_int, xshift_int + len(xcoords))
         yslice = slice(yshift_int, yshift_int + len(ycoords))
 
-        return gal_shift_conv[:, yslice, xslice]
+        return target_shift_conv[:, yslice, xslice]
 
 
     def psf_convolve(self, x, i_t, offset=None):
@@ -223,10 +229,10 @@ class DDTModel(object):
                                        fft.fft2(x[k,:,:]))
         return out
 
-    def extract_eta_sn_sky(self, data, i_t,
-                           sn_offset=np.array([0., 0.]), gal_offset=None,
-                           no_eta=None, calc_variance=None):
-        """Update the transmission, SN level and sky level for a single epoch,
+
+    # TODO: clean up calc_variance and eta commented-out code.
+    def update_sn_and_sky(self, data, i_t):
+        """Update the SN level and sky level for a single epoch,
         given the current PSF and galaxy and input data.
 
         calculates the optimal SN and Sky in the chi^2 sense for given
@@ -246,16 +252,13 @@ class DDTModel(object):
         xcoords = np.arange(data.nx) - (data.nx - 1) / 2. + self.data_xctr[i_t]
         ycoords = np.arange(data.ny) - (data.ny - 1) / 2. + self.data_yctr[i_t]
 
-        gal_conv = self.evaluate_gal(i_t, xcoords, ycoords)
+        gal_conv = self.evaluate(i_t, xcoords, ycoords, which='galaxy')
 
-        # FIXME: eta won't be fitted on multiple final refs
         if data.is_final_ref[i_t]:
 
             # sky is just weighted average of data - galaxy model, since 
             # there is no SN in a final ref.
-            sky = np.average(d - gal_conv, weights=w, axis=(1, 2))
-            sn = np.zeros(self.nw)
-            eta = 1.0
+            self.sky[i_t, :] = np.average(d - gal_conv, weights=w, axis=(1, 2))
 
             #if calc_variance:
             #    sky_var = w.sum(axis=(1, 2)) / (w**2).sum(axis=(1, 2))
@@ -265,147 +268,96 @@ class DDTModel(object):
         # If the epoch is *not* a final ref, the SN is not zero, so we have
         # to do a lot more work.
         else:
-            # create a SN model: all zeros except the "center" spaxel, where
-            # "center" is the lower index if the model is an even number
-            # of spaxels wide (e.g, 15 for n=32, 16 for n=33).
-            i_x = int((self.nx - 1) / 2.)
-            i_y = int((self.ny - 1) / 2.)
-            sn_model = np.zeros((self.nw, self.ny, self.nx), dtype=np.float64)
-            sn_model[:, i_y, i_x] = 1.0
-    
-            sn_conv = model.psf_convolve(sn_model, i_t, offset=sn_offset)
+            sn_conv = self.evaluate(i_t, xcoords, ycoords, which='snscaled')
 
-            sn_conv = make_sn_model(np.ones(ddt.nw), ddt, i_t, offset=sn_offset)
-            y_jlt = ddt.r(np.array([sn_conv]))[0]
-        
-            A22 = w
-            A12 = w * y_jlt
-            A11 = A12 * y_jlt
-        
-            A11 = A11.sum(axis=-1).sum(axis=-1)
-            A12 = -1.*A12.sum(axis=-1).sum(axis=-1)
+            A11 = (w * sn_conv**2).sum(axis=(1, 2))
+            A12 = (-w * sn_conv).sum(axis=(1, 2))
             A21 = A12
-            A22 = A22.sum(axis=-1).sum(axis=-1)
+            A22 = w.sum(axis=(1, 2))
         
-            denom = A11*A22 - A12*A21;
-            """ There are some cases where we have slices with only 0 values and
-            weights. Since we don't mix wavelengthes in this calculation, we put a 
-            dummy value for denom and then put the sky and sn values to 0
-            * FIXME: The weight of the full slice where that happens is supposed to
-                  be 0, therefore the value of sky and sn for this wavelength 
-                  should not matter
-            """
-            i_bad = np.where(denom == 0)
-            if isinstance(i_bad, np.ndarray):
-                print ("<ddt_extract_eta_sn_sky> WARNING: "+
-                       "found null denominator in %d slices \n" % i_bad.size)
-                denom[i_bad] = 1.
+            denom = A11*A22 - A12*A21
+
+            # There are some cases where we have slices with only 0
+            # values and weights. Since we don't mix wavelengthes in
+            # this calculation, we put a dummy value for denom and
+            # then put the sky and sn values to 0 at the end.
+            mask = denom == 0.0
+            if not np.all(A22[mask] == 0.0):
+                raise ValueError("found null denom for slices with non null "
+                                 "weight")
+            denom[mask] = 1.0
           
-                if sum(w.sum(axis=-1).sum(axis=-1)[i_bad]) != 0.0:
-                    raise ValueError("<ddt_extract_eta_sn_sky> ERROR: "+
-                                     "found null denom for slices with non null "+
-                                     "weight")
-          
-        
+            
             # w2d, w2dy w2dz are used to calculate the variance using 
             # var(alpha x) = alpha^2 var(x)*/
-            wd = (w*d)
-            wdy = (wd*y_jlt)
-            wdz = (wd*z_jlt)
+            tmp = w * d
+            wd = tmp.sum(axis=(1, 2))
+            wdsn = (tmp * sn_conv).sum(axis=(1, 2))
+            wdgal = (tmp * gal_conv).sum(axis=(1, 2))
 
-            wd = wd.sum(axis=-1).sum(axis=-1)
-            wdy = wdy.sum(axis=-1).sum(axis=-1)
-            wdz = wdz.sum(axis=-1).sum(axis=-1)
-
-            wz = (w*z_jlt)
-            wzy = wz*y_jlt
-            wzz = (wz*z_jlt)
-            wz = wz.sum(axis=-1).sum(axis=-1)
-            wzy = wzy.sum(axis=-1).sum(axis=-1)
-            wzz = wzz.sum(axis=-1).sum(axis=-1)
+            tmp = w * gal_conv
+            wgal = tmp.sum(axis=(1, 2))
+            wgalsn = (tmp * sn_conv).sum(axis=(1, 2))
+            wgal2 = (tmp * gal_conv).sum(axis=(1, 2))
         
-            b_sky = wd*A11 + wdy*A12
-            b_sky /= denom
-            c_sky = wz*A11 + wzy*A12
-            c_sky /= denom
-        
-            b_sn = wd*A21 + wdy*A22
-            b_sn /= denom
-            c_sn = wz*A21 + wzy*A22
-            c_sn /= denom
-        
-            if no_eta:
-                sky = b_sky - c_sky
-                sn = b_sn - c_sn
+            b_sky = (wd * A11 + wdsn * A12) / denom
+            c_sky = (wgal * A11 + wgalsn * A12) / denom        
+            b_sn = (wd * A21 + wdsn * A22) / denom
+            c_sn = (wgal * A21 + wgalsn * A22) / denom
 
-                if calc_variance:
-                    v = 1/w
-                    w2d = w*w*v    
-                    w2dy = w2d *  y_jlt * y_jlt 
-                    w2dz = w2d * z_jlt * z_jlt
-                    w2d = w2d.sum(axis=-1).sum(axis=-1)
-                    w2dy = w2dy.sum(axis=-1).sum(axis=-1)
-                    w2dz = w2dz.sum(axis=-1).sum(axis=-1)
+            sky = b_sky - c_sky
+            sn = b_sn - c_sn
+            
+            sky[mask] = 0.0
+            sn[mask] = 0.0
 
-                    b2_sky = w2d*A11*A11 + w2dy*A12*A12
-                    b2_sky /= denom**2
+            self.sky[i_t, :] = sky
+            self.sn[i_t, :] = sn
 
-                    b_sn = w2d*(A21**2) + w2dy*(A22**2)
-                    b_sn /= denom**2
-                    
-                    sky_var = b_sky
-                    sn_var = b_sn
-                else:
-                    sky_var = np.ones(sky.shape)
-                    sn_var = np.ones(sn.shape)
-              
-                if isinstance(i_bad,np.ndarray):
-                    print ("<ddt_extract_eta_sn_sky> WARNING: "+
-                           "due to null denom, putting some sn and sky values to 0")
-                    sky[i_bad] = 0.
-                    sn[i_bad]  = 0.
-                    sky_var[i_bad] = 0.
-                    sn_var[i_bad] = 0.
-               
-              
-                eta = 1.
-                eta_denom = 1.
-            else:
-                eta = wdz - wz*b_sky - wzy*b_sn
-                eta_denom = wzz - wz*c_sky - wzy * c_sn
-                if isinstance(i_bad,np.ndarray):
-                    eta_denom[i_bad] = 1.
-          
-                eta = eta(sum)/eta_denom.sum()
-                sky = b_sky - eta*c_sky
-                sn = b_sn - eta*c_sn
-                if calc_variance:
-                    print ("WARNING: variance calculation with "+
-                           "eta calculation not implemented")
-                    sky_var = np.ones(sky.shape)
-                    sn_var = np.ones(sn.shape)
-                else:
-                    sky_var = np.ones(sky.shape)
-                    sn_var = np.ones(sn.shape)
-          
-                if isinstance(i_bad, np.ndarray):
-                    print ("<ddt_extract_eta_sn_sky> WARNING: due to null denom,"+
-                           "putting some eta, sn and sky values to 0")
-                    sky[i_bad] = 0.
-                    sn[i_bad] = 0.
-                    eta[i_bad] = 0.
-                    sky_var[i_bad] = 0.
-                    sn_var[i_bad] = 0.
-        
-        
-        if update_ddt:
-        
-            ddt.model_sn[i_t] = sn
-            ddt.model_sky[i_t] = sky
-            ddt.model_eta[i_t] = eta
-            # TODO: Fill in sn_var and sky_var.
+            # if calc_variance:
+            #     v = 1/w
+            #     w2d = w*w*v    
+            #     w2dy = w2d *  sn_conv * sn_conv 
+            #     w2dz = w2d * gal_conv * gal_conv
+            #     w2d = w2d.sum(axis=(1, 2))
+            #     w2dy = w2dy.sum(axis=(1, 2))
+            #     w2dz = w2dz.sum(axis=(1, 2))
+            #
+            #     b2_sky = w2d*A11*A11 + w2dy*A12*A12
+            #     b2_sky /= denom**2
+            # 
+            #     b_sn = w2d*(A21**2) + w2dy*(A22**2)
+            #     b_sn /= denom**2
+            # 
+            #     sky_var = b_sky
+            #     sn_var = b_sn
 
-                              
-        extract_dict = {'sky': sky, 'sn': sn}
-        return extract_dict # What do I want here? So far no other attributes used
 
+            # If no_eta = True (*do* calculate eta):
+            # ======================================
+            #
+            # eta = wdgal - wz*b_sky - wzy*b_sn
+            # eta_denom = wzz - wz*c_sky - wzy * c_sn
+            # if isinstance(i_bad,np.ndarray):
+            #     eta_denom[i_bad] = 1.
+            # 
+            # eta = eta(sum)/eta_denom.sum()
+            # sky = b_sky - eta*c_sky
+            # sn = b_sn - eta*c_sn
+            # if calc_variance:
+            #     print ("WARNING: variance calculation with "+
+            #            "eta calculation not implemented")
+            #     sky_var = np.ones(sky.shape)
+            #     sn_var = np.ones(sn.shape)
+            # else:
+            #     sky_var = np.ones(sky.shape)
+            #     sn_var = np.ones(sn.shape)
+            # 
+            # if isinstance(i_bad, np.ndarray):
+            #     print ("<ddt_extract_eta_sn_sky> WARNING: due to null denom,"+
+            #            "putting some eta, sn and sky values to 0")
+            #     sky[i_bad] = 0.
+            #     sn[i_bad] = 0.
+            #     eta[i_bad] = 0.
+            #     sky_var[i_bad] = 0.
+            #     sn_var[i_bad] = 0.
