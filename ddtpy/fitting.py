@@ -275,7 +275,11 @@ def penalty_g_all_epoch(x, model, data):
     i_fit = np.arange(data.nt)
     # Extracts sn and sky 
     for i_t in i_fit:
-        sn_sky = extract_eta_sn_sky(data, i_t, no_eta=True,
+
+        if i_t == data.master_final_ref:
+            sky = model.final_ref_sky
+        else:
+            sn_sky = extract_eta_sn_sky(data, i_t, no_eta=True,
                                     galaxy=x,
                                     i_t_is_final_ref=data.is_final_ref[i_t],
                                     update_ddt=True)

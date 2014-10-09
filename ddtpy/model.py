@@ -153,7 +153,6 @@ class DDTModel(object):
         xshift_fine = xshift - xshift_int
         yshift_int = int(yshift + 0.5)
         yshift_fine = yshift - yshift_int
-
         
         shift_phasor = fft_shift_phasor_2d(self.MODEL_SHAPE,
                                            (yshift_fine, xshift_fine))
@@ -224,7 +223,7 @@ class DDTModel(object):
                                        fft.fft2(x[k,:,:]))
         return out
 
-    def extract_eta_sn_sky(self, data, i_t, gal_model=None,
+    def extract_eta_sn_sky(self, data, i_t,
                            sn_offset=np.array([0., 0.]), gal_offset=None,
                            no_eta=None, calc_variance=None):
         """Update the transmission, SN level and sky level for a single epoch,
@@ -243,42 +242,25 @@ class DDTModel(object):
         
         d = data.data[i_t, :, :, :]
         w = data.weight[i_t, :, :, :]
-        
-        if gal_model is None:
-            gal_model = self.gal
 
-        # convolve galaxy model with PSF model
-        gal_conv = self.psf_convolve(gal_model, i_t, offset=gal_offset)
+        xcoords = np.arange(data.nx) - (data.nx - 1) / 2. + self.data_xctr[i_t]
+        ycoords = np.arange(data.ny) - (data.ny - 1) / 2. + self.data_yctr[i_t]
 
-        # this extracts just the part of the model that overlaps the data
-        # FORMERLY: z_jlt = ddt.r(np.array([galaxy_model]))[0]
-        z = gal_conv[:, 8:23, 8:23]
-        # TODO : fix the above... how is this slicing supposed to work?
+        gal_conv = self.evaluate_gal(i_t, xcoords, ycoords)
 
         # FIXME: eta won't be fitted on multiple final refs
         if data.is_final_ref[i_t]:
 
-            # Fix the sky in the final ref used for fitting.
-            if i_t == data.master_final_ref:
-                sky = self.final_ref_sky
-            
-                # FIXME: here the variance is wrong,
-                # since the sky has been estimated on the signal 
-                sky_var = np.ones(self.nw) 
-          
-            else:
-                # sky is just weighted average of data - galaxy model, since 
-                # there is no SN in a final ref.
-                sky = np.average(d - z, weights=w, axis=(1, 2))
-                if calc_variance:
-                    sky_var = w.sum(axis=(1, 2)) / (w**2).sum(axis=(1, 2))
-                else:
-                    sky_var = np.ones(self.nw)
-
-            # For a final ref, the SN is zero.
-            sn  = np.zeros(self.nw)
-            sn_var = np.ones(self.nw)
+            # sky is just weighted average of data - galaxy model, since 
+            # there is no SN in a final ref.
+            sky = np.average(d - gal_conv, weights=w, axis=(1, 2))
+            sn = np.zeros(self.nw)
             eta = 1.0
+
+            #if calc_variance:
+            #    sky_var = w.sum(axis=(1, 2)) / (w**2).sum(axis=(1, 2))
+            #    sn_var = np.ones(self.nw)
+
         
         # If the epoch is *not* a final ref, the SN is not zero, so we have
         # to do a lot more work.
