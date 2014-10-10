@@ -216,9 +216,9 @@ def make_offset_cube(ddt,i_t, sn_offset=None, galaxy_offset=None,
     # recalculate the best SN
     if recalculate:
         # Below fn in ddt_fit_toolbox.i
-        sn_sky = extract_eta_sn_sky(ddt, i_t, no_eta=TRUE, 
-                                    galaxy_offset=galaxy_offset, 
-                                    sn_offset=sn_offset)
+        sn_sky = model.update_sn_and_sky(ddt, i_t, 
+                                          galaxy_offset=galaxy_offset, 
+                                          sn_offset=sn_offset)
         sn = sn_sky['sn']
         sky = sn_sky['sky']
     else:
@@ -273,44 +273,24 @@ def penalty_g_all_epoch(x, model, data):
     print "Fitting simultaneously %d exposures" % (data.nt)
     # TODO i_fit is an option in DDT (could be only some phases) (was ddt.i_fit)
     i_fit = np.arange(data.nt)
+    model.gal = x
     # Extracts sn and sky 
     for i_t in i_fit:
 
         if i_t == data.master_final_ref:
             sky = model.final_ref_sky
         else:
-            sn_sky = extract_eta_sn_sky(data, i_t, no_eta=True,
-                                    galaxy=x,
-                                    i_t_is_final_ref=data.is_final_ref[i_t],
-                                    update_ddt=True)
+            sn_sky = model.update_sn_and_sky(data, i_t)
     
     # calculate residual 
     # ddt_make_all_cube uses ddt.i_fit and only calculates those*/  
-    x = x.reshape(model.gal.shape)
-    r = make_model_cube(model, data, galaxy=x, sn=model.sn, sky=model.sky,
-                        eta=model.eta)
+    r = make_model_cube(model, data)
     r = r[i_fit] - data.data[i_fit]
     wr = data.weight[i_fit] * r
     
-    if model.verb:
-        print "<ddt_penalty_g>:r %s, wr %s" % (np.sum(r), np.sum(wr))
-  
-    # Comment from Yorick DDT :
-    # FIXME: The gradient MUST be reinitialized each time isn't it?
-    grd = np.zeros(x.shape)
- 
     # Likelihood 
     lkl_err = np.sum(wr*r)
-    
-    for i_t in i_fit:
-        #if ddt.verb:
-        #    print "<ddt_penalty_g>: calculating gradient for i_t=%d" % i_t
-        tmp_x = main.r_inv(np.array([2.*wr[i_n,:,:,:]]))[0]
-        grd += model.psf_convolve(tmp_x, i_t)
-  
-    wr=[]
-    tmp_x=[]
-        
+           
     galdiff = x - model.galprior
 
     # Regularization
@@ -320,17 +300,10 @@ def penalty_g_all_epoch(x, model, data):
     rgl_err = (mu_xy * np.sum(dx**2) +
                mu_xy * np.sum(dy**2) +
                mu_wave * np.sum(dw**2))
-
     
-    # TODO: These prob go into header if debug=1:
-    #h_set, ddt.ddt_model, grd_rgl = grd2
-    #h_set, ddt.ddt_model, grd_lkl = grd
-    # TODO: These need to go into output file header:
-    #h_set, ddt.ddt_model, lkl = lkl_err   
-    #h_set, ddt.ddt_model, rgl = rgl_err
-  
-    grd += grd2
 
+    # TODO: lkl_err and rgl_err need to go into output file header:
+  
     return rgl_err + lkl_err
 
 def fit_model_all_epoch(model, data, maxiter=None, xmin=None):
@@ -369,4 +342,5 @@ def fit_model_all_epoch(model, data, maxiter=None, xmin=None):
                                              approx_grad=True) 
     
     model.gal = x_new
-    sn_sky = extract_eta_sn_sky_all(data, update_ddt=True, no_eta=True)
+    for i_t in np.arange(data.nt):
+        sn_sky = model.update_sn_and_sky(data, i_t)
