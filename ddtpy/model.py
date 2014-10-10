@@ -172,7 +172,10 @@ class DDTModel(object):
             elif which == 'snscaled':
                 target_shift_conv[j, :, :] = ifft2(fft2(psf[j, :, :]) *
                                                    shift_phasor)
-
+            elif which == 'all': 
+                target_shift_conv[j, :, :] = \
+                    ifft2((fft2(self.gal[j, :, :]) + self.sn[j]) *
+                          fft2(psf[j, :, :]) * shift_phasor) + self.sky[i_t,j]
         # TODO: add ADR!
 
         # Return a subarray based on the integer shift

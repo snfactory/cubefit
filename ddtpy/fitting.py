@@ -99,104 +99,8 @@ def make_cube(ddt, i_t, galaxy=None, sn=None, sky=None, eta=None,
     return ddt.r(np.array([model.psf_convolve(model, i_t)]))[0]
 
 
-def make_all_cube(ddt, galaxy=None, sn=None, sky=None, eta=None):
-    """
-    Parameters
-    ----------
-    galaxy : 3d array
-    sn, sky : 2d arrays
-    eta : 1d array
-    Returns
-    -------
-    cube : 4d array
-    * FIXME: make a similar script that does G(psf),
-    *  so that we can make sure that they give the same result
-    """
-    if not isinstance(galaxy, np.ndarray):
-        galaxy = ddt.model_gal
+     
   
-    if not isinstance(sn, np.ndarray):
-        sn = ddt.model_sn
-  
-    if not isinstance(sky, np.ndarray):
-        sky = ddt.model_sky
-  
-    if not isinstance(eta, np.ndarray):
-        eta = ddt.model_eta
-
-    cube = np.zeros_like(ddt.data)
-    # TODO i_fit is an option in DDT (could be only some phases) (was ddt.i_fit)
-    i_fit = np.arange(ddt.nt)
-    n_fit = i_fit.size
-    for i_n in range(n_fit):
-        i_t = i_fit[i_n]
-        model = make_g(galaxy, sn[i_t,:], sky[i_t,:], eta[i_t], 
-                       ddt.model_sn_x, ddt.model_sn_y) 
-        cube[i_t,:,:,:] = ddt.r(np.array([model.psf_convolve(model, i_t)]))[0]
-        del model
-    
-    return cube
-        
-        
-def make_g(galaxy, sn, sky, eta, sn_x, sn_y):
-    """Makes a 3d model from a 3d galaxy, 1d sn, 1d, sky
-    
-    Parameters
-    ----------
-    galaxy : 3d array
-    sn : 1d array
-    sky : 1d array
-    sn_x, sn_y : int
-    
-    Returns
-    -------
-    model : 3d array
-    """
-    model = galaxy * eta 
-    model[:,sn_y, sn_x] += sn
-    model += sky[:,None, None] 
-    
-    return model
-    
-def make_model_cube(model, data, galaxy=None, sn=None, sky=None, eta=None):
-    """Makes a cube out of model parts, returns part of model that overlaps
-    with the data. Replaces make_all_cube/make_cube/make_g, provides only part 
-    needed in calc_residual.
-    
-    Parameters
-    ----------
-    model : DDTModel
-    galaxy : 3d array
-    sn : 1d array
-    sky : 1d array
-    eta : 1d array or float?
-    
-    Returns
-    -------
-    4-d array 
-        A cube for each exposure
-    """
-    if not isinstance(galaxy, np.ndarray):
-        galaxy = model.gal
-    if not isinstance(sn, np.ndarray):
-        sn = model.sn
-    if not isinstance(sky, np.ndarray):
-        sky = model.sky
-    if not isinstance(eta, np.ndarray):
-        eta = model.eta
-
-    full_cube = np.zeros_like(data.data)
-    
-    i_fit = np.arange(data.nt)
-    for i_t in i_fit:
-        model_i_t = galaxy*eta[i_t] + sky[i_t,:,None,None]
-        model_i_t[:,model.model_sn_y, model.model_sn_x] += sn[i_t]
-        full_cube[i_t,:,:,:] = model.psf_convolve(model_i_t, i_t)
-        
-    cube = main.r(full_cube)
-    return cube
-
-    
         
 def make_offset_cube(ddt,i_t, sn_offset=None, galaxy_offset=None,
                      recalculate=None):
@@ -272,24 +176,26 @@ def penalty_g_all_epoch(x, model, data):
     
     print "Fitting simultaneously %d exposures" % (data.nt)
     # TODO i_fit is an option in DDT (could be only some phases) (was ddt.i_fit)
-    i_fit = np.arange(data.nt)
+
+
     model.gal = x
     # Extracts sn and sky 
-    for i_t in i_fit:
-
-        if i_t == data.master_final_ref:
-            sky = model.final_ref_sky
-        else:
+    for i_t in range(data.nt):
+        if i_t != data.master_final_ref:
             sn_sky = model.update_sn_and_sky(data, i_t)
     
     # calculate residual 
     # ddt_make_all_cube uses ddt.i_fit and only calculates those*/  
-    r = make_model_cube(model, data)
-    r = r[i_fit] - data.data[i_fit]
-    wr = data.weight[i_fit] * r
+    r = np.empty_like(data.data)
+    for i_t in range(data.nt):
+        xcoords = np.arange(data.nx) - (data.nx - 1) / 2. + model.data_xctr[i_t]
+        ycoords = np.arange(data.ny) - (data.ny - 1) / 2. + model.data_yctr[i_t]
+        r[i_t] = model.evaluate(i_t, xcoords=xcoords, ycoords=ycoords, 
+                                which='all')
+    r -= data.data
     
     # Likelihood 
-    lkl_err = np.sum(wr*r)
+    lkl_err = np.sum(data.weight*r**2)
            
     galdiff = x - model.galprior
 
@@ -306,7 +212,7 @@ def penalty_g_all_epoch(x, model, data):
   
     return rgl_err + lkl_err
 
-def fit_model_all_epoch(model, data, maxiter=None, xmin=None):
+def fit_model_all_epoch(model, data, maxiter=1000, xmin=None):
     """fits galaxy (and thus extracts sn and sky)
     
     Parameters
@@ -324,23 +230,10 @@ def fit_model_all_epoch(model, data, maxiter=None, xmin=None):
     """
     
     penalty = penalty_g_all_epoch
-    x = copy.copy(model.gal)
+    x = model.gal
     
-    # TODO : This obviously needs to be fixed:
-    #method = (OP_FLAG_UPDATE_WITH_GP |
-    #          OP_FLAG_SHANNO_PHUA |
-    #          OP_FLAG_MORE_THUENTE);
-    mem = 3   
-
-    if maxiter:
-        print "<fit_model_all_epoch> starting the fit"
-        # TODO: Placeholder in now for op_mnb
-        #x_new = op_mnb(penalty, x, extra=ddt, xmin=xmin, maxiter=maxiter,
-        #               method=method, mem=mem,
-        #               verb=ddt.verb, ftol=ftol)
-        x_new = scipy.optimize.fmin_l_bfgs_b(penalty, x, args=(model, data), 
-                                             approx_grad=True) 
+    x_new = scipy.optimize.fmin_l_bfgs_b(penalty, x, args=(model, data), 
+                                         approx_grad=True, maxiter=maxiter) 
     
     model.gal = x_new
-    for i_t in np.arange(data.nt):
-        sn_sky = model.update_sn_and_sky(data, i_t)
+
