@@ -156,15 +156,15 @@ class DDTModel(object):
         xshift_fine = xshift - xshift_int
         yshift_int = int(yshift + 0.5)
         yshift_fine = yshift - yshift_int
-        
-        shift_phasor = fft_shift_phasor_2d(self.MODEL_SHAPE,
-                                           (yshift_fine, xshift_fine))
-
         # get shifted and convolved galaxy
         psf = self.psf[i_t]
         target_shift_conv = np.empty((self.nw, self.ny, self.nx),
                                      dtype=np.float64)
         for j in range(self.nw):
+            shift_phasor = fft_shift_phasor_2d(self.MODEL_SHAPE,
+                                           (yshift_fine + self.adr_dy[i_t,j],
+                                            xshift_fine + self.adr_dx[i_t,j]))
+
             if which == 'galaxy':
                 target_shift_conv[j, :, :] = ifft2(fft2(psf[j, :, :]) *
                                                    shift_phasor *
@@ -176,7 +176,6 @@ class DDTModel(object):
                 target_shift_conv[j, :, :] = \
                     ifft2((fft2(self.gal[j, :, :]) + self.sn[j]) *
                           fft2(psf[j, :, :]) * shift_phasor) + self.sky[i_t,j]
-        # TODO: add ADR!
 
         # Return a subarray based on the integer shift
         xslice = slice(xshift_int, xshift_int + len(xcoords))
