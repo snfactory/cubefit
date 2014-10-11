@@ -40,8 +40,10 @@ extensions = [
     'sphinx.ext.mathjax',
     'numpydoc'
 ]
+numpydoc_show_class_members = False
 autosummary_generate = True
 autoclass_content = "class"
+autodoc_default_flags = ["members"]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -57,7 +59,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'ddtpy'
-authors = u'Kyle Barbary, Clare Saunders, Seb Bongard, Eric Thiebaut'
+authors = u'Kyle Barbary,  Seb Bongard, Clare Saunders, Eric Thiebaut'
 copyright = u'2014, ' + authors
 
 # The version info for the project you're documenting, acts as replacement for
