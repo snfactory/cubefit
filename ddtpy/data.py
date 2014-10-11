@@ -127,7 +127,7 @@ class DDTData(object):
         nspaxels = self.data.shape[2] * self.data.shape[3]
         sky = np.zeros((self.nt, self.nw), dtype=np.float64)
 
-        for i in range(nt):
+        for i in range(self.nt):
             data = self.data[i]
             weight = np.copy(self.weight[i])
             var = 1.0 / weight

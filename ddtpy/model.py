@@ -2,6 +2,8 @@
 import numpy as np
 from numpy.fft import fft2, ifft2
 
+from .psf import gaussian_plus_moffat_psf_4d
+from .utils import fft_shift_phasor_2d
 
 class DDTModel(object):
     """This class is the equivalent of everything else that isn't data
@@ -50,7 +52,7 @@ class DDTModel(object):
     def __init__(self, shape, psf_ellipticity, psf_alpha, adr_dx, adr_dy,
                  spaxel_size, mu_xy, mu_wave, sky):
 
-        ny, nx = MODEL_SHAPE
+        ny, nx = self.MODEL_SHAPE
         nt, nw = shape
 
         if psf_ellipticity.shape != shape:
@@ -79,7 +81,7 @@ class DDTModel(object):
         self.ycoords = np.arange(ny, dtype=np.float64) - array_yctr
 
         # PSF part of the model
-        self.psf = gaussian_plus_moffat_psf_4d(MODEL_SHAPE, array_xctr,
+        self.psf = gaussian_plus_moffat_psf_4d(self.MODEL_SHAPE, array_xctr,
                                                array_yctr,
                                                psf_ellipticity, psf_alpha)
 
@@ -135,8 +137,8 @@ class DDTModel(object):
         # the spaxel size of the data. Thus, the data array will have
         # equal spacing with all spacings equal to 1.0. This is a
         # requirement for the Fourier-space shifting used here.
-        if not (np.all(np.diff(xcoords) == 1.0) and
-                np.all(np.diff(ycoords) == 1.0)):
+        if not (np.all(np.abs(np.diff(xcoords) - 1.0) < .01) and
+                np.all(np.abs(np.diff(ycoords) - 1.0) < 0.01)):
             raise ValueError("xcoords and y coords must have equal spacing, "
                              "with all spacings equal to 1.0")
 
@@ -160,6 +162,7 @@ class DDTModel(object):
         psf = self.psf[i_t]
         target_shift_conv = np.empty((self.nw, self.ny, self.nx),
                                      dtype=np.float64)
+                                     
         for j in range(self.nw):
             shift_phasor = fft_shift_phasor_2d(self.MODEL_SHAPE,
                                            (yshift_fine + self.adr_dy[i_t,j],
@@ -174,7 +177,7 @@ class DDTModel(object):
                                                    shift_phasor)
             elif which == 'all': 
                 target_shift_conv[j, :, :] = \
-                    ifft2((fft2(self.gal[j, :, :]) + self.sn[j]) *
+                    ifft2((fft2(self.gal[j, :, :]) + self.sn[i_t,j]) *
                           fft2(psf[j, :, :]) * shift_phasor) + self.sky[i_t,j]
 
         # Return a subarray based on the integer shift
@@ -253,7 +256,7 @@ class DDTModel(object):
 
         xcoords = np.arange(data.nx) - (data.nx - 1) / 2. + self.data_xctr[i_t]
         ycoords = np.arange(data.ny) - (data.ny - 1) / 2. + self.data_yctr[i_t]
-
+        
         gal_conv = self.evaluate(i_t, xcoords, ycoords, which='galaxy')
 
         if data.is_final_ref[i_t]:

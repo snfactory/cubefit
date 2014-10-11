@@ -103,39 +103,3 @@ def fft_shift_phasor_2d(shape, offset):
 
     return np.outer(phasorm, phasorn)
 
-
-def fft_convolve_shift(arr, kernel, offset):
-    """
-    Apply a convolution and a shift to the 
-This convolves two functions using FFT
-    Will need to be adapted if other FFT needs to be an option
-
-    Parameters
-    ----------
-    ptr : 1-d array
-    x : 3-d array
-    offset : 1-d array
-
-    Returns
-    -------
-    out : 3-d array
-
-    Notes
-    -----
-    job = 0: direct
-    job = 1: gradient
-    job = 2: add an offset, in SPAXELS
-    """
-    number = ptr.shape[0]
-    out = np.zeros(x.shape)
-
-    phasor = fft_shift_phasor(
-                                           [self.psf_ny, self.psf_nx], 
-                                           offset, half=1,
-                                           apodize=self.apodizer)
-        for k in range(number):
-            out[k,:,:] = self.FFT(ptr[k] * phase_shift_apodize *
-                                  self.FFT(x[k,:,:]))    
-            #out[k,:,:] = self.FFT(ptr[k] * phase_shift_apodize *
-            #                      self.FFT(x[k,:,:]),2)
-        return out 

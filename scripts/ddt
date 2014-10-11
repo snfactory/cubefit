@@ -12,7 +12,6 @@ def main():
 
     args = parser.parse_args()
 
-    ddt = ddtpy.DDT(args.filename)
-    print(ddt)
+    ddtpy.main(args.filename)
 
 main()

@@ -178,7 +178,7 @@ def penalty_g_all_epoch(x, model, data):
     # TODO i_fit is an option in DDT (could be only some phases) (was ddt.i_fit)
 
 
-    model.gal = x
+    model.gal = x.reshape(model.gal.shape)
     # Extracts sn and sky 
     for i_t in range(data.nt):
         if i_t != data.master_final_ref:
@@ -197,7 +197,7 @@ def penalty_g_all_epoch(x, model, data):
     # Likelihood 
     lkl_err = np.sum(data.weight*r**2)
            
-    galdiff = x - model.galprior
+    galdiff = model.gal - model.galprior
 
     # Regularization
     dw = galdiff[1:, :, :] - galdiff[:-1, :, :]
@@ -230,10 +230,10 @@ def fit_model_all_epoch(model, data, maxiter=1000, xmin=None):
     """
     
     penalty = penalty_g_all_epoch
-    x = model.gal
-    
+    x = model.gal.reshape((model.gal.size))
+
     x_new = scipy.optimize.fmin_l_bfgs_b(penalty, x, args=(model, data), 
-                                         approx_grad=True, maxiter=maxiter) 
+                                         approx_grad=True) 
     
     model.gal = x_new
 

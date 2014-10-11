@@ -10,6 +10,7 @@ from .psf import params_from_gs, gaussian_plus_moffat_psf_4d
 from .model import DDTModel
 from .data import read_dataset, read_select_header_keys, DDTData
 from .adr import calc_paralactic_angle, differential_refraction
+from .fitting import fit_model_all_epoch
 
 __all__ = ["main"]
 
@@ -70,7 +71,7 @@ def main(filename):
     # G-PSF --> GR-PSF
     if conf["PARAM_PSF_TYPE"] == "GS-PSF":
         es_psf_params = np.array(conf["PARAM_PSF_ES"])
-        psf_ellipticity, psf_alpha = psf_params_from_gs(
+        psf_ellipticity, psf_alpha = params_from_gs(
             es_psf_params, ddtdata.wave, wave_ref)
     elif conf["PARAM_PSF_TYPE"] == "G-PSF":
         raise RuntimeError("G-PSF (from FITS files) not implemented")
@@ -104,10 +105,10 @@ def main(filename):
     adr_dy = delta_r * np.cos(paralactic_angle)[:, None]
 
     # Make a first guess at the sky level based on the data.
-    sky = data.guess_sky(2.0)
+    sky = ddtdata.guess_sky(2.0)
 
     # Initialize model
-    model = DDTModel((data.nt, data.nw), psf_ellipticity, psf_alpha,
+    model = DDTModel((ddtdata.nt, ddtdata.nw), psf_ellipticity, psf_alpha,
                      adr_dx, adr_dy, spaxel_size,
                      conf["MU_GALAXY_XY_PRIOR"],
                      conf["MU_GALAXY_LAMBDA_PRIOR"], sky)
@@ -132,65 +133,5 @@ def main(filename):
     #                     self.delta_r * self.adr_x[:, None])
     # self.sn_offset_y = (self.sn_offset_y_ref[:, None] +
     #                     self.delta_r * self.adr_y[:, None])
-
-# -----------------------------------------------------------------------------
-# old 
-# -----------------------------------------------------------------------------
-
-
-        # if no pointing error, the supernova is at  
-        # int((N_x + 1) / 2 ), int((N_y + 1) / 2 )
-        # in Yorick indexing for both the MLA and the model
-
-        offset_x = int((self.psf_nx-1.) / 2.) - int((self.data_nx-1.) / 2.)
-        offset_y = int((self.psf_ny-1.) / 2.) - int((self.data_ny-1.) / 2.)
-
-        self.range_x = slice(offset_x, offset_x + self.data_nx)
-        self.range_y = slice(offset_y, offset_y + self.data_ny)
-
-        # equilvalent of ddt_setup_apodizer() in Yorick,
-        # with without implementing all of it:
-        # if self.flag_apodizer < 2:
-        #     self.apodizer = None
-        #     self.psf_enlarge = None
-        # else:
-        #     raise RuntimeError("FLAG_APODIZER >= 2 not implemented")
-
-        # equivalent of ddt_setup_regularization...
-        # In original, these use "sky=guess_sky", but I can't find this defined.
-        # Similarly, can't find DDT_CHEAT_NO_NORM
-        
-        # These are no longer necessary because regularization is done
-        # in the "penalty_g_all_epoch() function (in about 3 lines)
-
-        #self.regul_galaxy_xy = RegulGalaxyXY(self.data[self.final_ref], 
-        #                                    self.weight[self.final_ref],
-        #                                    conf["MU_GALAXY_XY_PRIOR"],
-        #                                    sky=self.guess_sky[self.final_ref])
-        #self.regul_galaxy_lambda = RegulGalaxyLambda(
-        #                                self.data[self.final_ref], 
-        #                                self.weight[self.final_ref],
-        #                                conf["MU_GALAXY_LAMBDA_PRIOR"],
-        #                                sky=self.guess_sky[self.final_ref]) 
-
-
-
-    # TODO: make a better name for this.
-    def r(self, x):
-        """Returns just the section of the model (x) that overlaps the data.
-
-        This is the same as the Yorick ddt.R operator with job = 0.
-        In Yorick, `x` could be 2 or more dimensions; here it must be 4-d.
-        """
-        return x[:, :, self.range_y, self.range_x]
-
-    def r_inv(self, x):
-        """creates a model with MLA data at the right location.
-
-        This is the same as the Yorick ddt.R operator with job = 1.
-        """
-        shape = (x.shape[0], x.shape[1], self.psf_ny, self.psf_nx)
-        y = np.zeros(shape, dtype=np.float32)
-        y[:, :, self.range_y, self.range_x] = x
-        return y
-        
+    
+    fit = fit_model_all_epoch(model, ddtdata)

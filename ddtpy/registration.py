@@ -104,9 +104,9 @@ def _sn_galaxy_registration_model(a, ddt, i_t, fit_flag='galaxy',
     """
     sn_offset = np.array([0.,0.])
     galaxy_offset = array([0.,0.])
-    if fit_flag == 'sn'
+    if fit_flag == 'sn':
         sn_offset = a
-    elif fit_flag == 'galaxy'
+    elif fit_flag == 'galaxy':
         galaxy_offset = a 
     else:
         raise ValueError("<_ddt_sn_galaxy_registration_model> "+
