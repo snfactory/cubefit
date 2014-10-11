@@ -3,104 +3,7 @@ import copy
 import numpy as np
 import scipy.optimize
 
-from .registration import shift_galaxy
 
-
-def calc_residual(ddt, galaxy=None, sn=None, sky=None, eta=None):
-    """Returns residual?
-    So far only 'm' part of this is being used.
-    Parameters
-    ----------
-    ddt : DDT object
-    galaxy : 
-    sn : 
-    sky : 
-    eta :
-    
-    Returns
-    -------
-    resid_dict : dict
-        Dictionary including residual, cube, data, other stuff
-    """
-
-    o = np.zeros_like(ddt.data)
-    m = np.zeros_like(ddt.data)
-    
-    
-    if galaxy is None:
-        galaxy = ddt.model_gal
-        
-    for i_t in range(ddt.nt):
-        
-        i_final_ref = (ddt.final_ref if type(ddt.final_ref) == int 
-                       else ddt.final_ref[0])
-        tmp_galaxy = shift_galaxy(ddt,
-                                  [ddt.target_xp[i_t]-
-                                   ddt.target_xp[i_final_ref],
-                                   ddt.target_yp[i_t]-
-                                   ddt.target_yp[i_final_ref]],
-                                  galaxy=galaxy)
-        # TODO: Fix this (Hack because r requires 4-d array):
-        o[i_t,:,:,:] = ddt.r(np.array([tmp_galaxy]))[0] 
-        m[i_t,:,:,:] = make_cube(ddt, i_t, galaxy=galaxy, sn=sn, sky=sky, 
-                                 eta=eta)
-
-    resid_dict = {}
-    resid_dict['d'] = copy.copy(ddt.data)
-    resid_dict['w'] = copy.copy(ddt.weight)
-    resid_dict['r'] = ddt.data - m
-    resid_dict['wr'] = resid_dict['r'] * ddt.weight
-    resid_dict['lkl'] = resid_dict['wr'] * resid_dict['r']
-    resid_dict['m'] = m
-    resid_dict['o'] = o
-    resid_dict['l'] = copy.copy(ddt.wave)
-    
-    if sky is None:
-        resid_dict['s'] = ddt.model_sky
-        
-    return resid_dict
-    
-def make_cube(ddt, i_t, galaxy=None, sn=None, sky=None, eta=None, 
-              galaxy_offset=None):
-              
-    """
-    Parameters
-    ----------
-    ddt : DDT object
-    i_t : int
-    galaxy : 
-    sn : 
-    sky : 
-    eta :
-    
-    Returns
-    -------
-    ddt.R(...) : 3d array
-        whatever ddt.R(model) returns
-    
-    """
-    
-    if not isinstance(galaxy, np.ndarray):
-        galaxy = ddt.model_gal
-    if galaxy_offset is not None:
-        galaxy = shift_galaxy(ddt, galaxy_offset, galaxy=galaxy)
-    if not isinstance(sn, np.ndarray):
-        sn = ddt.model_sn
-    if not isinstance(sky, np.ndarray):
-        sky = ddt.model_sky
-    if not isinstance(eta, np.ndarray):
-        eta = ddt.model_eta
-    
-    # Get galaxy*eta + sn (in center) + sky
-    model = make_g(galaxy, sn[i_t,:], sky[i_t,:], eta[i_t], ddt.model_sn_x,
-                   ddt.model_sn_y)
-    
-    # TODO: Hack below to use ddt.r on 3-d array
-    return ddt.r(np.array([model.psf_convolve(model, i_t)]))[0]
-
-
-     
-  
         
 def make_offset_cube(ddt,i_t, sn_offset=None, galaxy_offset=None,
                      recalculate=None):
@@ -203,9 +106,9 @@ def penalty_g_all_epoch(x, model, data):
     dw = galdiff[1:, :, :] - galdiff[:-1, :, :]
     dy = galdiff[:, 1:, :] - galdiff[:, :-1, :]
     dx = galdiff[:, :, 1:] - galdiff[:, :, :-1]
-    rgl_err = (mu_xy * np.sum(dx**2) +
-               mu_xy * np.sum(dy**2) +
-               mu_wave * np.sum(dw**2))
+    rgl_err = (model.mu_xy * np.sum(dx**2) +
+               model.mu_xy * np.sum(dy**2) +
+               model.mu_wave * np.sum(dw**2))
     
 
     # TODO: lkl_err and rgl_err need to go into output file header:

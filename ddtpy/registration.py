@@ -1,6 +1,5 @@
 import numpy as np
 import scipy.optimize
-from .data_toolbox import fft_shift_phasor
 
 def shift_galaxy(ddt, offset, galaxy=None):
     """Galaxy offset in SPAXELS
