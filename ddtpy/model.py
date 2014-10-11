@@ -5,6 +5,8 @@ from numpy.fft import fft2, ifft2
 from .psf import gaussian_plus_moffat_psf_4d
 from .utils import fft_shift_phasor_2d
 
+__all__ = ["DDTModel"]
+
 class DDTModel(object):
     """This class is the equivalent of everything else that isn't data
     in the Yorick version.

@@ -10,7 +10,8 @@ API
    :toctree: api
 
    ddtpy.main
-
+   ddtpy.DDTData
+   ddtpy.DDTModel
 
 
 Indices and tables
