@@ -3,9 +3,10 @@ DDTPy
 
 Python implementation of the spectral data cube modeling code DDT
 
-The name `DDTPy` is mostly a placeholder to distinguish this from the
+The name DDTPy is mostly a placeholder to distinguish this from the
 original DDT implementation, during development.
 
+Alternative name: SNIFit - "SuperNova IFU Fit"?
 
 Dependencies
 ------------
@@ -13,6 +14,7 @@ Dependencies
 Currently written for Python 2.7.
 
 * numpy
+* scipy (for optimization)
 * fitsio - https://github.com/esheldon/fitsio
 
 

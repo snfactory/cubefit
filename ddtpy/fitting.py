@@ -115,21 +115,15 @@ def penalty_g_all_epoch(x, model, data):
   
     return rgl_err + lkl_err
 
-def fit_model_all_epoch(model, data, maxiter=1000, xmin=None):
-    """fits galaxy (and thus extracts sn and sky)
+def fit_model_all_epoch(model, data, maxiter=1000):
+    """fit galaxy, SN and sky and update the model accordingly, keeping
+    registration fixed.
     
     Parameters
     ----------
-    ddt : DDT object
-    
-    Returns
-    -------
-    Nothing
-    
-    Notes
-    -----
-    Updates DDT object
-    Assumes no_eta = True (seems to always be)
+    model : DDTModel
+    data : DDTData
+
     """
     
     penalty = penalty_g_all_epoch

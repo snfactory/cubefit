@@ -30,7 +30,7 @@ class DDTModel(object):
     mu_wave : float
         Hyperparameter in wavelength coordinate. Used in penalty function
         when fitting model.
-    sky : np.ndarray (2-d)
+    skyguess : np.ndarray (2-d)
         Initial guess at sky. Sky is a spatially constant value, so the
         shape is the same as ``shape``.
 
@@ -52,7 +52,8 @@ class DDTModel(object):
     MODEL_SHAPE = (32, 32)
 
     def __init__(self, shape, psf_ellipticity, psf_alpha, adr_dx, adr_dy,
-                 spaxel_size, mu_xy, mu_wave, sky):
+                 spaxel_size, mu_xy, mu_wave, data_xctr_init, data_yctr_init,
+                 skyguess):
 
         ny, nx = self.MODEL_SHAPE
         nt, nw = shape
@@ -71,7 +72,7 @@ class DDTModel(object):
         # Galaxy and sky part of the model
         self.gal = np.zeros((nw, ny, nx))
         self.galprior = np.zeros((nw, ny, nx))
-        self.sky = sky
+        self.sky = skyguess
         self.sn = np.zeros((nt, nw))
         self.eta = np.ones(nt)  # eta = transmission
         self.final_ref_sky = np.zeros(nw)
@@ -125,7 +126,7 @@ class DDTModel(object):
             Epoch index.
         xcoords : np.ndarray (1-d)
         ycoords : np.ndarray (1-d)
-        which : {'galaxy', 'snscaled'}
+        which : {'galaxy', 'snscaled', 'all'}
             Which part of the model to evaluate: galaxy-only or SN scaled to
             flux of 1.0?
 

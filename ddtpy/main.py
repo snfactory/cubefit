@@ -11,6 +11,7 @@ from .model import DDTModel
 from .data import read_dataset, read_select_header_keys, DDTData
 from .adr import calc_paralactic_angle, differential_refraction
 from .fitting import fit_model_all_epoch
+from .registration import fit_position
 
 __all__ = ["main"]
 
@@ -105,33 +106,97 @@ def main(filename):
     adr_dy = delta_r * np.cos(paralactic_angle)[:, None]
 
     # Make a first guess at the sky level based on the data.
-    sky = ddtdata.guess_sky(2.0)
-
-    # Initialize model
-    model = DDTModel((ddtdata.nt, ddtdata.nw), psf_ellipticity, psf_alpha,
-                     adr_dx, adr_dy, spaxel_size,
-                     conf["MU_GALAXY_XY_PRIOR"],
-                     conf["MU_GALAXY_LAMBDA_PRIOR"], sky)
+    skyguess = ddtdata.guess_sky(2.0)
 
     # If target positions are given in the config file, set them in
     # the model.  (Otherwise, the positions default to zero in all
     # exposures.)
     if "PARAM_TARGET_XP" in conf:
-        model.data_xctr[:] = np.array(conf["PARAM_TARGET_XP"])
+        data_xctr_init = np.array(conf["PARAM_TARGET_XP"])
+    else:
+        data_xctr_init = np.zeros(ddtdata.nt)
     if "PARAM_TARGET_YP" in conf:
-        model.data_yctr[:] = np.array(conf["PARAM_TARGET_YP"])
+        data_yctr_init = np.array(conf["PARAM_TARGET_YP"])
+    else:
+        data_yctr_init = np.zeros(ddtdata.nt)
 
+    # Initialize model
+    model = DDTModel((ddtdata.nt, ddtdata.nw), psf_ellipticity, psf_alpha,
+                     adr_dx, adr_dy, spaxel_size,
+                     conf["MU_GALAXY_XY_PRIOR"],
+                     conf["MU_GALAXY_LAMBDA_PRIOR"],
+                     data_xctr_init, data_yctr_init,
+                     skyguess)
 
+    # Perform initial fit, holding position constant (at settings from
+    # conf file PARAM_TARGET_[X,Y]P, directly above)
+    # This fits the galaxy, SN and sky and updates the model accordingly,
+    # keeping registration fixed.
+    fit_model_all_epoch(model, ddtdata)
 
-    # TODO : I Don't think this is needed anymore.                            
-    # flag_apodizer = bool(conf.get("FLAG_APODIZER", 0))
+    # Fit registration on just the final refs
+    # ==================================================================
 
-    # Move the following operations to the model (when fitting?)
-    # self.sn_offset_x_ref = deepcopy(self.target_xp)
-    # self.sn_offset_y_ref = deepcopy(self.target_yp)
-    # self.sn_offset_x = (self.sn_offset_x_ref[:, None] +  # 2-d arrays (nt, nw)
-    #                     self.delta_r * self.adr_x[:, None])
-    # self.sn_offset_y = (self.sn_offset_y_ref[:, None] +
-    #                     self.delta_r * self.adr_y[:, None])
+    maxiter_fit_position = 100  # Max iterations in fit_position
+    maxmove_fit_position = 3.0  # maxmimum movement allowed in fit_position
+    mask_nmad = 2.5  # Minimum Number of Median Absolute Deviations above
+                     # the minimum spaxel value in fit_position
     
-    fit = fit_model_all_epoch(model, ddtdata)
+    # Make a copy of the weight at this point, because we're going to
+    # modify the weights in place for the next step.
+    weight_orig = ddtdata.weight.copy()
+
+    include_in_fit = np.ones(ddtdata.nt, dtype=np.bool)
+
+    # /* Register the galaxy in the other final refs */
+    # i_fit_galaxy_position=where(ddt.ddt_data.is_final_ref);
+    # n_final_ref = numberof( i_fit_galaxy_position);
+    # galaxy_offset = array(double, 2, ddt.ddt_data.n_t);
+    
+    # Loop over just the final refs excluding the master final ref.
+    for i_t in range(ddtdata.nt):
+        if (not ddtdata.is_final_ref[i_t]) or i_t == ddtdata.master_final_ref:
+            continue
+
+        xcoords = (np.arange(ddtdata.nx) - (ddtdata.nx - 1) / 2. +
+                   model.data_xctr[i_t])
+        ycoords = (np.arange(ddtdata.ny) - (ddtdata.ny - 1) / 2. +
+                   model.data_yctr[i_t])
+        m = model.evaluate(i_t, xcoords=xcoords, ycoords=ycoords, 
+                           which='all')
+
+        tmp_m = m.sum(axis=0)  # Sum of model over wavelengths (result = 2-d)
+        tmp_mad = np.median(np.abs(tmp_m - np.median(tmp_m)))
+
+        # Spaxels where model is greater than minimum + 2.5 * MAD
+        mask = tmp_m > np.min(tmp_m) + mask_nmad * tmp_mad
+
+        # If there is less than 20 spaxels available, we don't fit
+        # the position
+        if mask.sum() < 20:
+            continue
+
+        # This sets weight to zero on spaxels where mask is False
+        # (where spaxel sum is less than minimum + 2.5 MAD)
+        ddtdata.weight[i_t] = ddtdata.weight[i_t] * mask[None, :, :]
+
+        # Fit the position.
+        # TODO: should the sky be varied on each iteration?
+        #       (currently, it is not varied)
+        pos = fit_position(ddtdata, model, i_t, maxiter=maxiter_fit_position)
+
+        # Check if the position moved too much from initial position.
+        # If it didn't move too much, update the model.
+        # If it did, cut it from the fitting for the next step.
+        dist = math.sqrt((pos[0] - data_xctr_init[i_t])**2 + 
+                         (pos[1] - data_yctr_init[i_t])**2)
+        if dist < maxmove_fit_position:
+            model.data_xctr[i_t] = pos[0]
+            model.data_yctr[i_t] = pos[1]
+        else:
+            include_in_fit[i_t] = False
+
+    # Reset weight
+    ddtdata.weight = weight_orig
+
+    # At L185 in run_ddt_galaxy_subtraction_all_regul_variable_all_epoch.i

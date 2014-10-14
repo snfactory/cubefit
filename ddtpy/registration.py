@@ -1,6 +1,57 @@
 import numpy as np
 import scipy.optimize
 
+def _fit_position_func(pos, data, model, i_t):
+    """Objective function used in fit_position.
+
+    Parameters
+    ----------
+    pos : np.ndarray of shape (2,)
+        x and y position of data.
+
+    Returns
+    -------
+    wr : np.ndarray (1-d)
+        sqrt(weight) * residual of the data and model for epoch i_t
+        for the given data position (flattened to 1-d). In
+        fit_position, we minimize the sum of the squares of this
+        function's return value, so we're minimizing sum(weight *
+        residual^2), which seems reasonable.
+
+    """
+
+    xcoords = np.arange(data.nx) - (data.nx-1)/2. + pos[0]
+    ycoords = np.arange(data.ny) - (data.ny-1)/2. + pos[1]
+    m = model.evaluate(i_t, xcoords=xcoords, ycoords=ycoords, which='all')
+    wr = np.sqrt(data.weight[i_t]) * (data.data[i_t] - m)
+    
+    return np.ravel(wr)
+
+
+def fit_position(data, model, i_t, maxiter=100):
+    """Fit data position and sky level for epoch i_t, keeping galaxy model
+    fixed.
+
+    Parameters
+    ----------
+    data : DDTData
+    model : DDTModel
+    i_t : int
+        Epoch number.
+
+    Returns
+    -------
+    x, y : float, float
+        x and y position.
+    """
+
+    pos0 = np.array([model.data_xctr[i_t], model.data_yctr[i_t]])
+    pos = scipy.optimize.leastsq(_fit_position_func, pos0,
+                                 args=(data, model, i_t), maxiter=maxiter)
+    return pos
+
+
+
 def shift_galaxy(ddt, offset, galaxy=None):
     """Galaxy offset in SPAXELS
     Parameters
@@ -30,41 +81,6 @@ def shift_galaxy(ddt, offset, galaxy=None):
         
     
     return galaxy_fix
-    
-    
-
-def sn_galaxy_registration_new(data, model, i_t, maxiter=None, 
-                               fit_flag='galaxy'):
-
-    a = np.array([0.,0.])
-    # TODO: This was 'op_nllsq' in yorick, so prob need to return 
-    # sum(registration_worker**2) here. 
-    anew = scipy.optimize.fmin(registration_worker_new, a, 
-                               args=(data, model, i_t, fit_flag),
-                               maxiter=maxiter)
-    
-    return anew
-    
-
-def registration_worker_new(a, data, model, i_t, fit_flag):
-   
-    sn_offset = np.array([0.,0.])
-    galaxy_offset = array([0.,0.])
-    if fit_flag == 'sn':
-        sn_offset = a
-    elif fit_flag == 'galaxy':
-        galaxy_offset = a 
-    else:
-        raise ValueError("<_ddt_sn_galaxy_registration_model> "+
-                         "fit_flag must be sn or galaxy")
-    # TODO: Change below to use 'evaluate'?
-    a_model = make_offset_cube(ddt, i_t, galaxy_offset=galaxy_offset, 
-                               sn_offset=sn_offset, recalculate=True)
-
-    sqrt_weight = data.weight[i_t]**0.5
-    wr = sqrt_weight*(data.data[i_t] - a_model)
-    
-    return wr
     
     
 def sn_galaxy_registration(ddt, i_t, verb=None, maxiter=None, 
