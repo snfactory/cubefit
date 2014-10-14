@@ -32,6 +32,41 @@ def shift_galaxy(ddt, offset, galaxy=None):
     return galaxy_fix
     
     
+
+def sn_galaxy_registration_new(data, model, i_t, maxiter=None, 
+                               fit_flag='galaxy'):
+
+    a = np.array([0.,0.])
+    # TODO: This was 'op_nllsq' in yorick, so prob need to return 
+    # sum(registration_worker**2) here. 
+    anew = scipy.optimize.fmin(registration_worker_new, a, 
+                               args=(data, model, i_t, fit_flag),
+                               maxiter=maxiter)
+    
+    return anew
+    
+
+def registration_worker_new(a, data, model, i_t, fit_flag):
+   
+    sn_offset = np.array([0.,0.])
+    galaxy_offset = array([0.,0.])
+    if fit_flag == 'sn':
+        sn_offset = a
+    elif fit_flag == 'galaxy':
+        galaxy_offset = a 
+    else:
+        raise ValueError("<_ddt_sn_galaxy_registration_model> "+
+                         "fit_flag must be sn or galaxy")
+    # TODO: Change below to use 'evaluate'?
+    a_model = make_offset_cube(ddt, i_t, galaxy_offset=galaxy_offset, 
+                               sn_offset=sn_offset, recalculate=True)
+
+    sqrt_weight = data.weight[i_t]**0.5
+    wr = sqrt_weight*(data.data[i_t] - a_model)
+    
+    return wr
+    
+    
 def sn_galaxy_registration(ddt, i_t, verb=None, maxiter=None, 
                            fit_flag = 'galaxy', mask_sn=0, recalculate=None):
     """          
@@ -85,7 +120,6 @@ def sn_galaxy_registration(ddt, i_t, verb=None, maxiter=None,
                              sn_offset=sn_offset, recalculate=recalculate)
     return anew
 
-
 # TODO: once op_llnsq above is sorted out, maybe this can be removed.
 def _sn_galaxy_registration_model(a, ddt, i_t, fit_flag='galaxy',
                                   recalculate=None):
@@ -120,7 +154,7 @@ def _sn_galaxy_registration_model(a, ddt, i_t, fit_flag='galaxy',
     cube_offset = make_offset_cube(ddt, i_t, galaxy_offset=galaxy_offset, 
                                    sn_offset=sn_offset, recalculate=recalculate)
     return cube_offset
-
+    
 def _registration_worker(a, extra):
     """
     Parameters
