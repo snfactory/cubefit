@@ -189,6 +189,60 @@ class DDTModel(object):
 
         return target_shift_conv[:, yslice, xslice]
 
+    def gradient_helper(self, i_t, x, xcoords, ycoords):
+        """Not sure exactly what this does yet.
+
+        Parameters
+        ----------
+        i_t : int
+            Epoch index.
+        x : np.ndarray (3-d)
+            Same shape as *data* for single epoch (nw, ny, nx).
+        xcoords : np.ndarray (1-d)
+        ycoords : np.ndarray (1-d)
+
+        Returns
+        -------
+        x : np.ndarray (3-d)
+            Shape is (nw, len(ycoords), len(xcoords)).
+        """
+
+        # Currently, by design, the coordinate system and model match
+        # the spaxel size of the data. Thus, the data array will have
+        # equal spacing with all spacings equal to 1.0. This is a
+        # requirement for the Fourier-space shifting used here.
+        if not (np.all(np.abs(np.diff(xcoords) - 1.0) < .01) and
+                np.all(np.abs(np.diff(ycoords) - 1.0) < 0.01)):
+            raise ValueError("xcoords and y coords must have equal spacing, "
+                             "with all spacings equal to 1.0")
+
+        if (xcoords[0] < self.xcoords[0] or xcoords[-1] > self.xcoords[-1] or
+            ycoords[0] < self.ycoords[0] or ycoords[-1] > self.ycoords[-1]):
+            raise ValueError("requested coordinates out of model bounds")
+        
+        # Figure out the shift needed to put the model onto the requested
+        # coordinates.
+        xshift = xcoords[0] - self.xcoords[0]
+        yshift = ycoords[0] - self.ycoords[0]
+        
+        # create 
+        target = np.zeros((self.nw, self.ny, self.nx), dtype=np.float64)
+        target[:, :x.shape[1], :x.shape[2]] = x
+
+        psf = self.psf[i_t]
+
+        for j in range(self.nw):
+            shift_phasor = fft_shift_phasor_2d(self.MODEL_SHAPE,
+                                               (yshift + self.adr_dy[i_t,j],
+                                                xshift + self.adr_dx[i_t,j]))
+
+            target[j, :, :] = ifft2(np.conj(fft2(psf[j, :, :]) *
+                                            shift_phasor) *
+                                    fft2(x[j, :, :]))
+
+        return target
+
+
 
     def psf_convolve(self, x, i_t, offset=None):
         """Convolve x with psf

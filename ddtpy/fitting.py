@@ -1,3 +1,5 @@
+from __future__ import print_function, division
+
 import copy
 
 import numpy as np
@@ -56,15 +58,17 @@ def penalty_g_all_epoch(x, model, data):
         datacube considered
     Parameters
     ----------
-    x : 3-d array 
-        model of galaxy
+    x : np.ndarray
+        1-d array, flattened 3-d galaxy model
     model : DDTModel 
     data : DDTData
     
     Returns
     -------
     penalty : float
-    
+    gradient : np.ndarray
+        1-d array of length x.size giving the gradient on penalty.
+
     Notes
     -----
     This function is only called in fit_model_all_epoch
@@ -77,10 +81,6 @@ def penalty_g_all_epoch(x, model, data):
     *       5. compute gradient by transposing steps 3, 2, and 1
     """
     
-    print "Fitting simultaneously %d exposures" % (data.nt)
-    # TODO i_fit is an option in DDT (could be only some phases) (was ddt.i_fit)
-
-
     model.gal = x.reshape(model.gal.shape)
     # Extracts sn and sky 
     for i_t in range(data.nt):
@@ -96,10 +96,22 @@ def penalty_g_all_epoch(x, model, data):
         r[i_t] = model.evaluate(i_t, xcoords=xcoords, ycoords=ycoords, 
                                 which='all')
     r -= data.data
-    
-    # Likelihood 
-    lkl_err = np.sum(data.weight*r**2)
-           
+
+    # weight * residual
+    wr = data.weight * r
+
+    # Likelihood  = sum(w * r^2)
+    lkl_err = np.sum(wr * r)
+
+    # gradient
+    grad = np.empty_like(model.gal)
+    for i_t in range(data.nt):
+        xcoords = np.arange(data.nx) - (data.nx - 1) / 2. + model.data_xctr[i_t]
+        ycoords = np.arange(data.ny) - (data.ny - 1) / 2. + model.data_yctr[i_t]
+        r[i_t] = model.evaluate(i_t, xcoords=xcoords, ycoords=ycoords, 
+                                which='all')
+        grad[:] += model.gradient_helper(i_t, wr, xcoords, ycoords)
+
     galdiff = model.gal - model.galprior
 
     # Regularization
@@ -110,10 +122,18 @@ def penalty_g_all_epoch(x, model, data):
                model.mu_xy * np.sum(dy**2) +
                model.mu_wave * np.sum(dw**2))
     
+    # debug
+    print("evaluated penalty #", iteration, ":", rgl_err + lkl_err)
+    iteration += 1
 
     # TODO: lkl_err and rgl_err need to go into output file header:
-  
     return rgl_err + lkl_err
+
+iteration = 0
+def callback(x):
+    print(iteration)
+    iteration += 1
+
 
 def fit_model_all_epoch(model, data, maxiter=1000):
     """fit galaxy, SN and sky and update the model accordingly, keeping
@@ -129,8 +149,12 @@ def fit_model_all_epoch(model, data, maxiter=1000):
     penalty = penalty_g_all_epoch
     x = model.gal.reshape((model.gal.size))
 
-    x_new = scipy.optimize.fmin_l_bfgs_b(penalty, x, args=(model, data), 
-                                         approx_grad=True) 
+    x, f, d = scipy.optimize.fmin_l_bfgs_b(penalty, x, args=(model, data), 
+                                           approx_grad=True, epsilon=100.*np.finfo(float).eps, iprint=0, callback=callback) 
     
-    model.gal = x_new
+    model.gal = x.reshape(model.gal.shape)
+
+    print("optimization finished\n"
+          "function minimum: {:f}".format(f))
+    print("info dict: ", d)
 
