@@ -5,6 +5,7 @@ import json
 
 import numpy as np
 from numpy import fft
+import math
 
 from .psf import params_from_gs, gaussian_plus_moffat_psf_4d
 from .model import DDTModel
@@ -163,7 +164,7 @@ def main(filename):
     for i_t in range(ddtdata.nt):
         if (not ddtdata.is_final_ref[i_t]) or i_t == ddtdata.master_final_ref:
             continue
-
+        
         xcoords = (np.arange(ddtdata.nx) - (ddtdata.nx - 1) / 2. +
                    model.data_xctr[i_t])
         ycoords = (np.arange(ddtdata.ny) - (ddtdata.ny - 1) / 2. +
@@ -176,7 +177,7 @@ def main(filename):
 
         # Spaxels where model is greater than minimum + 2.5 * MAD
         mask = tmp_m > np.min(tmp_m) + mask_nmad * tmp_mad
-
+        
         # If there is less than 20 spaxels available, we don't fit
         # the position
         if mask.sum() < 20:
@@ -189,8 +190,9 @@ def main(filename):
         # Fit the position.
         # TODO: should the sky be varied on each iteration?
         #       (currently, it is not varied)
-        pos = fit_position(ddtdata, model, i_t, maxiter=maxiter_fit_position)
-
+        pos, convergence = fit_position(ddtdata, model, i_t,
+                                        maxiter=maxiter_fit_position)
+        
         # Check if the position moved too much from initial position.
         # If it didn't move too much, update the model.
         # If it did, cut it from the fitting for the next step.
@@ -206,3 +208,4 @@ def main(filename):
     ddtdata.weight = weight_orig
 
     # At L185 in run_ddt_galaxy_subtraction_all_regul_variable_all_epoch.i
+

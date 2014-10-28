@@ -52,7 +52,7 @@ def make_sn_model(sn, ddt, i_t, offset=None):
     return model.psf_convolve(sn_model, i_t, offset=offset)
     
     
-    
+ 
 def penalty_g_all_epoch(x, model, data):
     """if i_t is not set, fits all the datacubes at once, else fits the 
         datacube considered
@@ -104,17 +104,21 @@ def penalty_g_all_epoch(x, model, data):
     lkl_err = np.sum(wr * r)
 
     # gradient
+    # TODO: Need to understand the gradient here: why is there complex conj in
+    # gradient_helper, why do you use wr, etc.
     grad = np.empty_like(model.gal)
     for i_t in range(data.nt):
         xcoords = np.arange(data.nx) - (data.nx - 1) / 2. + model.data_xctr[i_t]
         ycoords = np.arange(data.ny) - (data.ny - 1) / 2. + model.data_yctr[i_t]
         r[i_t] = model.evaluate(i_t, xcoords=xcoords, ycoords=ycoords, 
                                 which='all')
-        grad[:] += model.gradient_helper(i_t, wr, xcoords, ycoords)
+        grad[:] += model.gradient_helper(i_t, wr[i_t], xcoords, ycoords)
 
-    galdiff = model.gal - model.galprior
 
     # Regularization
+    # TODO: figure out the gradient of the regularization
+    galdiff = model.gal - model.galprior
+    galdiff /= data.data_avg[:,None,None]
     dw = galdiff[1:, :, :] - galdiff[:-1, :, :]
     dy = galdiff[:, 1:, :] - galdiff[:, :-1, :]
     dx = galdiff[:, :, 1:] - galdiff[:, :, :-1]
@@ -123,14 +127,17 @@ def penalty_g_all_epoch(x, model, data):
                model.mu_wave * np.sum(dw**2))
     
     # debug
-    print("evaluated penalty #", iteration, ":", rgl_err + lkl_err)
+    global iteration
+    print("iteration # ", iteration,":", rgl_err, lkl_err)
+    #print("evaluated penalty #", iteration, ":", rgl_err + lkl_err)
     iteration += 1
 
     # TODO: lkl_err and rgl_err need to go into output file header:
-    return rgl_err + lkl_err
+    return rgl_err + lkl_err, grad.reshape(model.gal.size)
 
 iteration = 0
 def callback(x):
+    global iteration
     print(iteration)
     iteration += 1
 
@@ -150,7 +157,9 @@ def fit_model_all_epoch(model, data, maxiter=1000):
     x = model.gal.reshape((model.gal.size))
 
     x, f, d = scipy.optimize.fmin_l_bfgs_b(penalty, x, args=(model, data), 
-                                           approx_grad=True, epsilon=100.*np.finfo(float).eps, iprint=0, callback=callback) 
+                                           approx_grad=False, factr = 10e-100,
+                                           epsilon=100.*np.finfo(float).eps,
+                                           iprint=0, callback=callback) 
     
     model.gal = x.reshape(model.gal.shape)
 

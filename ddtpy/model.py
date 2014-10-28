@@ -228,17 +228,17 @@ class DDTModel(object):
         # create 
         target = np.zeros((self.nw, self.ny, self.nx), dtype=np.float64)
         target[:, :x.shape[1], :x.shape[2]] = x
-
+        
         psf = self.psf[i_t]
 
         for j in range(self.nw):
             shift_phasor = fft_shift_phasor_2d(self.MODEL_SHAPE,
                                                (yshift + self.adr_dy[i_t,j],
                                                 xshift + self.adr_dx[i_t,j]))
-
+            
             target[j, :, :] = ifft2(np.conj(fft2(psf[j, :, :]) *
                                             shift_phasor) *
-                                    fft2(x[j, :, :]))
+                                    fft2(target[j, :, :]))
 
         return target
 

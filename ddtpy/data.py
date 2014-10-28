@@ -106,6 +106,7 @@ class DDTData(object):
         self.master_final_ref = master_final_ref
         self.header = header
         self.spaxel_size = spaxel_size
+        self.data_avg = data[self.is_final_ref].mean(axis=(0, 2, 3))
 
     def guess_sky(self, sig, maxiter=10):
         """Guess sky based on lower signal spaxels compatible with variance

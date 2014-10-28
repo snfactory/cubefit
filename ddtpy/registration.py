@@ -47,7 +47,7 @@ def fit_position(data, model, i_t, maxiter=100):
 
     pos0 = np.array([model.data_xctr[i_t], model.data_yctr[i_t]])
     pos = scipy.optimize.leastsq(_fit_position_func, pos0,
-                                 args=(data, model, i_t), maxiter=maxiter)
+                                 args=(data, model, i_t))
     return pos
 
 
