@@ -116,24 +116,46 @@ def penalty_g_all_epoch(x, model, data):
 
 
     # Regularization
-    # TODO: figure out the gradient of the regularization
+
     galdiff = model.gal - model.galprior
-    galdiff /= data.data_avg[:,None,None]
+    galdiff /= data.data_avg[:, None, None]
     dw = galdiff[1:, :, :] - galdiff[:-1, :, :]
     dy = galdiff[:, 1:, :] - galdiff[:, :-1, :]
     dx = galdiff[:, :, 1:] - galdiff[:, :, :-1]
+
+    # Regularlization penalty term
     rgl_err = (model.mu_xy * np.sum(dx**2) +
                model.mu_xy * np.sum(dy**2) +
                model.mu_wave * np.sum(dw**2))
     
+    # Gradient in regularization penalty term
+    #
+    # This is clearer when the loops are explicitly written out.
+    # For a loop that goes over all adjacent elements in a given dimension,
+    # one would do (pseudocode):
+    # for i in ...:
+    #     d = arr[i+1] - arr[i]
+    #     penalty += hyper * d^2
+    #     gradient[i+1] += 2 * hyper * d
+    #     gradient[i]   -= 2 * hyper * d
+
+    rgl_grad = np.zeros(galdiff.shape, dtype=np.float64)
+    rgl_grad[:, :, 1:] += 2. * model.mu_xy * dx
+    rgl_grad[:, :, :-1] -= 2. * model.mu_xy * dx
+    rgl_grad[:, 1:, :] += 2. * model.mu_xy * dy
+    rgl_grad[:, :-1,:] -= 2. * model.mu_xy * dy
+    rgl_grad[1:, :, :] += 2. * model.mu_wave * dw
+    rgl_grad[:-1, :, :] -= 2. * model.mu_wave * dw
+
     # debug
     global iteration
     print("iteration # ", iteration,":", rgl_err, lkl_err)
     #print("evaluated penalty #", iteration, ":", rgl_err + lkl_err)
     iteration += 1
 
-    # TODO: lkl_err and rgl_err need to go into output file header:
-    return rgl_err + lkl_err, grad.reshape(model.gal.size)
+    toterr = lkl_err + rgl_err
+    totgrad = grad + rgl_grad
+    return toterr, totgrad.reshape(model.gal.size)
 
 iteration = 0
 def callback(x):
