@@ -52,13 +52,13 @@ def main(filename):
 
     # Load data from list of FITS files.
     data, weight, wave = read_dataset(conf["IN_CUBE"])
-
+    print(data[0,0,0] == 0)
     # Testing with only a couple wavelengths
-    data = data[:, 0:1, :, :]
-    weight = weight[:, 0:1, :, :]
-    wave = wave[0:1]
+    data = data[:, 200:201, :, :]*10**15
+    weight = weight[:, 200:201, :, :]*10**(-15*2)
+    wave = wave[200:201]
     
-
+    
     # Zero-weight array elements that are NaN
     # TODO: why are there nans in here?
     mask = np.isnan(data)

@@ -52,10 +52,10 @@ def make_sn_model(sn, ddt, i_t, offset=None):
     return model.psf_convolve(sn_model, i_t, offset=offset)
     
     
- 
+
 def penalty_g_all_epoch(x, model, data):
-    """if i_t is not set, fits all the datacubes at once, else fits the 
-        datacube considered
+    """computes likelihood and regularization penalty for a given galaxy model
+    
     Parameters
     ----------
     x : np.ndarray
@@ -71,7 +71,6 @@ def penalty_g_all_epoch(x, model, data):
 
     Notes
     -----
-    This function is only called in fit_model_all_epoch
     Used in op_mnb (DDT/OptimPack-1.3.2/yorick/OptimPack1.i)
     * Compute likelihood term and gradient on NORMALIZED x
     *       1. compute 4-D model: g(x)
@@ -80,8 +79,34 @@ def penalty_g_all_epoch(x, model, data):
     *       4. compute residuals and penalty
     *       5. compute gradient by transposing steps 3, 2, and 1
     """
-    
+
     model.gal = x.reshape(model.gal.shape)
+
+    lkl_penalty, lkl_grad = likelihood_penalty(model, data)
+    rgl_penalty, rgl_grad = regularization_penalty(model, data)
+
+    tot_penalty = lkl_penalty + rgl_penalty
+    tot_grad = lkl_grad + rgl_grad
+    
+    return tot_penalty, tot_grad
+
+def likelihood_penalty(model, data):
+    """computes likelihood and likelihood gradient for galaxy model
+    
+    Parameters
+    ----------
+    x : np.ndarray
+        1-d array, flattened 3-d galaxy model
+    model : DDTModel 
+    data : DDTData
+    
+    Returns
+    -------
+    penalty : float
+    gradient : np.ndarray
+        1-d array of length x.size giving the gradient on penalty.
+    """
+
     # Extracts sn and sky 
     for i_t in range(data.nt):
         if i_t != data.master_final_ref:
@@ -114,8 +139,24 @@ def penalty_g_all_epoch(x, model, data):
                                 which='all')
         grad[:] += model.gradient_helper(i_t, wr[i_t], xcoords, ycoords)
 
+    return lkl_err, grad.reshape(model.gal.size)
 
-    # Regularization
+def regularization_penalty(model, data):
+    """computes regularization penalty and gradient for a given galaxy model
+    
+    Parameters
+    ----------
+    x : np.ndarray
+        1-d array, flattened 3-d galaxy model
+    model : DDTModel 
+    data : DDTData
+    
+    Returns
+    -------
+    penalty : float
+    gradient : np.ndarray
+        1-d array of length x.size giving the gradient on penalty.
+    """
 
     galdiff = model.gal - model.galprior
     galdiff /= data.data_avg[:, None, None]
@@ -146,16 +187,8 @@ def penalty_g_all_epoch(x, model, data):
     rgl_grad[:, :-1,:] -= 2. * model.mu_xy * dy
     rgl_grad[1:, :, :] += 2. * model.mu_wave * dw
     rgl_grad[:-1, :, :] -= 2. * model.mu_wave * dw
-
-    # debug
-    global iteration
-    print("iteration # ", iteration,":", rgl_err, lkl_err)
-    #print("evaluated penalty #", iteration, ":", rgl_err + lkl_err)
-    iteration += 1
-
-    toterr = lkl_err + rgl_err
-    totgrad = grad + rgl_grad
-    return toterr, totgrad.reshape(model.gal.size)
+    
+    return rgl_err, rgl_grad.reshape(model.gal.size)
 
 iteration = 0
 def callback(x):
@@ -178,9 +211,10 @@ def fit_model_all_epoch(model, data, maxiter=1000):
     penalty = penalty_g_all_epoch
     x = model.gal.reshape((model.gal.size))
 
+    #bounds = zip(np.ones(model.gal.size)*10e-6,
+    #             np.ones(model.gal.size)*data.data.max())
     x, f, d = scipy.optimize.fmin_l_bfgs_b(penalty, x, args=(model, data), 
-                                           approx_grad=False, factr = 10e-100,
-                                           epsilon=100.*np.finfo(float).eps,
+                                           approx_grad=False,# bounds = bounds,
                                            iprint=0, callback=callback) 
     
     model.gal = x.reshape(model.gal.shape)
