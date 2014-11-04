@@ -3,15 +3,12 @@ from __future__ import print_function
 
 import ddtpy
 
-def main():
-    from argparse import ArgumentParser
+from argparse import ArgumentParser
 
-    parser = ArgumentParser(
-        description="DDT: Datacube Deconvolution Thingy")
-    parser.add_argument("filename", help="path to configuration file")
+parser = ArgumentParser(description="DDT: Datacube Deconvolution Thingy")
+parser.add_argument("filename", help="configuration file")
+parser.add_argument("data_dir", help="directory containing FITS data files")
 
-    args = parser.parse_args()
+args = parser.parse_args()
 
-    ddtpy.main(args.filename)
-
-main()
+ddtpy.main(args.filename, args.data_dir)

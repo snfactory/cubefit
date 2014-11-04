@@ -1,5 +1,6 @@
 from __future__ import print_function, division
 
+import os.path
 from copy import deepcopy
 import json
 
@@ -17,13 +18,15 @@ from .registration import fit_position
 __all__ = ["main"]
 
 
-def main(filename):
+def main(filename, data_dir):
     """Do everything.
 
     Parameters
     ----------
     filename : str
         JSON-formatted config file.
+    data_dir : str
+        Directory containing FITS files given in the config file.
     """
 
     with open(filename) as f:
@@ -48,17 +51,18 @@ def main(filename):
 
     # Load the header from the final ref or first cube
     i = master_final_ref if (master_final_ref >= 0) else 0
-    header = read_select_header_keys(conf["IN_CUBE"][i])
+    fname = os.path.join(data_dir, conf["IN_CUBE"][i])
+    header = read_select_header_keys(fname)
 
     # Load data from list of FITS files.
-    data, weight, wave = read_dataset(conf["IN_CUBE"])
-    print(data[0,0,0] == 0)
+    fnames = [os.path.join(data_dir, fname) for fname in conf["IN_CUBE"]]
+    data, weight, wave = read_dataset(fnames)
+
     # Testing with only a couple wavelengths
-    data = data[:, 200:201, :, :]*10**15
-    weight = weight[:, 200:201, :, :]*10**(-15*2)
-    wave = wave[200:201]
-    
-    
+    #data = data[:, 0:1, :, :]
+    #weight = weight[:, 0:1, :, :]
+    #wave = wave[0:1]
+
     # Zero-weight array elements that are NaN
     # TODO: why are there nans in here?
     mask = np.isnan(data)
@@ -128,18 +132,25 @@ def main(filename):
         data_yctr_init = np.zeros(ddtdata.nt)
 
     # Initialize model
-    model = DDTModel((ddtdata.nt, ddtdata.nw), psf_ellipticity, psf_alpha,
+    model = DDTModel(ddtdata.nt, ddtdata.wave, psf_ellipticity, psf_alpha,
                      adr_dx, adr_dy, spaxel_size,
                      conf["MU_GALAXY_XY_PRIOR"],
                      conf["MU_GALAXY_LAMBDA_PRIOR"],
                      data_xctr_init, data_yctr_init,
                      skyguess)
 
+
     # Perform initial fit, holding position constant (at settings from
     # conf file PARAM_TARGET_[X,Y]P, directly above)
     # This fits the galaxy, SN and sky and updates the model accordingly,
     # keeping registration fixed.
     fit_model_all_epoch(model, ddtdata)
+
+    # Test plotting
+    from .plotting import plot_timeseries
+    fig = plot_timeseries(ddtdata, model)
+    fig.savefig("testfigure.png")
+    exit()
 
     # Fit registration on just the final refs
     # ==================================================================
@@ -208,4 +219,3 @@ def main(filename):
     ddtdata.weight = weight_orig
 
     # At L185 in run_ddt_galaxy_subtraction_all_regul_variable_all_epoch.i
-
