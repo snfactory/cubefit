@@ -100,7 +100,7 @@ def refraction_index_of_air_minus_one(p, t, h, wave):
     assert p.ndim == t.ndim == h.ndim == wave.ndim == 1
     assert p.shape == t.shape == h.shape
 
-    wave *= 1.e-4            # convert wavelength to microns
+    wave = wave * 1.e-4      # convert wavelength to microns
     invwave2 = (1./wave)**2  # inverse microns squared
 
     n = (6.4328e-5 +

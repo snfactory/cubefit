@@ -89,31 +89,21 @@ def penalty_g_all_epoch(x, model, data):
     
     # calculate residual 
     # ddt_make_all_cube uses ddt.i_fit and only calculates those*/  
-    r = np.empty_like(data.data)
-    for i_t in range(data.nt):
-        xcoords = np.arange(data.nx) - (data.nx - 1) / 2. + model.data_xctr[i_t]
-        ycoords = np.arange(data.ny) - (data.ny - 1) / 2. + model.data_yctr[i_t]
-        r[i_t] = model.evaluate(i_t, xcoords=xcoords, ycoords=ycoords, 
-                                which='all')
-    r -= data.data
 
-    # weight * residual
-    wr = data.weight * r
-
-    # Likelihood  = sum(w * r^2)
-    lkl_err = np.sum(wr * r)
-
-    # gradient
-    # TODO: Need to understand the gradient here: why is there complex conj in
-    # gradient_helper, why do you use wr, etc.
+    lkl_err = 0.0
     grad = np.empty_like(model.gal)
     for i_t in range(data.nt):
-        xcoords = np.arange(data.nx) - (data.nx - 1) / 2. + model.data_xctr[i_t]
-        ycoords = np.arange(data.ny) - (data.ny - 1) / 2. + model.data_yctr[i_t]
-        r[i_t] = model.evaluate(i_t, xcoords=xcoords, ycoords=ycoords, 
-                                which='all')
-        grad[:] += model.gradient_helper(i_t, wr[i_t], xcoords, ycoords)
+        xcoords = np.arange(data.nx) - (data.nx-1)/2. + model.data_xctr[i_t]
+        ycoords = np.arange(data.ny) - (data.ny-1)/2. + model.data_yctr[i_t]
+        m = model.evaluate(i_t, xcoords=xcoords, ycoords=ycoords, 
+                           which='all')
+        r = data.data[i_t] - m
+        wr = data.weight[i_t] * r
+        lkl_err += np.sum(wr * r)
 
+        # gradient
+        grad += model.gradient_helper(i_t, wr, xcoords, ycoords)
+        
 
     # Regularization
 

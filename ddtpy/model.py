@@ -13,12 +13,14 @@ class DDTModel(object):
 
     Parameters
     ----------
-    shape : 2-tuple of int
-        Model dimensions in (time, wave). Time and wave must match
-        that of the data.
+    nt : 2-tuple of int
+        Model dimension in time.
+    wave : np.ndarray
+        One-dimensional array of wavelengths in angstroms. Should match
+        data.
     psf_ellipticity, psf_alpha : np.ndarray (2-d)
         Parameters characterizing the PSF at each time, wavelength. Shape
-        of both must match `shape` parameter.
+        of both must be (nt, len(wave)).
     adr_dx, adr_dy : np.ndarray (2-d)
         Atmospheric differential refraction in x and y directions, in spaxels,
         relative to reference wavelength.
@@ -32,7 +34,7 @@ class DDTModel(object):
         when fitting model.
     skyguess : np.ndarray (2-d)
         Initial guess at sky. Sky is a spatially constant value, so the
-        shape is the same as ``shape``.
+        shape is (nt, len(wave)).
 
     Notes
     -----
@@ -51,23 +53,27 @@ class DDTModel(object):
 
     MODEL_SHAPE = (32, 32)
 
-    def __init__(self, shape, psf_ellipticity, psf_alpha, adr_dx, adr_dy,
+    def __init__(self, nt, wave, psf_ellipticity, psf_alpha, adr_dx, adr_dy,
                  spaxel_size, mu_xy, mu_wave, data_xctr_init, data_yctr_init,
                  skyguess):
 
         ny, nx = self.MODEL_SHAPE
-        nt, nw = shape
-
-        if psf_ellipticity.shape != shape:
-            raise ValueError("psf_ellipticity has wrong shape")
-        if psf_alpha.shape != shape:
-            raise ValueError("psf_alpha has wrong shape")
+        nw, = wave.shape
 
         # Model shape
         self.nt = nt
         self.nw = nw
         self.ny = ny
         self.nx = nx
+
+        self.wave = wave
+
+        if psf_ellipticity.shape != (self.nt, self.nw):
+            raise ValueError("psf_ellipticity has wrong shape")
+        if psf_alpha.shape != (self.nt, self.nw):
+            raise ValueError("psf_alpha has wrong shape")
+
+        self.wave = wave
 
         # Galaxy and sky part of the model
         self.gal = np.zeros((nw, ny, nx))
@@ -116,7 +122,8 @@ class DDTModel(object):
         self.spaxel_size = spaxel_size
         self.mu_xy = mu_xy
         self.mu_wave = mu_wave
-    
+        
+
     def evaluate(self, i_t, xcoords, ycoords, which='galaxy'):
         """Evalute the model at the given coordinates for a single epoch.
 
