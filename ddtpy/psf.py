@@ -134,32 +134,3 @@ def gaussian_plus_moffat_psf(shape, x0, y0, ellipticity, alpha, angle):
     norm_psf = 1. / (1./norm_moffat + eta * 1./norm_gauss)
 
     return norm_psf * (moffat + eta*gauss)
-
-def roll_psf(psf, dx, dy):
-    """Rolls the psf by dx, dy in x and y coordinates.
-
-    The equivalent of the Yorick version with job = 0 is
-
-    dx, dy = (1 - sn_x, 1 - sn_y) [if sn_x = (nx+1)//2]
-    or
-    dx, dy = (-sn_x, -sn_y) [if sn_x = (nx-1)//2]  # python indexed
-
-    job=1 is 
-
-    Parameters
-    ----------
-    psf : 4-d array
-    dx, dy : int
-        Shift in x and y coordinates.
-
-    Returns
-    -------
-    rolled_psf : 4-d array
-
-    """
-
-    assert psf.ndim == 4  # just checkin' (in Yorick this is also used for 3-d)
-                          # but we haven't implemented that here.
-
-    tmp = np.roll(psf, dy, 2)  # roll along y (axis = 2)
-    return np.roll(tmp, dx, 3)  # roll along x (axis = 3)

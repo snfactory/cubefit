@@ -12,8 +12,7 @@ from .psf import params_from_gs, gaussian_plus_moffat_psf_4d
 from .model import DDTModel
 from .data import read_dataset, read_select_header_keys, DDTData
 from .adr import calc_paralactic_angle, differential_refraction
-from .fitting import fit_model_all_epoch
-from .registration import fit_position
+from .fitting import guess_sky, fit_model_all_epoch, fit_position
 
 __all__ = ["main"]
 
@@ -130,7 +129,7 @@ def main(filename, data_dir):
     adr_dy = delta_r * np.cos(paralactic_angle)[:, None]
 
     # Make a first guess at the sky level based on the data.
-    skyguess = ddtdata.guess_sky(2.0)
+    skyguess = guess_sky(ddtdata, 2.0)
 
     # Initialize model
     model = DDTModel(ddtdata.nt, ddtdata.wave, psf_ellipticity, psf_alpha,
