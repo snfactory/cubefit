@@ -72,41 +72,58 @@ def read_dataset(filenames):
 
 
 class DDTData(object):
-    """This class is the equivalent of `ddt.ddt_data` in the Yorick version.
+    """A container for data with some consistency checks.
 
     Parameters
     ----------
     data : ndarray (4-d)
     weight : ndarray (4-d)
     wave : ndarray (1-d)
+    xctr_init, yctr_init : ndarray
+        1-d arrays of length `nt` giving the position of the center of the
+        data array in model coordinates (in which 0, 0 is defined to be 
+        the position of the SN).
     is_final_ref : ndarray (bool)
     master_final_ref : int
     header : dict
     spaxel_size : float
     """
     
-    def __init__(self, data, weight, wave, is_final_ref, master_final_ref,
-                 header, spaxel_size):
+    def __init__(self, data, weight, wave, xctr_init, yctr_init,
+                 is_final_ref, master_final_ref, header, spaxel_size):
+
+        # Consistency checks
+        if data.shape != weight.shape:
+            raise ValueError("shape of weight and data must match")
 
         if len(wave) != data.shape[1]:
             raise ValueError("length of wave must match data axis=1")
 
+        if not (len(xctr_init) == len(yctr_init) == data.shape[0]):
+            raise ValueError("length of xctr_init and yctr_init must match "
+                             "data axis 0")
+
         if len(is_final_ref) != data.shape[0]:
             raise ValueError("length of is_final_ref and data must match")
-
-        if data.shape != weight.shape:
-            raise ValueError("shape of weight and data must match")
 
         self.data = data
         self.weight = weight
         self.wave = wave
         self.nt, self.nw, self.ny, self.nx = self.data.shape
 
+        self.xctr_init = np.copy(xctr_init)
+        self.yctr_init = np.copy(yctr_init)
+        self.xctr = np.copy(xctr_init)
+        self.yctr = np.copy(yctr_init)
+
         self.is_final_ref = is_final_ref
         self.master_final_ref = master_final_ref
         self.header = header
         self.spaxel_size = spaxel_size
+
+        # store average spectrum of final refs (note that this includes sky!)
         self.data_avg = data[self.is_final_ref].mean(axis=(0, 2, 3))
+
 
     def guess_sky(self, sig, maxiter=10):
         """Guess sky based on lower signal spaxels compatible with variance

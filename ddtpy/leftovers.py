@@ -1,57 +1,57 @@
-import numpy as np
-import scipy.optimize
+# This is a temporary file holding leftover functions that were converted
+# from Yorick but don't seem to be needed anymore.
+#
+# TODO: These can be removed after we decide that we're sure we don't
+# need them.
 
-def _fit_position_func(pos, data, model, i_t):
-    """Objective function used in fit_position.
-
-    Parameters
-    ----------
-    pos : np.ndarray of shape (2,)
-        x and y position of data.
-
-    Returns
-    -------
-    wr : np.ndarray (1-d)
-        sqrt(weight) * residual of the data and model for epoch i_t
-        for the given data position (flattened to 1-d). In
-        fit_position, we minimize the sum of the squares of this
-        function's return value, so we're minimizing sum(weight *
-        residual^2), which seems reasonable.
-
+# was in fitting.py:
+def make_offset_cube(ddt,i_t, sn_offset=None, galaxy_offset=None,
+                     recalculate=None):
     """
-
-    xcoords = np.arange(data.nx) - (data.nx-1)/2. + pos[0]
-    ycoords = np.arange(data.ny) - (data.ny-1)/2. + pos[1]
-    m = model.evaluate(i_t, xcoords=xcoords, ycoords=ycoords, which='all')
-    wr = np.sqrt(data.weight[i_t]) * (data.data[i_t] - m)
+    This fn is only used in _sn_galaxy_registration_model in registration.py
+    FIXME: this doesn't include the SN position offset, 
+           that is applied at the PSF convolution step
+    """
+    if galaxy_offset is None:
+        galaxy_offset = np.array([0.,0.])
     
-    return np.ravel(wr)
+    if sn_offset is None:
+        sn_offset = np.array([0.,0.])
+  
+    model = model.psf_convolve(ddt.model_gal, i_t, 
+                              offset=galaxy_offset)
+    # recalculate the best SN
+    if recalculate:
+        # Below fn in ddt_fit_toolbox.i
+        sn_sky = model.update_sn_and_sky(ddt, i_t, 
+                                          galaxy_offset=galaxy_offset, 
+                                          sn_offset=sn_offset)
+        sn = sn_sky['sn']
+        sky = sn_sky['sky']
+    else:
+        sn = ddt.model_sn[i_t,:]
+        sky = ddt.model_sky[i_t,:]
+  
+    model += make_sn_model(sn, ddt, i_t, offset=sn_offset)
+
+    model += sky[:,None,None]
+
+    return ddt.r(model)
 
 
-def fit_position(data, model, i_t, maxiter=100):
-    """Fit data position and sky level for epoch i_t, keeping galaxy model
-    fixed.
-
-    Parameters
-    ----------
-    data : DDTData
-    model : DDTModel
-    i_t : int
-        Epoch number.
-
-    Returns
-    -------
-    x, y : float, float
-        x and y position.
+# was in fitting.py:
+def make_sn_model(sn, ddt, i_t, offset=None):
+    """offsets in spaxels
     """
+    if not isinstance(offset, np.ndarray):
+        offset = np.array([0.,0.])
+    sn_model = np.zeros((ddt.nw,ddt.psf_ny, ddt.psf_nx))
+    sn_model[:,ddt.model_sn_y, ddt.model_sn_x] = sn
+    
+    return model.psf_convolve(sn_model, i_t, offset=offset)
 
-    pos0 = np.array([model.data_xctr[i_t], model.data_yctr[i_t]])
-    pos = scipy.optimize.leastsq(_fit_position_func, pos0,
-                                 args=(data, model, i_t))
-    return pos
 
-
-
+# was in registration.py:
 def shift_galaxy(ddt, offset, galaxy=None):
     """Galaxy offset in SPAXELS
     Parameters
@@ -82,7 +82,8 @@ def shift_galaxy(ddt, offset, galaxy=None):
     
     return galaxy_fix
     
-    
+
+# was in registration.py:    
 def sn_galaxy_registration(ddt, i_t, verb=None, maxiter=None, 
                            fit_flag = 'galaxy', mask_sn=0, recalculate=None):
     """          
@@ -136,6 +137,8 @@ def sn_galaxy_registration(ddt, i_t, verb=None, maxiter=None,
                              sn_offset=sn_offset, recalculate=recalculate)
     return anew
 
+
+# was in registration.py:
 # TODO: once op_llnsq above is sorted out, maybe this can be removed.
 def _sn_galaxy_registration_model(a, ddt, i_t, fit_flag='galaxy',
                                   recalculate=None):
@@ -170,7 +173,9 @@ def _sn_galaxy_registration_model(a, ddt, i_t, fit_flag='galaxy',
     cube_offset = make_offset_cube(ddt, i_t, galaxy_offset=galaxy_offset, 
                                    sn_offset=sn_offset, recalculate=recalculate)
     return cube_offset
-    
+
+
+# was in registration.py:
 def _registration_worker(a, extra):
     """
     Parameters
@@ -206,5 +211,3 @@ def _registration_worker(a, extra):
   
     return wr
 
-
- 

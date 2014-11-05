@@ -6,53 +6,6 @@ import numpy as np
 import scipy.optimize
 
 
-        
-def make_offset_cube(ddt,i_t, sn_offset=None, galaxy_offset=None,
-                     recalculate=None):
-    """
-    This fn is only used in _sn_galaxy_registration_model in registration.py
-    FIXME: this doesn't include the SN position offset, 
-           that is applied at the PSF convolution step
-    """
-    if galaxy_offset is None:
-        galaxy_offset = np.array([0.,0.])
-    
-    if sn_offset is None:
-        sn_offset = np.array([0.,0.])
-  
-    model = model.psf_convolve(ddt.model_gal, i_t, 
-                              offset=galaxy_offset)
-    # recalculate the best SN
-    if recalculate:
-        # Below fn in ddt_fit_toolbox.i
-        sn_sky = model.update_sn_and_sky(ddt, i_t, 
-                                          galaxy_offset=galaxy_offset, 
-                                          sn_offset=sn_offset)
-        sn = sn_sky['sn']
-        sky = sn_sky['sky']
-    else:
-        sn = ddt.model_sn[i_t,:]
-        sky = ddt.model_sky[i_t,:]
-  
-    model += make_sn_model(sn, ddt, i_t, offset=sn_offset)
-
-    model += sky[:,None,None]
-
-    return ddt.r(model)
-    
-
-def make_sn_model(sn, ddt, i_t, offset=None):
-    """offsets in spaxels
-    """
-    if not isinstance(offset, np.ndarray):
-        offset = np.array([0.,0.])
-    sn_model = np.zeros((ddt.nw,ddt.psf_ny, ddt.psf_nx))
-    sn_model[:,ddt.model_sn_y, ddt.model_sn_x] = sn
-    
-    return model.psf_convolve(sn_model, i_t, offset=offset)
-    
-    
-
 def penalty_g_all_epoch(x, model, data):
     """computes likelihood and regularization penalty for a given galaxy model
     
@@ -118,16 +71,15 @@ def likelihood_penalty(model, data):
     lkl_err = 0.0
     grad = np.empty_like(model.gal)
     for i_t in range(data.nt):
-        xcoords = np.arange(data.nx) - (data.nx-1)/2. + model.data_xctr[i_t]
-        ycoords = np.arange(data.ny) - (data.ny-1)/2. + model.data_yctr[i_t]
-        m = model.evaluate(i_t, xcoords=xcoords, ycoords=ycoords, 
-                           which='all')
+        m = model.evaluate(i_t, data.xctr[i], data.yctr[i],
+                           (data.ny, data.nx), which='all')
         r = data.data[i_t] - m
         wr = data.weight[i_t] * r
         lkl_err += np.sum(wr * r)
 
         # gradient
-        grad += model.gradient_helper(i_t, wr, xcoords, ycoords)
+        grad += model.gradient_helper(i_t, wr, data.xctr[i], data.yctr[i],
+                                      (data.ny, data.nx))
         
     return lkl_err, grad.reshape(model.gal.size)
 
@@ -181,12 +133,6 @@ def regularization_penalty(model, data):
     
     return rgl_err, rgl_grad.reshape(model.gal.size)
 
-iteration = 0
-def callback(x):
-    global iteration
-    print(iteration)
-    iteration += 1
-
 
 def fit_model_all_epoch(model, data, maxiter=1000):
     """fit galaxy, SN and sky and update the model accordingly, keeping
@@ -199,14 +145,13 @@ def fit_model_all_epoch(model, data, maxiter=1000):
 
     """
     
-    penalty = penalty_g_all_epoch
-    x = model.gal.reshape((model.gal.size))
+    x0 = model.gal.reshape((model.gal.size))
 
     #bounds = zip(np.ones(model.gal.size)*10e-6,
     #             np.ones(model.gal.size)*data.data.max())
-    x, f, d = scipy.optimize.fmin_l_bfgs_b(penalty, x, args=(model, data), 
-                                           approx_grad=False,# bounds = bounds,
-                                           iprint=0, callback=callback) 
+    x, f, d = scipy.optimize.fmin_l_bfgs_b(penalty_g_all_epoch, x0,
+                                           # bounds=bounds,
+                                           args=(model, data)) 
     
     model.gal = x.reshape(model.gal.shape)
 
@@ -214,3 +159,42 @@ def fit_model_all_epoch(model, data, maxiter=1000):
           "function minimum: {:f}".format(f))
     print("info dict: ", d)
 
+
+# TODO: should we change this to use a general-purpose optimizer rather 
+# than leastsq? Leastsq seems like a strange choice - its a non-linear
+# problem.
+def fit_position(data, model, i_t, maxiter=100):
+    """Fit data position for epoch i_t, keeping galaxy model
+    fixed. Doesn't modify model or data.
+
+    Parameters
+    ----------
+    data : DDTData
+    model : DDTModel
+    i_t : int
+        Epoch number.
+
+    Returns
+    -------
+    x, y : float, float
+        x and y position.
+    """
+
+    # Define a function that returns the sqrt(weight) * (data-model)
+    # for the given epoch i_t, given the data position.
+    # scipy.optimize.leastsq will minimize the sum of the squares of this
+    # function's return value, so we're minimizing
+    # sum(weight * residual^2), which seems reasonable.
+    def objective_func(pos):
+        m = model.evaluate(i_t, pos[0], pos[1], (data.ny, data.nx),
+                           which='all')
+        out = np.sqrt(data.weight[i_t]) * (data.data[i_t] - m)
+        return np.ravel(out)
+
+    pos0 = [data.xctr[i_t], data.yctr[i_t]]  # initial position
+
+    pos, info = scipy.optimize.leastsq(objective_func, pos0)
+    if info not in [1, 2, 3, 4]:
+        raise RuntimeError("optimize.leastsq didn't converge properly")
+
+    return pos[0], pos[1]

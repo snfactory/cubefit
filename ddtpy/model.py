@@ -54,8 +54,7 @@ class DDTModel(object):
     MODEL_SHAPE = (32, 32)
 
     def __init__(self, nt, wave, psf_ellipticity, psf_alpha, adr_dx, adr_dy,
-                 spaxel_size, mu_xy, mu_wave, data_xctr_init, data_yctr_init,
-                 skyguess):
+                 mu_xy, mu_wave, spaxel_size, skyguess):
 
         ny, nx = self.MODEL_SHAPE
         nw, = wave.shape
@@ -66,22 +65,14 @@ class DDTModel(object):
         self.ny = ny
         self.nx = nx
 
-        self.wave = wave
-
-        if psf_ellipticity.shape != (self.nt, self.nw):
+        # consistency checks on inputs
+        s = (nt, nw)
+        if not (psf_ellipticity.shape == s):
             raise ValueError("psf_ellipticity has wrong shape")
-        if psf_alpha.shape != (self.nt, self.nw):
+        if not (psf_alpha.shape == s):
             raise ValueError("psf_alpha has wrong shape")
-
-        self.wave = wave
-
-        # Galaxy and sky part of the model
-        self.gal = np.zeros((nw, ny, nx))
-        self.galprior = np.zeros((nw, ny, nx))
-        self.sky = skyguess
-        self.sn = np.zeros((nt, nw))
-        self.eta = np.ones(nt)  # eta = transmission
-        self.final_ref_sky = np.zeros(nw)
+        if not (adr_dx.shape == adr_dy.shape == s):
+            raise ValueError("adr_dx and adr_dy shape must be (nt, nw)")
 
         # Coordinates of model grid
         array_xctr = (nx - 1) / 2.0
@@ -89,10 +80,30 @@ class DDTModel(object):
         self.xcoords = np.arange(nx, dtype=np.float64) - array_xctr
         self.ycoords = np.arange(ny, dtype=np.float64) - array_yctr
 
-        # PSF part of the model
-        self.psf = gaussian_plus_moffat_psf_4d(self.MODEL_SHAPE, array_xctr,
-                                               array_yctr,
+        # wavelength grid of the model (fixed; should be same as data)
+        self.wave = wave
+
+        # ADR part of the model (fixed)
+        self.adr_dx = adr_dx
+        self.adr_dy = adr_dy
+
+        # PSF part of the model (fixed)
+        self.psf = gaussian_plus_moffat_psf_4d(self.MODEL_SHAPE,
+                                               array_xctr, array_yctr,
                                                psf_ellipticity, psf_alpha)
+
+        # hyperparameters and spaxel size
+        self.mu_xy = mu_xy
+        self.mu_wave = mu_wave
+        self.spaxel_size = spaxel_size
+
+        # Galaxy and sky part of the model
+        self.gal = np.zeros((nw, ny, nx))
+        self.galprior = np.zeros((nw, ny, nx))
+        self.sky = skyguess
+        self.sn = np.zeros((nt, nw))
+        self.eta = np.ones(nt)  # eta is transmission
+        self.final_ref_sky = np.zeros(nw)
 
         # This moves the center of the PSF from array coordinates
         # (model_sn_x, model_sn_y) -> (0, 0) [lower left pixel]
@@ -100,13 +111,6 @@ class DDTModel(object):
   
         # self.psf = roll_psf(self.psf, -self.model_sn_x, -self.model_sn_y)
         
-        # Pointing of data. This is the location of the central spaxel of the
-        # data with respect to the position of the SN in the model. (The
-        # position of the SN in the model defines the coordinate system; see
-        # comments in docstring.)
-        self.data_xctr = np.zeros(nt, dtype=np.float64)
-        self.data_yctr = np.zeros(nt, dtype=np.float64)
-
         # Make up a coordinate system for the model array
         #offx = int((nx-1) / 2.)
         #offy = int((ny-1) / 2.)
@@ -116,23 +120,19 @@ class DDTModel(object):
         # sn is "by definition" at array position where coordinates = (0,0)
         # model_sn_x = offx
         # model_sn_y = offy
-
-        self.adr_dx = adr_dx
-        self.adr_dy = adr_dy
-        self.spaxel_size = spaxel_size
-        self.mu_xy = mu_xy
-        self.mu_wave = mu_wave
         
 
-    def evaluate(self, i_t, xcoords, ycoords, which='galaxy'):
-        """Evalute the model at the given coordinates for a single epoch.
+    def evaluate(self, i_t, xctr, yctr, shape, which='galaxy'):
+        """Evalute the model on a grid for a single epoch.
 
         Parameters
         ----------
         i_t : int
             Epoch index.
-        xcoords : np.ndarray (1-d)
-        ycoords : np.ndarray (1-d)
+        shape : tuple
+            Two integers giving size of output array (ny, nx).
+        xctr, yctr : float
+            Center of output array in model coordinates.
         which : {'galaxy', 'snscaled', 'all'}
             Which part of the model to evaluate: galaxy-only or SN scaled to
             flux of 1.0?
@@ -143,23 +143,21 @@ class DDTModel(object):
             Shape is (nw, len(ycoords), len(xcoords)).
         """
 
-        # Currently, by design, the coordinate system and model match
-        # the spaxel size of the data. Thus, the data array will have
-        # equal spacing with all spacings equal to 1.0. This is a
-        # requirement for the Fourier-space shifting used here.
-        if not (np.all(np.abs(np.diff(xcoords) - 1.0) < .01) and
-                np.all(np.abs(np.diff(ycoords) - 1.0) < 0.01)):
-            raise ValueError("xcoords and y coords must have equal spacing, "
-                             "with all spacings equal to 1.0")
+        # min and max coordinates requested (inclusive)
+        ny, nx = shape
+        xmin = xctr - (nx - 1) / 2.
+        xmax = xctr + (nx - 1) / 2.
+        ymin = yctr - (ny - 1) / 2.
+        ymax = yctr + (ny - 1) / 2.
 
-        if (xcoords[0] < self.xcoords[0] or xcoords[-1] > self.xcoords[-1] or
-            ycoords[0] < self.ycoords[0] or ycoords[-1] > self.ycoords[-1]):
+        if (xmin < self.xcoords[0] or xmax > self.xcoords[-1] or
+            ymin < self.ycoords[0] or ymax > self.ycoords[-1]):
             raise ValueError("requested coordinates out of model bounds")
         
         # Figure out the shift needed to put the model onto the requested
         # coordinates.
-        xshift = xcoords[0] - self.xcoords[0]
-        yshift = ycoords[0] - self.ycoords[0]
+        xshift = xmin - self.xcoords[0]
+        yshift = ymax - self.ycoords[0]
         
         # split shift into integer and sub-integer components
         # This is so that we can first apply a fine-shift in Fourier space
@@ -168,6 +166,7 @@ class DDTModel(object):
         xshift_fine = xshift - xshift_int
         yshift_int = int(yshift + 0.5)
         yshift_fine = yshift - yshift_int
+
         # get shifted and convolved galaxy
         psf = self.psf[i_t]
         target_shift_conv = np.empty((self.nw, self.ny, self.nx),
@@ -196,7 +195,7 @@ class DDTModel(object):
 
         return target_shift_conv[:, yslice, xslice]
 
-    def gradient_helper(self, i_t, x, xcoords, ycoords):
+    def gradient_helper(self, i_t, x, xctr, yctr, shape):
         """Not sure exactly what this does yet.
 
         Parameters
@@ -214,23 +213,21 @@ class DDTModel(object):
             Shape is (nw, len(ycoords), len(xcoords)).
         """
 
-        # Currently, by design, the coordinate system and model match
-        # the spaxel size of the data. Thus, the data array will have
-        # equal spacing with all spacings equal to 1.0. This is a
-        # requirement for the Fourier-space shifting used here.
-        if not (np.all(np.abs(np.diff(xcoords) - 1.0) < .01) and
-                np.all(np.abs(np.diff(ycoords) - 1.0) < 0.01)):
-            raise ValueError("xcoords and y coords must have equal spacing, "
-                             "with all spacings equal to 1.0")
+        # min and max coordinates requested (inclusive)
+        ny, nx = shape
+        xmin = xctr - (nx - 1) / 2.
+        xmax = xctr + (nx - 1) / 2.
+        ymin = yctr - (ny - 1) / 2.
+        ymax = yctr + (ny - 1) / 2.
 
-        if (xcoords[0] < self.xcoords[0] or xcoords[-1] > self.xcoords[-1] or
-            ycoords[0] < self.ycoords[0] or ycoords[-1] > self.ycoords[-1]):
+        if (xmin < self.xcoords[0] or xmax > self.xcoords[-1] or
+            ymin < self.ycoords[0] or ymax > self.ycoords[-1]):
             raise ValueError("requested coordinates out of model bounds")
         
         # Figure out the shift needed to put the model onto the requested
         # coordinates.
-        xshift = xcoords[0] - self.xcoords[0]
-        yshift = ycoords[0] - self.ycoords[0]
+        xshift = xmin - self.xcoords[0]
+        yshift = ymax - self.ycoords[0]
         
         # create 
         target = np.zeros((self.nw, self.ny, self.nx), dtype=np.float64)
@@ -318,10 +315,8 @@ class DDTModel(object):
         d = data.data[i_t, :, :, :]
         w = data.weight[i_t, :, :, :]
 
-        xcoords = np.arange(data.nx) - (data.nx - 1) / 2. + self.data_xctr[i_t]
-        ycoords = np.arange(data.ny) - (data.ny - 1) / 2. + self.data_yctr[i_t]
-        
-        gal_conv = self.evaluate(i_t, xcoords, ycoords, which='galaxy')
+        gal_conv = self.evaluate(i_t, data.xctr[i_t], data.yctr[i_t],
+                                 (data.ny, data.nx), which='galaxy')
 
         if data.is_final_ref[i_t]:
 
@@ -337,7 +332,8 @@ class DDTModel(object):
         # If the epoch is *not* a final ref, the SN is not zero, so we have
         # to do a lot more work.
         else:
-            sn_conv = self.evaluate(i_t, xcoords, ycoords, which='snscaled')
+            sn_conv = self.evaluate(i_t, data.xctr[i_t], data.yctr[i_t],
+                                    (data.ny, data.nx), which='snscaled')
 
             A11 = (w * sn_conv**2).sum(axis=(1, 2))
             A12 = (-w * sn_conv).sum(axis=(1, 2))
@@ -347,7 +343,7 @@ class DDTModel(object):
             denom = A11*A22 - A12*A21
 
             # There are some cases where we have slices with only 0
-            # values and weights. Since we don't mix wavelengthes in
+            # values and weights. Since we don't mix wavelengths in
             # this calculation, we put a dummy value for denom and
             # then put the sky and sn values to 0 at the end.
             mask = denom == 0.0

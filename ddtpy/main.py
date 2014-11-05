@@ -69,8 +69,21 @@ def main(filename, data_dir):
     data[mask] = 0.0
     weight[mask] = 0.0
 
-    ddtdata = DDTData(data, weight, wave, is_final_ref, master_final_ref,
-                      header, spaxel_size)
+    # If target positions are given in the config file, set them in
+    # the model.  (Otherwise, the positions default to zero in all
+    # exposures.)
+    if "PARAM_TARGET_XP" in conf:
+        xctr_init = np.array(conf["PARAM_TARGET_XP"])
+    else:
+        xctr_init = np.zeros(ddtdata.nt)
+    if "PARAM_TARGET_YP" in conf:
+        yctr_init = np.array(conf["PARAM_TARGET_YP"])
+    else:
+        yctr_init = np.zeros(ddtdata.nt)
+
+
+    ddtdata = DDTData(data, weight, wave, xctr_init, yctr_init,
+                      is_final_ref, master_final_ref, header, spaxel_size)
 
     # Load PSF model parameters. Currently, the PSF in the model is
     # represented by an arbitrary 4-d array that is constructed
@@ -119,26 +132,11 @@ def main(filename, data_dir):
     # Make a first guess at the sky level based on the data.
     skyguess = ddtdata.guess_sky(2.0)
 
-    # If target positions are given in the config file, set them in
-    # the model.  (Otherwise, the positions default to zero in all
-    # exposures.)
-    if "PARAM_TARGET_XP" in conf:
-        data_xctr_init = np.array(conf["PARAM_TARGET_XP"])
-    else:
-        data_xctr_init = np.zeros(ddtdata.nt)
-    if "PARAM_TARGET_YP" in conf:
-        data_yctr_init = np.array(conf["PARAM_TARGET_YP"])
-    else:
-        data_yctr_init = np.zeros(ddtdata.nt)
-
     # Initialize model
     model = DDTModel(ddtdata.nt, ddtdata.wave, psf_ellipticity, psf_alpha,
-                     adr_dx, adr_dy, spaxel_size,
-                     conf["MU_GALAXY_XY_PRIOR"],
+                     adr_dx, adr_dy, conf["MU_GALAXY_XY_PRIOR"],
                      conf["MU_GALAXY_LAMBDA_PRIOR"],
-                     data_xctr_init, data_yctr_init,
-                     skyguess)
-
+                     spaxel_size, skyguess)
 
     # Perform initial fit, holding position constant (at settings from
     # conf file PARAM_TARGET_[X,Y]P, directly above)
@@ -176,12 +174,8 @@ def main(filename, data_dir):
         if (not ddtdata.is_final_ref[i_t]) or i_t == ddtdata.master_final_ref:
             continue
         
-        xcoords = (np.arange(ddtdata.nx) - (ddtdata.nx - 1) / 2. +
-                   model.data_xctr[i_t])
-        ycoords = (np.arange(ddtdata.ny) - (ddtdata.ny - 1) / 2. +
-                   model.data_yctr[i_t])
-        m = model.evaluate(i_t, xcoords=xcoords, ycoords=ycoords, 
-                           which='all')
+        m = model.evaluate(i_t, ddtdata.xctr[i_t], ddtdata.yctr[i_t],
+                           (ddtdata.ny, ddtdata.nx), which='all')
 
         tmp_m = m.sum(axis=0)  # Sum of model over wavelengths (result = 2-d)
         tmp_mad = np.median(np.abs(tmp_m - np.median(tmp_m)))
@@ -207,11 +201,11 @@ def main(filename, data_dir):
         # Check if the position moved too much from initial position.
         # If it didn't move too much, update the model.
         # If it did, cut it from the fitting for the next step.
-        dist = math.sqrt((pos[0] - data_xctr_init[i_t])**2 + 
-                         (pos[1] - data_yctr_init[i_t])**2)
+        dist = math.sqrt((pos[0] - ddtdata.xctr_init[i_t])**2 + 
+                         (pos[1] - ddtdata.yctr_init[i_t])**2)
         if dist < maxmove_fit_position:
-            model.data_xctr[i_t] = pos[0]
-            model.data_yctr[i_t] = pos[1]
+            ddtdata.xctr[i_t] = pos[0]
+            ddtdata.yctr[i_t] = pos[1]
         else:
             include_in_fit[i_t] = False
 
