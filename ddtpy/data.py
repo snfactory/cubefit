@@ -3,16 +3,30 @@ import fitsio
 
 __all__ = ["read_select_header_keys", "read_dataset", "DDTData"]
 
+SELECT_KEYS = ["OBJECT", "RA", "DEC", "EXPTIME", "EFFTIME", "AIRMASS",
+               "LATITUDE", "HA", "TEMP", "PRESSURE", "CHANNEL", "PARANG",
+               "DDTXP", "DDTYP"]
+
 def read_select_header_keys(filename):
-    keys = ["OBJECT", "RA", "DEC", "EXPTIME", "EFFTIME", "AIRMASS",
-            "LATITUDE", "HA", "TEMP", "PRESSURE", "CHANNEL", "PARANG",
-            "DDTXP", "DDTYP"]
+    """Read select header entries from a FITS file.
+
+    Parameters
+    ----------
+    filename : str
+        FITS filename.
+
+    Returns
+    -------
+    d : dict
+        Dictionary containing all select keys. Values are None for keys
+        not found in the header.
+    """
 
     f = fitsio.FITS(filename, "r")
     fullheader = f[0].read_header()
     f.close()
     
-    return {key: fullheader.get(key, None) for key in keys}
+    return {key: fullheader.get(key, None) for key in SELECT_KEYS}
 
 
 def read_datacube(filename):
@@ -52,7 +66,21 @@ def read_datacube(filename):
 
 
 def read_dataset(filenames):
-    """Read multiple datacubes into 4-d arrays"""
+    """Read multiple datacubes into 4-d arrays.
+
+    Parameters
+    ----------
+    filenames : list of str
+        FITS filenames.
+
+    Returns
+    -------
+    data : `numpy.ndarray`
+        4-D array with axes (epoch, wavelength, y, x).
+    weight : `numpy.ndarray`
+        4-D array giving weight of each pixel in data.
+    wave : `numpy.ndarray`
+        1-D array giving wavelength grid"""
     
     data, weight, wave = read_datacube(filenames[0])
     

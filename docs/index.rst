@@ -19,6 +19,14 @@ API
    ddtpy.DDTData
    ddtpy.DDTModel
 
+**I/O**
+
+.. autosummary::
+   :toctree: api
+
+   ddtpy.read_dataset
+   ddtpy.read_select_header_keys
+
 
 **Fitting**
 
