@@ -4,6 +4,8 @@ import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.ticker import NullLocator
 
+__all__ = ["plot_timeseries"]
+
 BAND_LIMITS = {'U': (3400., 3900.),
                'B': (4102., 5100.),
                'V': (6289., 7607.)}

@@ -22,5 +22,5 @@ setup(name="ddtpy",
       author_email="kylebarbary@gmail.com",
       requires=['numpy', 'scipy'],
       packages=['ddtpy'],
-      scripts=['scripts/ddt','scripts/ddt_gal_sub'],
+      scripts=['scripts/ddt-fit','scripts/ddt_gal_sub'],
       data_files=data_files)

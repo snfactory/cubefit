@@ -5,7 +5,8 @@ import copy
 import numpy as np
 from scipy.optimize import leastsq, fmin_l_bfgs_b
 
-__all__ = ['guess_sky', 'fit_model_all_epoch', 'fit_position']
+__all__ = ["guess_sky", "fit_sky", "fit_sky_and_sn", "fit_model_all_epoch",
+           "fit_position"]
 
 
 def guess_sky(ddtdata, sig, maxiter=10):

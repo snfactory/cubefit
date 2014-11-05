@@ -5,6 +5,8 @@ SNIFS_LATITUDE = np.deg2rad(19.8228)
 MMHG_PER_MBAR = 760./1013.25
 ARCSEC_PER_RADIAN = 206265.
 
+__all__ = ["differential_refraction"]
+
 def calc_airmass(ha, dec):
   cos_z = (np.sin(SNIFS_LATITUDE) * np.sin(dec) +
            np.cos(SNIFS_LATITUDE) * np.cos(dec) * np.cos(ha))

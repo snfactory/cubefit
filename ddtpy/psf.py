@@ -3,6 +3,10 @@ from __future__ import division
 import math
 import numpy as np
 
+__all__ = ["params_from_gs", "gaussian_plus_moffat_psf",
+           "gaussian_plus_moffat_psf_4d"]
+
+
 def params_from_gs(es_psf, wave, wave_ref):
     """Return arrays of ellipticity, alpha PSF parameters.
 
