@@ -140,7 +140,7 @@ class DDTModel(object):
         # Figure out the shift needed to put the model onto the requested
         # coordinates.
         xshift = xmin - self.xcoords[0]
-        yshift = ymax - self.ycoords[0]
+        yshift = ymin - self.ycoords[0]
         
         # split shift into integer and sub-integer components
         # This is so that we can first apply a fine-shift in Fourier space
@@ -173,8 +173,8 @@ class DDTModel(object):
                           fft2(psf[j, :, :]) * shift_phasor) + self.sky[i_t,j]
 
         # Return a subarray based on the integer shift
-        xslice = slice(xshift_int, xshift_int + len(xcoords))
-        yslice = slice(yshift_int, yshift_int + len(ycoords))
+        xslice = slice(xshift_int, xshift_int + nx)
+        yslice = slice(yshift_int, yshift_int + ny)
 
         return target_shift_conv[:, yslice, xslice]
 
