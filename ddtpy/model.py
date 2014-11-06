@@ -161,16 +161,24 @@ class DDTModel(object):
                                             xshift_fine + self.adr_dx[i_t,j]))
 
             if which == 'galaxy':
-                target_shift_conv[j, :, :] = ifft2(fft2(psf[j, :, :]) *
-                                                   shift_phasor *
-                                                   fft2(self.gal[j, :, :]))
+                tmp = ifft2(fft2(psf[j, :, :]) * shift_phasor *
+                            fft2(self.gal[j, :, :]))
+                if not np.allclose(tmp.imag, 0., atol=1.e-14):
+                    raise RuntimeError("IFFT returned non-real array.")
+                target_shift_conv[j, :, :] = tmp.real
+
             elif which == 'snscaled':
-                target_shift_conv[j, :, :] = ifft2(fft2(psf[j, :, :]) *
-                                                   shift_phasor)
-            elif which == 'all': 
-                target_shift_conv[j, :, :] = \
-                    ifft2((fft2(self.gal[j, :, :]) + self.sn[i_t,j]) *
-                          fft2(psf[j, :, :]) * shift_phasor) + self.sky[i_t,j]
+                tmp = ifft2(fft2(psf[j, :, :]) * shift_phasor)
+                if not np.allclose(tmp.imag, 0., atol=1.e-14):
+                    raise RuntimeError("IFFT returned non-real array.")
+                target_shift_conv[j, :, :] = tmp.real
+
+            elif which == 'all':
+                tmp = ifft2((fft2(self.gal[j, :, :]) + self.sn[i_t,j]) *
+                            fft2(psf[j, :, :]) * shift_phasor)
+                if not np.allclose(tmp.imag, 0., atol=1.e-14):
+                    raise RuntimeError("IFFT returned non-real array.")
+                target_shift_conv[j, :, :] = tmp.real + self.sky[i_t, j]
 
         # Return a subarray based on the integer shift
         xslice = slice(xshift_int, xshift_int + nx)
@@ -211,20 +219,23 @@ class DDTModel(object):
         # coordinates.
         xshift = xmin - self.xcoords[0]
         yshift = ymax - self.ycoords[0]
-        
+
         # create 
         target = np.zeros((self.nw, self.ny, self.nx), dtype=np.float64)
         target[:, :x.shape[1], :x.shape[2]] = x
-        
+
         psf = self.psf[i_t]
 
         for j in range(self.nw):
             shift_phasor = fft_shift_phasor_2d(self.MODEL_SHAPE,
                                                (yshift + self.adr_dy[i_t,j],
                                                 xshift + self.adr_dx[i_t,j]))
-            
-            target[j, :, :] = ifft2(np.conj(fft2(psf[j, :, :]) *
-                                            shift_phasor) *
-                                    fft2(target[j, :, :]))
+
+            tmp = ifft2(np.conj(fft2(psf[j, :, :]) * shift_phasor) *
+                        fft2(target[j, :, :]))
+            if not np.allclose(tmp.imag, 0., atol=1.e-14):
+                raise RuntimeError("IFFT returned non-real array.")
+
+            target[j, :, :] = tmp.real
 
         return target
