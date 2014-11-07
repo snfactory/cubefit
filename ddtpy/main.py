@@ -170,6 +170,7 @@ def main(filename, data_dir):
     
     # Loop over just the final refs excluding the master final ref.
     for i_t in range(ddtdata.nt):
+        # TODO: Why do we not fit master final ref position? 
         if (not ddtdata.is_final_ref[i_t]) or i_t == ddtdata.master_final_ref:
             continue
         
@@ -194,8 +195,8 @@ def main(filename, data_dir):
         # Fit the position.
         # TODO: should the sky be varied on each iteration?
         #       (currently, it is not varied)
-        pos, convergence = fit_position(ddtdata, model, i_t,
-                                        maxiter=maxiter_fit_position)
+        pos = fit_position(ddtdata, model, i_t)
+                           
         
         # Check if the position moved too much from initial position.
         # If it didn't move too much, update the model.
@@ -211,4 +212,39 @@ def main(filename, data_dir):
     # Reset weight
     ddtdata.weight = weight_orig
 
-    # At L185 in run_ddt_galaxy_subtraction_all_regul_variable_all_epoch.i
+    # TODO: need to do anything to "setup new pointing" here?
+
+    # Recalculate sn and sky for all exposures with new pointing.
+    for i_t in range(ddtdata.nt):
+        model.update_sn_and_sky(ddtdata, i_t)
+
+    # Redo fit of galaxy
+    fit_model_all_epoch(model, ddtdata)
+
+    
+    # Fit registration on just exposures with a supernova (not final refs)
+    # ===================================================================
+    
+    for i_t in range(ddtdata.nt):
+        if ddtdata.is_final_ref[i_t]:
+            continue
+
+        pos = fit_position(ddtdata, model, i_t)
+
+        # Check if the position moved too much from initial position.
+        # If it didn't move too much, update the model.
+        # If it did, cut it from the fitting for the next step.
+        dist = math.sqrt((pos[0] - ddtdata.xctr_init[i_t])**2 + 
+                         (pos[1] - ddtdata.yctr_init[i_t])**2)
+        if dist < maxmove_fit_position:
+            ddtdata.xctr[i_t] = pos[0]
+            ddtdata.yctr[i_t] = pos[1]
+        else:
+            include_in_fit[i_t] = False
+
+        model.update_sn_and_sky(ddtdata, i_t)
+
+    # Redo fit of galaxy
+    fit_model_all_epoch(model, ddtdata)
+
+    
