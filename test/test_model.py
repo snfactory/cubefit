@@ -20,8 +20,9 @@ class TestFitting:
         mu_xy = 1.0e-3
         mu_wave = 7.0e-2
         sky_guess = np.zeros((nt,nw))
-        self.model = ddtpy.DDTModel(nt, wave, ellipticity, alpha, adr_dx, adr_dy,
-                                    spaxel_size, mu_xy, mu_wave, sky_guess)
+        self.model = ddtpy.DDTModel(nt, wave, ellipticity, alpha,
+                                    adr_dx, adr_dy, mu_xy, mu_wave,
+                                    spaxel_size, sky_guess)
 
         data = ddtpy.gaussian_plus_moffat_psf_4d((15,15), 5., 5.,
                                                  ellipticity, alpha)
@@ -29,8 +30,8 @@ class TestFitting:
         header = {}
         is_final_ref = np.ones(nt,dtype = bool)
         master_final_ref = 0
-        xctr_init = np.ones(nt)
-        yctr_init = np.ones(nt)
+        xctr_init = np.zeros(nt)
+        yctr_init = np.zeros(nt)
         
         self.data = ddtpy.DDTData(data, weight, wave, xctr_init, yctr_init,
                                   is_final_ref, master_final_ref, header,
@@ -62,3 +63,39 @@ class TestFitting:
         print("x_diff = {}, d_lkl = {}, lkl_grad = {}".format(x_diff, d_lkl, lkl_grad[0]))
 
             #assert(d_tot == grad[0])
+
+    def test_lkl_gradient(self):
+        """Test the likelihood gradient. 
+
+        This is a sanity check to see if the gradient function is returning
+        the naive result for individual elements. The likelihood is given
+        by
+
+        L = sum_i w_i * (d_i - m_i)^2
+
+        where i represents pixels, d is the data, and m is the model
+        *sampled onto the data frame*. We want to know the derivative
+        with respect to model parameters x_j.
+
+        dL/dx_j = sum_i -2 w_i (d_i - m_i) dm_i/dx_j
+
+        dm_i/dx_j is the change in the resampled model due to changing model
+        parameter j. Changing model parameter j is adjusting a single pixel
+        in the model. The result in the data frame is a PSF at the position
+        corresponding to model pixel j.
+
+        """
+
+        # model PSF array is centered at (model.ny-1 / 2., model.nx-1/ 2.)
+        
+        dmdx0 = self.model.
+
+        
+        x_diff = 1.e-10
+
+        x = np.copy(self.model.gal.reshape(self.model.gal.size))
+        toterr, grad = penalty_g_all_epoch(x, self.model, self.data)
+        lkl_err, lkl_grad = likelihood_penalty(self.model, self.data)
+        rgl_err, rgl_grad = regularization_penalty(self.model, self.data)
+        
+        x[0] += x_diff

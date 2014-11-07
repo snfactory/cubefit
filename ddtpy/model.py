@@ -24,14 +24,14 @@ class DDTModel(object):
     adr_dx, adr_dy : np.ndarray (2-d)
         Atmospheric differential refraction in x and y directions, in spaxels,
         relative to reference wavelength.
-    spaxel_size : float
-        Spaxel size in arcseconds.
     mu_xy : float
         Hyperparameter in spatial (x, y) coordinates. Used in penalty function
         when fitting model.
     mu_wave : float
         Hyperparameter in wavelength coordinate. Used in penalty function
         when fitting model.
+    spaxel_size : float
+        Spaxel size in arcseconds.
     skyguess : np.ndarray (2-d)
         Initial guess at sky. Sky is a spatially constant value, so the
         shape is (nt, len(wave)).
@@ -157,8 +157,8 @@ class DDTModel(object):
                                      
         for j in range(self.nw):
             shift_phasor = fft_shift_phasor_2d(self.MODEL_SHAPE,
-                                           (yshift_fine + self.adr_dy[i_t,j],
-                                            xshift_fine + self.adr_dx[i_t,j]))
+                                               (yshift_fine + self.adr_dy[i_t,j],
+                                                xshift_fine + self.adr_dx[i_t,j]))
 
             if which == 'galaxy':
                 tmp = ifft2(fft2(psf[j, :, :]) * shift_phasor *

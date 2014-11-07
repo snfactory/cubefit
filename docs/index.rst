@@ -51,6 +51,14 @@ API
    ddtpy.gaussian_plus_moffat_psf_4d
 
 
+**Utilities**
+
+.. autosummary::
+   :toctree: api
+
+   ddtpy.fft_shift_phasor_2d
+
+
 **Plotting**
 
 .. autosummary::
