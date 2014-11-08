@@ -1,6 +1,7 @@
 from __future__ import print_function
 
 import numpy as np
+from numpy.fft import fft2, ifft2
 
 import ddtpy
 from ddtpy.fitting import (penalty_g_all_epoch, likelihood_penalty,
@@ -88,14 +89,37 @@ class TestFitting:
 
         # model PSF array is centered at (model.ny-1 / 2., model.nx-1/ 2.)
         
-        dmdx0 = self.model.
-
-        
-        x_diff = 1.e-10
-
-        x = np.copy(self.model.gal.reshape(self.model.gal.size))
-        toterr, grad = penalty_g_all_epoch(x, self.model, self.data)
         lkl_err, lkl_grad = likelihood_penalty(self.model, self.data)
-        rgl_err, rgl_grad = regularization_penalty(self.model, self.data)
         
-        x[0] += x_diff
+        psf = self.model.psf[0, 0]
+        
+        m = self.model.evaluate(0, self.data.xctr[0], self.data.yctr[0],
+                                (self.data.ny, self.data.nx), which='all')[0]
+
+        w = self.data.weight[0,0]
+        d = self.data.data[0,0]
+
+        ny, nx = 15., 15.
+        xmin = self.data.xctr[0] - (nx - 1) / 2.
+        xmax = self.data.xctr[0] + (nx - 1) / 2.
+        ymin = self.data.yctr[0] - (ny - 1) / 2.
+        ymax = self.data.yctr[0] + (ny - 1) / 2.
+
+       # Figure out the shift needed to put the model onto the requested
+        # coordinates.
+        xshift = -(xmin - self.model.xcoords[0])
+        yshift = -(ymin - self.model.ycoords[0])
+        xshift -= 16
+        yshift -= 16
+ 
+        shift_phasor = ddtpy.fft_shift_phasor_2d(self.model.MODEL_SHAPE,
+                                                 (yshift + self.model.adr_dy[0,0],
+                                                  xshift + self.model.adr_dx[0,0]))
+
+        tmp = ifft2(fft2(psf) * shift_phasor)[:15,:15]
+
+        dL = np.sum(-2.*w*(d - m)*tmp)
+
+        print(dL, lkl_grad[0])
+
+        

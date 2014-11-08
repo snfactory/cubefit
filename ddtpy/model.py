@@ -218,7 +218,7 @@ class DDTModel(object):
         # Figure out the shift needed to put the model onto the requested
         # coordinates.
         xshift = xmin - self.xcoords[0]
-        yshift = ymax - self.ycoords[0]
+        yshift = ymin - self.ycoords[0]
 
         # create 
         target = np.zeros((self.nw, self.ny, self.nx), dtype=np.float64)
