@@ -45,6 +45,7 @@ API
 .. autosummary::
    :toctree: api
 
+   ddtpy.paralactic_angle
    ddtpy.differential_refraction
    ddtpy.params_from_gs
    ddtpy.gaussian_plus_moffat_psf

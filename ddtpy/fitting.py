@@ -334,14 +334,14 @@ def fit_model_all_epoch(model, data, maxiter=1000):
 # TODO: should we change this to use a general-purpose optimizer rather 
 # than leastsq? Leastsq seems like a strange choice for this problem
 # from what I can tell.
-def fit_position(data, model, i_t, maxiter=100):
+def fit_position(model, data, i_t, maxiter=100):
     """Fit data position for epoch i_t, keeping galaxy model
     fixed. Doesn't modify model or data.
 
     Parameters
     ----------
-    data : DDTData
     model : DDTModel
+    data : DDTData
     i_t : int
         Epoch number.
 

@@ -444,3 +444,10 @@ def roll_psf(psf, dx, dy):
 
     tmp = np.roll(psf, dy, 2)  # roll along y (axis = 2)
     return np.roll(tmp, dx, 3)  # roll along x (axis = 3)
+
+
+# was in adr.py
+def calc_airmass(ha, dec):
+  cos_z = (np.sin(SNIFS_LATITUDE) * np.sin(dec) +
+           np.cos(SNIFS_LATITUDE) * np.cos(dec) * np.cos(ha))
+  return 1./cos_z

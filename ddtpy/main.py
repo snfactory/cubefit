@@ -11,11 +11,12 @@ import math
 from .psf import params_from_gs, gaussian_plus_moffat_psf_4d
 from .model import DDTModel
 from .data import read_dataset, read_select_header_keys, DDTData
-from .adr import calc_paralactic_angle, differential_refraction
+from .adr import paralactic_angle, differential_refraction
 from .fitting import guess_sky, fit_model_all_epoch, fit_position
 
 __all__ = ["main"]
 
+SNIFS_LATITUDE = np.deg2rad(19.8228)
 
 def main(filename, data_dir):
     """Do everything.
@@ -124,9 +125,9 @@ def main(filename, data_dir):
     # in arcseconds (2-d array).
     delta_r = differential_refraction(airmass, p, t, h, ddtdata.wave, wave_ref)
     delta_r /= spaxel_size  # convert from arcsec to spaxels
-    paralactic_angle = calc_paralactic_angle(airmass, ha, dec, tilt)
-    adr_dx = -delta_r * np.sin(paralactic_angle)[:, None]  # O'xp <-> - east
-    adr_dy = delta_r * np.cos(paralactic_angle)[:, None]
+    pa = paralactic_angle(airmass, ha, dec, tilt, SNIFS_LATITUDE)
+    adr_dx = -delta_r * np.sin(pa)[:, None]  # O'xp <-> - east
+    adr_dy = delta_r * np.cos(pa)[:, None]
 
     # Make a first guess at the sky level based on the data.
     skyguess = guess_sky(ddtdata, 2.0)
@@ -195,7 +196,7 @@ def main(filename, data_dir):
         # Fit the position.
         # TODO: should the sky be varied on each iteration?
         #       (currently, it is not varied)
-        pos = fit_position(ddtdata, model, i_t)
+        pos = fit_position(model, ddtdata, i_t)
                            
         
         # Check if the position moved too much from initial position.
@@ -229,7 +230,7 @@ def main(filename, data_dir):
         if ddtdata.is_final_ref[i_t]:
             continue
 
-        pos = fit_position(ddtdata, model, i_t)
+        pos = fit_position(model, ddtdata, i_t)
 
         # Check if the position moved too much from initial position.
         # If it didn't move too much, update the model.
