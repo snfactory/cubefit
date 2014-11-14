@@ -1,3 +1,4 @@
+from __future__ import print_function
 
 import numpy as np
 from numpy.fft import fft2, ifft2
@@ -92,6 +93,22 @@ class DDTModel(object):
                                                array_xctr, array_yctr,
                                                psf_ellipticity, psf_alpha)
 
+        # We now shift the PSF so that instead of being exactly
+        # centered in the array, it is exactly centered on the lower
+        # left pixel. We do this for using the PSf as a convolution kernel:
+        # For convolution in Fourier space, the (0, 0) element of the kernel
+        # is effectively the "center."
+        # Note that this shifting is different than simply
+        # creating the PSF centered at the lower left pixel to begin
+        # with, due to wrap-around.
+        self.conv = np.empty_like(self.psf)
+        fshift = fft_shift_phasor_2d(self.MODEL_SHAPE,
+                                     (-array_xctr, -array_yctr))
+        for j in range(self.psf.shape[0]):
+            for i in range(self.psf.shape[1]):
+                tmp = self.psf[j, i, :, :]
+                self.conv[j, i, :, :] = ifft2(fft2(tmp) * fshift).real
+
         # hyperparameters and spaxel size
         self.mu_xy = mu_xy
         self.mu_wave = mu_wave
@@ -137,54 +154,43 @@ class DDTModel(object):
             ymin < self.ycoords[0] or ymax > self.ycoords[-1]):
             raise ValueError("requested coordinates out of model bounds")
         
-        # Figure out the shift needed to put the model onto the requested
-        # coordinates.
+        # Shift needed to put the model onto the requested coordinates.
         xshift = xmin - self.xcoords[0]
         yshift = ymin - self.ycoords[0]
-        
-        # split shift into integer and sub-integer components
-        # This is so that we can first apply a fine-shift in Fourier space
-        # and later take a sub-array of the model.
-        xshift_int = int(xshift + 0.5)
-        xshift_fine = xshift - xshift_int
-        yshift_int = int(yshift + 0.5)
-        yshift_fine = yshift - yshift_int
 
-        # get shifted and convolved galaxy
-        psf = self.psf[i_t]
-        target_shift_conv = np.empty((self.nw, self.ny, self.nx),
-                                     dtype=np.float64)
+        conv = self.conv[i_t]
+        out = np.empty((self.nw, self.ny, self.nx), dtype=np.float64)
                                      
         for j in range(self.nw):
-            shift_phasor = fft_shift_phasor_2d(self.MODEL_SHAPE,
-                                               (yshift_fine + self.adr_dy[i_t,j],
-                                                xshift_fine + self.adr_dx[i_t,j]))
+            fshift = fft_shift_phasor_2d(self.MODEL_SHAPE,
+                                         (yshift + self.adr_dy[i_t, j],
+                                          xshift + self.adr_dx[i_t, j]))
 
             if which == 'galaxy':
-                tmp = ifft2(fft2(psf[j, :, :]) * shift_phasor *
+                tmp = ifft2(fft2(conv[j, :, :]) * fshift *
                             fft2(self.gal[j, :, :]))
                 if not np.allclose(tmp.imag, 0., atol=1.e-14):
                     raise RuntimeError("IFFT returned non-real array.")
-                target_shift_conv[j, :, :] = tmp.real
+                out[j, :, :] = tmp.real
 
             elif which == 'snscaled':
-                tmp = ifft2(fft2(psf[j, :, :]) * shift_phasor)
+                tmp = ifft2(fft2(psf[j, :, :]) * fshift)
                 if not np.allclose(tmp.imag, 0., atol=1.e-14):
                     raise RuntimeError("IFFT returned non-real array.")
-                target_shift_conv[j, :, :] = tmp.real
+                out[j, :, :] = tmp.real
 
             elif which == 'all':
-                tmp = ifft2((fft2(self.gal[j, :, :]) + self.sn[i_t,j]) *
-                            fft2(psf[j, :, :]) * shift_phasor)
+                tmp = ifft2(
+                    fshift *
+                    (fft2(self.gal[j, :, :]) * fft2(self.conv[j, :, :]) +
+                     fft2(self.sn[i_t,j] * self.psf[j, :, :])))
                 if not np.allclose(tmp.imag, 0., atol=1.e-14):
                     raise RuntimeError("IFFT returned non-real array.")
-                target_shift_conv[j, :, :] = tmp.real + self.sky[i_t, j]
+                out[j, :, :] = tmp.real + self.sky[i_t, j]
 
-        # Return a subarray based on the integer shift
-        xslice = slice(xshift_int, xshift_int + nx)
-        yslice = slice(yshift_int, yshift_int + ny)
+        # Return a slice that matches the data.
+        return out[:, 0:ny, 0:nx]
 
-        return target_shift_conv[:, yslice, xslice]
 
     def gradient_helper(self, i_t, x, xctr, yctr, shape):
         """Not sure exactly what this does yet.
@@ -220,22 +226,22 @@ class DDTModel(object):
         xshift = xmin - self.xcoords[0]
         yshift = ymax - self.ycoords[0]
 
-        # create 
-        target = np.zeros((self.nw, self.ny, self.nx), dtype=np.float64)
-        target[:, :x.shape[1], :x.shape[2]] = x
+        # create output array
+        out = np.zeros((self.nw, self.ny, self.nx), dtype=np.float64)
+        out[:, :x.shape[1], :x.shape[2]] = x
 
-        psf = self.psf[i_t]
+        conv = self.conv[i_t]
 
         for j in range(self.nw):
-            shift_phasor = fft_shift_phasor_2d(self.MODEL_SHAPE,
-                                               (yshift + self.adr_dy[i_t,j],
-                                                xshift + self.adr_dx[i_t,j]))
+            fshift = fft_shift_phasor_2d(self.MODEL_SHAPE,
+                                         (yshift + self.adr_dy[i_t,j],
+                                          xshift + self.adr_dx[i_t,j]))
 
-            tmp = ifft2(np.conj(fft2(psf[j, :, :]) * shift_phasor) *
-                        fft2(target[j, :, :]))
+            tmp = ifft2(np.conj(fft2(conv[j, :, :]) * fshift) *
+                        fft2(out[j, :, :]))
             if not np.allclose(tmp.imag, 0., atol=1.e-14):
                 raise RuntimeError("IFFT returned non-real array.")
 
-            target[j, :, :] = tmp.real
+            out[j, :, :] = tmp.real
 
-        return target
+        return out

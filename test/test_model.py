@@ -10,8 +10,8 @@ class TestFitting:
     def setup_class(self):
         """Create an instance of DDTData and DDTModel so that we can fit them"""
         nt = 3
-        nw = 100
-        wave = np.arange(nw)
+        nw = 1
+        wave = np.linspace(4000., 6000., nw)
 
         ellipticity = 1.5*np.ones((nt, nw))
         alpha = 2.0*np.ones((nt,nw))
@@ -41,61 +41,64 @@ class TestFitting:
         """Test that gradient functions (used in galaxy fitting) return values
         'close' to what you get with a finite differences method."""
         
-        x_diff = 1.e-10
+        x_diff = 1.e-8
 
-        x = np.copy(self.model.gal.reshape(self.model.gal.size))
-        toterr, grad = penalty_g_all_epoch(x, self.model, self.data)
-        lkl_err, lkl_grad = likelihood_penalty(self.model, self.data)
-        rgl_err, rgl_grad = regularization_penalty(self.model, self.data)
+        # set data position so that it is aligned with the lower left
+        # corner of the model.
+        self.data.xctr[:] = -7.5
+        self.data.yctr[:] = -7.5
+
+
+        m = self.model.evaluate(0, self.data.xctr[0], self.data.yctr[0],
+                                (self.data.ny, self.data.nx), which='all')
+        print(m[0])
+
+        #x = np.copy(self.model.gal.reshape(self.model.gal.size))
+        #toterr, grad = penalty_g_all_epoch(x, self.model, self.data)
         
-        x[0] += x_diff
+        lkl_err, lkl_grad = likelihood_penalty(self.model, self.data)
+        #rgl_err, rgl_grad = regularization_penalty(self.model, self.data)
+        
+        #x[0] += x_diff
+        self.model.gal[0,0,0] += x_diff
 
-        new_toterr, new_grad = penalty_g_all_epoch(x, self.model, self.data)
+        m = self.model.evaluate(0, self.data.xctr[0], self.data.yctr[0],
+                                (self.data.ny, self.data.nx), which='all')
+        print(m[0])
+
+        #new_toterr, new_grad = penalty_g_all_epoch(x, self.model, self.data)
         new_lkl_err, new_lkl_grad = likelihood_penalty(self.model, self.data)
-        new_rgl_err, new_rgl_grad = regularization_penalty(self.model, self.data)
+        #new_rgl_err, new_rgl_grad = regularization_penalty(self.model, self.data)
 
         d_lkl = (new_lkl_err - lkl_err)/x_diff
-        d_rgl = (new_rgl_err - rgl_err)/x_diff
-        d_tot = (new_toterr - toterr)/x_diff
+        #d_rgl = (new_rgl_err - rgl_err)/x_diff
+        #d_tot = (new_toterr - toterr)/x_diff
 
         #assert(d_rgl == rgl_grad[0])  # numerical precision issues
         #assert(d_lkl == lkl_grad[0])  # just wrong
-        print("x_diff = {}, d_lkl = {}, lkl_grad = {}".format(x_diff, d_lkl, lkl_grad[0]))
+        print("x_diff = {}, d_lkl = {}, lkl_grad = {}"
+              .format(x_diff, d_lkl, lkl_grad[0]))
 
             #assert(d_tot == grad[0])
 
-    def test_lkl_gradient(self):
-        """Test the likelihood gradient. 
 
-        This is a sanity check to see if the gradient function is returning
-        the naive result for individual elements. The likelihood is given
-        by
+"""Test the likelihood gradient. 
 
-        L = sum_i w_i * (d_i - m_i)^2
+This is a sanity check to see if the gradient function is returning
+the naive result for individual elements. The likelihood is given
+by
 
-        where i represents pixels, d is the data, and m is the model
-        *sampled onto the data frame*. We want to know the derivative
-        with respect to model parameters x_j.
+L = sum_i w_i * (d_i - m_i)^2
 
-        dL/dx_j = sum_i -2 w_i (d_i - m_i) dm_i/dx_j
+where i represents pixels, d is the data, and m is the model
+*sampled onto the data frame*. We want to know the derivative
+with respect to model parameters x_j.
 
-        dm_i/dx_j is the change in the resampled model due to changing model
-        parameter j. Changing model parameter j is adjusting a single pixel
-        in the model. The result in the data frame is a PSF at the position
-        corresponding to model pixel j.
+dL/dx_j = sum_i -2 w_i (d_i - m_i) dm_i/dx_j
 
-        """
+dm_i/dx_j is the change in the resampled model due to changing model
+parameter j. Changing model parameter j is adjusting a single pixel
+in the model. The result in the data frame is a PSF at the position
+corresponding to model pixel j.
 
-        # model PSF array is centered at (model.ny-1 / 2., model.nx-1/ 2.)
-        
-        dmdx0 = self.model.
-
-        
-        x_diff = 1.e-10
-
-        x = np.copy(self.model.gal.reshape(self.model.gal.size))
-        toterr, grad = penalty_g_all_epoch(x, self.model, self.data)
-        lkl_err, lkl_grad = likelihood_penalty(self.model, self.data)
-        rgl_err, rgl_grad = regularization_penalty(self.model, self.data)
-        
-        x[0] += x_diff
+"""

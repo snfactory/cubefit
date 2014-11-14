@@ -251,7 +251,7 @@ def likelihood_penalty(model, data):
         lkl_err += np.sum(wr * r)
 
         # gradient
-        grad += model.gradient_helper(i_t, wr, data.xctr[i_t], data.yctr[i_t],
+        grad += model.gradient_helper(i_t, -2.*wr, data.xctr[i_t], data.yctr[i_t],
                                       (data.ny, data.nx))
         
     return lkl_err, grad.reshape(model.gal.size)
