@@ -155,8 +155,8 @@ class DDTModel(object):
             raise ValueError("requested coordinates out of model bounds")
         
         # Shift needed to put the model onto the requested coordinates.
-        xshift = xmin - self.xcoords[0]
-        yshift = ymin - self.ycoords[0]
+        xshift = -(xmin - self.xcoords[0])
+        yshift = -(ymin - self.ycoords[0])
 
         conv = self.conv[i_t]
         out = np.empty((self.nw, self.ny, self.nx), dtype=np.float64)
@@ -221,10 +221,8 @@ class DDTModel(object):
             ymin < self.ycoords[0] or ymax > self.ycoords[-1]):
             raise ValueError("requested coordinates out of model bounds")
         
-        # Figure out the shift needed to put the model onto the requested
-        # coordinates.
-        xshift = xmin - self.xcoords[0]
-        yshift = ymax - self.ycoords[0]
+        xshift = -(xmin - self.xcoords[0])
+        yshift = -(ymin - self.ycoords[0])
 
         # create output array
         out = np.zeros((self.nw, self.ny, self.nx), dtype=np.float64)
@@ -239,8 +237,8 @@ class DDTModel(object):
 
             tmp = ifft2(np.conj(fft2(conv[j, :, :]) * fshift) *
                         fft2(out[j, :, :]))
-            if not np.allclose(tmp.imag, 0., atol=1.e-14):
-                raise RuntimeError("IFFT returned non-real array.")
+
+            assert np.allclose(tmp.imag, 0., atol=1.e-14)
 
             out[j, :, :] = tmp.real
 

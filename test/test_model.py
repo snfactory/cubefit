@@ -1,38 +1,71 @@
 from __future__ import print_function
 
 import numpy as np
+from numpy.fft import fft2, ifft2
+from numpy.testing import assert_allclose
 
 import ddtpy
 from ddtpy.fitting import (penalty_g_all_epoch, likelihood_penalty,
                            regularization_penalty)
 
+
+def convolve_fft(x, kernel):
+    """convolve 2-d array x with a kernel *centered* in array."""
+    
+    ny, nx = kernel.shape
+    xctr, yctr = (nx-1)/2., (ny-1)/2.
+    
+    # Phasor that will shift kernel to be centered at (0., 0.)
+    fshift = ddtpy.fft_shift_phasor_2d(kernel.shape, (-xctr, -yctr))
+    
+    return ifft2(fft2(kernel) * fft2(x) * fshift).real
+
+
 class TestFitting:
     def setup_class(self):
         """Create an instance of DDTData and DDTModel so that we can fit them"""
-        nt = 3
-        nw = 1
-        wave = np.linspace(4000., 6000., nw)
 
-        ellipticity = 1.5*np.ones((nt, nw))
-        alpha = 2.0*np.ones((nt,nw))
-        adr_dx, adr_dy = np.zeros((nt,nw)), np.zeros((nt,nw))
+        # some settings
+        nt = 1
+        nw = 1
+        ellipticity = 1.5
+        alpha = 2.0
+
+        # Create model.
+        wave = np.linspace(4000., 6000., nw)
+        adr_dx = np.zeros((nt,nw))
+        adr_dy = np.zeros((nt,nw))
         spaxel_size = 0.43
         mu_xy = 1.0e-3
         mu_wave = 7.0e-2
         sky_guess = np.zeros((nt,nw))
-        self.model = ddtpy.DDTModel(nt, wave, ellipticity, alpha,
+        self.model = ddtpy.DDTModel(nt, wave,
+                                    ellipticity * np.ones((nt, nw)),
+                                    alpha * np.ones((nt, nw)),
                                     adr_dx, adr_dy, mu_xy, mu_wave,
                                     spaxel_size, sky_guess)
 
-        data = ddtpy.gaussian_plus_moffat_psf_4d((15,15), 5., 5.,
-                                                 ellipticity, alpha)
+
+        # Create arbitrary (non-zero!) data.
+        self.truegal = ddtpy.gaussian_plus_moffat_psf((32, 32), 13.5, 13.5,
+                                                      4.5, 6.0, 0.5)
+        psf = ddtpy.gaussian_plus_moffat_psf((32, 32), 15.5, 15.5,
+                                             ellipticity, alpha, 0.)
+        data_2d = convolve_fft(self.truegal, psf)
+        data = np.empty((nt, nw, 15, 15))
+        xoff = 8
+        yoff = 8
+        data[0, 0, :, :] = data_2d[yoff:yoff+15, xoff:xoff+15]
+        self.xctr_true = 15.5 - (xoff + 7.)
+        self.yctr_true = 15.5 - (yoff + 7.)
+
+        # Create a DDTData instance from the data.
         weight = np.ones_like(data)
         header = {}
         is_final_ref = np.ones(nt,dtype = bool)
         master_final_ref = 0
         xctr_init = np.zeros(nt)
         yctr_init = np.zeros(nt)
-        
         self.data = ddtpy.DDTData(data, weight, wave, xctr_init, yctr_init,
                                   is_final_ref, master_final_ref, header,
                                   spaxel_size)
@@ -41,45 +74,21 @@ class TestFitting:
         """Test that gradient functions (used in galaxy fitting) return values
         'close' to what you get with a finite differences method."""
         
-        x_diff = 1.e-8
+        x_diff = 1.e-10
 
-        # set data position so that it is aligned with the lower left
-        # corner of the model.
-        self.data.xctr[:] = -7.5
-        self.data.yctr[:] = -7.5
-
-
-        m = self.model.evaluate(0, self.data.xctr[0], self.data.yctr[0],
-                                (self.data.ny, self.data.nx), which='all')
-        print(m[0])
-
-        #x = np.copy(self.model.gal.reshape(self.model.gal.size))
-        #toterr, grad = penalty_g_all_epoch(x, self.model, self.data)
-        
+        # analytic gradient
         lkl_err, lkl_grad = likelihood_penalty(self.model, self.data)
-        #rgl_err, rgl_grad = regularization_penalty(self.model, self.data)
-        
-        #x[0] += x_diff
-        self.model.gal[0,0,0] += x_diff
 
-        m = self.model.evaluate(0, self.data.xctr[0], self.data.yctr[0],
-                                (self.data.ny, self.data.nx), which='all')
-        print(m[0])
+        # finite differences gradient
+        fd_lkl_grad = np.zeros(self.model.gal.size, dtype=np.float)
+        for j in range(32):
+            for i in range(32):
+                self.model.gal[0,j,i] += x_diff
+                new_lkl_err, _ = likelihood_penalty(self.model, self.data)
+                self.model.gal[0,j,i] = 0.
+                fd_lkl_grad[j*32+i] = (new_lkl_err - lkl_err) / x_diff
 
-        #new_toterr, new_grad = penalty_g_all_epoch(x, self.model, self.data)
-        new_lkl_err, new_lkl_grad = likelihood_penalty(self.model, self.data)
-        #new_rgl_err, new_rgl_grad = regularization_penalty(self.model, self.data)
-
-        d_lkl = (new_lkl_err - lkl_err)/x_diff
-        #d_rgl = (new_rgl_err - rgl_err)/x_diff
-        #d_tot = (new_toterr - toterr)/x_diff
-
-        #assert(d_rgl == rgl_grad[0])  # numerical precision issues
-        #assert(d_lkl == lkl_grad[0])  # just wrong
-        print("x_diff = {}, d_lkl = {}, lkl_grad = {}"
-              .format(x_diff, d_lkl, lkl_grad[0]))
-
-            #assert(d_tot == grad[0])
+        assert_allclose(lkl_grad, fd_lkl_grad, rtol=0.016)
 
 
 """Test the likelihood gradient. 

@@ -242,7 +242,7 @@ def likelihood_penalty(model, data):
     """
 
     lkl_err = 0.0
-    grad = np.empty_like(model.gal)
+    grad = np.zeros_like(model.gal)
     for i_t in range(data.nt):
         m = model.evaluate(i_t, data.xctr[i_t], data.yctr[i_t],
                            (data.ny, data.nx), which='all')
