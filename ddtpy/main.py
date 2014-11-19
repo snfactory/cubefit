@@ -87,8 +87,7 @@ def main(filename, data_dir):
     sn_y_init = -yctr_init[master_final_ref]
 
     ddtdata = DDTData(data, weight, wave, xctr_init, yctr_init,
-                      is_final_ref, master_final_ref, header,
-                      spaxel_size)
+                      is_final_ref, master_final_ref, header)
 
     # Load PSF model parameters. Currently, the PSF in the model is
     # represented by an arbitrary 4-d array that is constructed
@@ -141,7 +140,7 @@ def main(filename, data_dir):
     model = DDTModel(ddtdata.nt, ddtdata.wave, psf_ellipticity, psf_alpha,
                      adr_dx, adr_dy, conf["MU_GALAXY_XY_PRIOR"],
                      conf["MU_GALAXY_LAMBDA_PRIOR"],
-                     spaxel_size, sn_x_init, sn_y_init, skyguess)
+                     sn_x_init, sn_y_init, skyguess)
 
     # Perform initial fit, holding position constant (at settings from
     # conf file PARAM_TARGET_[X,Y]P, directly above)

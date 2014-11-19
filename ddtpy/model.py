@@ -36,31 +36,23 @@ class DDTModel(object):
     mu_wave : float
         Hyperparameter in wavelength coordinate. Used in penalty function
         when fitting model.
-    spaxel_size : float
-        Spaxel size in arcseconds.
+    sn_x_init, sn_y_init : float
+        Initial SN position in model coordinates.
     skyguess : np.ndarray (2-d)
         Initial guess at sky. Sky is a spatially constant value, so the
         shape is (nt, len(wave)).
 
     Notes
     -----
-    The spatial coordinate system used to align data and the model is
-    an arbitrary grid on the sky where the origin is chosen to be at
-    the true location of the SN. That is, in the model the SN is
-    located at (0., 0.)  by definition and the location and shape of
-    the galaxy is defined relative to the SN location. Similarly, the
-    pointings/alignment of the data are defined relative to this
-    coordinate system. For example, if a pointing is centered at
-    coordinates (3.5, 2.5), this means that we believe the central
-    spaxel of the data array to be 3.5 spaxels west and 2.5 spaxels
-    north of the true SN position. (The units of the coordinate system
-    are in spaxels for convenience.)
+    The spatial coordinate system of the model is fixed to be aligned with
+    the master reference of the data. The "spaxel size" of the model is
+    fixed to be the same as the instrument.
     """
 
     MODEL_SHAPE = (32, 32)
 
     def __init__(self, nt, wave, psf_ellipticity, psf_alpha, adr_dx, adr_dy,
-                 mu_xy, mu_wave, spaxel_size, sn_x_init, sn_y_init, skyguess):
+                 mu_xy, mu_wave, sn_x_init, sn_y_init, skyguess):
 
         ny, nx = self.MODEL_SHAPE
         nw, = wave.shape
@@ -114,10 +106,9 @@ class DDTModel(object):
                 tmp = self.psf[j, i, :, :]
                 self.conv[j, i, :, :] = ifft2(fft2(tmp) * fshift).real
 
-        # hyperparameters and spaxel size
+        # hyperparameters
         self.mu_xy = mu_xy
         self.mu_wave = mu_wave
-        self.spaxel_size = spaxel_size
 
         # Galaxy, sky, and SN part of the model
         self.gal = np.zeros((nw, ny, nx))

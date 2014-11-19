@@ -35,7 +35,6 @@ class TestFitting:
         wave = np.linspace(4000., 6000., nw)
         adr_dx = np.zeros((nt,nw))
         adr_dy = np.zeros((nt,nw))
-        spaxel_size = 0.43
         mu_xy = 1.0e-3
         mu_wave = 7.0e-2
         sky_guess = np.zeros((nt,nw))
@@ -43,7 +42,7 @@ class TestFitting:
                                     ellipticity * np.ones((nt, nw)),
                                     alpha * np.ones((nt, nw)),
                                     adr_dx, adr_dy, mu_xy, mu_wave,
-                                    spaxel_size, 0., 0., sky_guess)
+                                    0., 0., sky_guess)
 
 
         # Create arbitrary (non-zero!) data.
@@ -67,8 +66,7 @@ class TestFitting:
         xctr_init = np.zeros(nt)
         yctr_init = np.zeros(nt)
         self.data = ddtpy.DDTData(data, weight, wave, xctr_init, yctr_init,
-                                  is_final_ref, master_final_ref, header,
-                                  spaxel_size)
+                                  is_final_ref, master_final_ref, header)
 
     def test_gradient(self):
         """Test that gradient functions (used in galaxy fitting) return values

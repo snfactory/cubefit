@@ -114,11 +114,10 @@ class DDTData(object):
     is_final_ref : ndarray (bool)
     master_final_ref : int
     header : dict
-    spaxel_size : float
     """
     
     def __init__(self, data, weight, wave, xctr_init, yctr_init,
-                 is_final_ref, master_final_ref, header, spaxel_size):
+                 is_final_ref, master_final_ref, header):
 
         # Consistency checks
         if data.shape != weight.shape:
@@ -147,7 +146,6 @@ class DDTData(object):
         self.is_final_ref = is_final_ref
         self.master_final_ref = master_final_ref
         self.header = header
-        self.spaxel_size = spaxel_size
 
         # store average spectrum of final refs (note that this includes sky!)
         self.data_avg = data[self.is_final_ref].mean(axis=(0, 2, 3))
