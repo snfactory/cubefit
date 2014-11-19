@@ -1,8 +1,6 @@
 DDTPy
 =====
 
-Data Deconvolution Thingy in Python
-
 API
 ---
 

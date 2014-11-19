@@ -8,6 +8,11 @@ from .utils import fft_shift_phasor_2d
 
 __all__ = ["DDTModel"]
 
+# TODO: take out these asserts eventually
+def _assert_real(x):
+    assert (np.all((x.imag == 0.) & (x.real == 0.)) or
+            np.all(np.abs(x.imag / x.real) < 1.e-10))
+
 class DDTModel(object):
     """This class is the equivalent of everything else that isn't data
     in the Yorick version.
@@ -55,7 +60,7 @@ class DDTModel(object):
     MODEL_SHAPE = (32, 32)
 
     def __init__(self, nt, wave, psf_ellipticity, psf_alpha, adr_dx, adr_dy,
-                 mu_xy, mu_wave, spaxel_size, skyguess):
+                 mu_xy, mu_wave, spaxel_size, sn_x_init, sn_y_init, skyguess):
 
         ny, nx = self.MODEL_SHAPE
         nw, = wave.shape
@@ -95,7 +100,7 @@ class DDTModel(object):
 
         # We now shift the PSF so that instead of being exactly
         # centered in the array, it is exactly centered on the lower
-        # left pixel. We do this for using the PSf as a convolution kernel:
+        # left pixel. We do this for using the PSF as a convolution kernel:
         # For convolution in Fourier space, the (0, 0) element of the kernel
         # is effectively the "center."
         # Note that this shifting is different than simply
@@ -114,11 +119,15 @@ class DDTModel(object):
         self.mu_wave = mu_wave
         self.spaxel_size = spaxel_size
 
-        # Galaxy and sky part of the model
+        # Galaxy, sky, and SN part of the model
         self.gal = np.zeros((nw, ny, nx))
         self.galprior = np.zeros((nw, ny, nx))
         self.sky = skyguess
-        self.sn = np.zeros((nt, nw))
+        self.sn = np.zeros((nt, nw))  # SN spectrum at each epoch
+        self.sn_x_init = sn_x_init  # position of SN in model coordinates
+        self.sn_y_init = sn_x_init
+        self.sn_x = sn_x_init
+        self.sn_y = sn_x_init
         self.eta = np.ones(nt)  # eta is transmission
         self.final_ref_sky = np.zeros(nw)
 
@@ -158,6 +167,10 @@ class DDTModel(object):
         xshift = -(xmin - self.xcoords[0])
         yshift = -(ymin - self.ycoords[0])
 
+        # shift needed to put SN in right place in the model
+        fshift_sn = fft_shift_phasor_2d(self.MODEL_SHAPE,
+                                        (self.sn_y, self.sn_x))
+
         conv = self.conv[i_t]
         out = np.empty((self.nw, self.ny, self.nx), dtype=np.float64)
                                      
@@ -169,23 +182,20 @@ class DDTModel(object):
             if which == 'galaxy':
                 tmp = ifft2(fft2(conv[j, :, :]) * fshift *
                             fft2(self.gal[j, :, :]))
-                if not np.allclose(tmp.imag, 0., atol=1.e-14):
-                    raise RuntimeError("IFFT returned non-real array.")
+                _assert_real(tmp)
                 out[j, :, :] = tmp.real
 
             elif which == 'snscaled':
-                tmp = ifft2(fft2(psf[j, :, :]) * fshift)
-                if not np.allclose(tmp.imag, 0., atol=1.e-14):
-                    raise RuntimeError("IFFT returned non-real array.")
+                tmp = ifft2(fft2(psf[j, :, :]) * fshift_sn * fshift)
+                _assert_real(tmp)
                 out[j, :, :] = tmp.real
 
             elif which == 'all':
                 tmp = ifft2(
                     fshift *
                     (fft2(self.gal[j, :, :]) * fft2(self.conv[j, :, :]) +
-                     fft2(self.sn[i_t,j] * self.psf[j, :, :])))
-                if not np.allclose(tmp.imag, 0., atol=1.e-14):
-                    raise RuntimeError("IFFT returned non-real array.")
+                     self.sn[i_t,j] * fshift_sn * fft2(self.psf[j, :, :])))
+                _assert_real(tmp)
                 out[j, :, :] = tmp.real + self.sky[i_t, j]
 
         # Return a slice that matches the data.
@@ -237,9 +247,7 @@ class DDTModel(object):
 
             tmp = ifft2(np.conj(fft2(conv[j, :, :]) * fshift) *
                         fft2(out[j, :, :]))
-
-            assert np.allclose(tmp.imag, 0., atol=1.e-14)
-
+            _assert_real(tmp)
             out[j, :, :] = tmp.real
 
         return out

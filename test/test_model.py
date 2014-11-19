@@ -43,7 +43,7 @@ class TestFitting:
                                     ellipticity * np.ones((nt, nw)),
                                     alpha * np.ones((nt, nw)),
                                     adr_dx, adr_dy, mu_xy, mu_wave,
-                                    spaxel_size, sky_guess)
+                                    spaxel_size, 0., 0., sky_guess)
 
 
         # Create arbitrary (non-zero!) data.

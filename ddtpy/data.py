@@ -109,8 +109,8 @@ class DDTData(object):
     wave : ndarray (1-d)
     xctr_init, yctr_init : ndarray
         1-d arrays of length `nt` giving the position of the center of the
-        data array in model coordinates (in which 0, 0 is defined to be 
-        the position of the SN).
+        data array in model coordinates, which are fixed to the master
+        final ref.
     is_final_ref : ndarray (bool)
     master_final_ref : int
     header : dict
