@@ -1,19 +1,13 @@
 import math
 import numpy as np
 
-SNIFS_LATITUDE = np.deg2rad(19.8228)
 MMHG_PER_MBAR = 760./1013.25
 ARCSEC_PER_RADIAN = 206265.
 
-__all__ = ["differential_refraction"]
+__all__ = ["differential_refraction", "paralactic_angle"]
 
-def calc_airmass(ha, dec):
-  cos_z = (np.sin(SNIFS_LATITUDE) * np.sin(dec) +
-           np.cos(SNIFS_LATITUDE) * np.cos(dec) * np.cos(ha))
-  return 1./cos_z
-
-def calc_paralactic_angle(airmass, ha, dec, tilt):
-    """Calculate paralactic angle in radians, including MLA tilt
+def paralactic_angle(airmass, ha, dec, tilt, lat):
+    """Return paralactic angle in radians, including MLA tilt
 
     Parameters
     ----------
@@ -21,6 +15,8 @@ def calc_paralactic_angle(airmass, ha, dec, tilt):
     ha : 1-d array
     dec : 1-d array
     tilt : float
+    lat : float
+        Earth latitude of instrument in radians.
     """
 
     cos_z = 1./airmass
@@ -29,10 +25,10 @@ def calc_paralactic_angle(airmass, ha, dec, tilt):
     #       but not clear to me why that would be.
     sin_z = np.sqrt(1. - cos_z**2)  
 
-    sin_paralactic = np.sin(ha) * np.cos(SNIFS_LATITUDE) / sin_z
+    sin_paralactic = np.sin(ha) * np.cos(lat) / sin_z
 
-    cos_paralactic = (np.sin(SNIFS_LATITUDE)*np.cos(dec) -
-                      np.cos(SNIFS_LATITUDE)*np.sin(dec)*np.cos(ha)) / sin_z
+    cos_paralactic = (np.sin(lat)*np.cos(dec) -
+                      np.cos(lat)*np.sin(dec)*np.cos(ha)) / sin_z
 
     # treat individually cases where airmass == 1.
     mask = (sin_z == 0.)

@@ -3,26 +3,29 @@ DDTPy
 
 Python implementation of the spectral data cube modeling code DDT
 
-The name DDTPy is mostly a placeholder to distinguish this from the
-original DDT implementation, during development.
-
-Alternative name: SNIFit - "SuperNova IFU Fit"?
-
 Dependencies
 ------------
 
-Currently written for Python 2.7.
-
+* Python 2.7
 * numpy
 * scipy (for optimization)
 * fitsio - https://github.com/esheldon/fitsio
 
+_Note on FFT library:_ Currently we're just using `numpy.fft` which
+Ithink wraps FFTPACK. FFTW is supposedly the fastest available library
+(we're talking factors of ~2 here). The original Yorick code uses a
+FFTW wrapper. We may want to switch to using PyFFTW at some point.
 
-**FFT libraries** - Currently we're just using `numpy.fft`. Note that
-PyFFTW is a wrapper for `fftw` while `numpy.fft` or `scipy.fftpack`
-are wrappers for other FFT libraries. FFTW is supposedly the
-fastest. We're The original Yorick code uses a FFTW wrapper and we may
-want to switch at some point.
+Install & Tests
+---------------
+
+```
+setup.py install
+```
+
+Running tests requires the pytest package (available via `pip` or
+`conda`).  Execute `py.test` in the root of the source code repository
+or `test` directory.
 
 Documentation
 -------------

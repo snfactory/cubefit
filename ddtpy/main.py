@@ -11,11 +11,12 @@ import math
 from .psf import params_from_gs, gaussian_plus_moffat_psf_4d
 from .model import DDTModel
 from .data import read_dataset, read_select_header_keys, DDTData
-from .adr import calc_paralactic_angle, differential_refraction
+from .adr import paralactic_angle, differential_refraction
 from .fitting import guess_sky, fit_model_all_epoch, fit_position
 
 __all__ = ["main"]
 
+SNIFS_LATITUDE = np.deg2rad(19.8228)
 
 def main(filename, data_dir):
     """Do everything.
@@ -49,8 +50,7 @@ def main(filename, data_dir):
     n_iter_galaxy_prior = conf.get("N_ITER_GALAXY_PRIOR")
 
     # Load the header from the final ref or first cube
-    i = master_final_ref if (master_final_ref >= 0) else 0
-    fname = os.path.join(data_dir, conf["IN_CUBE"][i])
+    fname = os.path.join(data_dir, conf["IN_CUBE"][master_final_ref])
     header = read_select_header_keys(fname)
 
     # Load data from list of FITS files.
@@ -80,9 +80,14 @@ def main(filename, data_dir):
     else:
         yctr_init = np.zeros(ddtdata.nt)
 
+    # calculate all positions relative to master final ref
+    xctr_init -= xctr_init[master_final_ref]
+    yctr_init -= yctr_init[master_final_ref]
+    sn_x_init = -xctr_init[master_final_ref]
+    sn_y_init = -yctr_init[master_final_ref]
 
     ddtdata = DDTData(data, weight, wave, xctr_init, yctr_init,
-                      is_final_ref, master_final_ref, header, spaxel_size)
+                      is_final_ref, master_final_ref, header)
 
     # Load PSF model parameters. Currently, the PSF in the model is
     # represented by an arbitrary 4-d array that is constructed
@@ -124,9 +129,9 @@ def main(filename, data_dir):
     # in arcseconds (2-d array).
     delta_r = differential_refraction(airmass, p, t, h, ddtdata.wave, wave_ref)
     delta_r /= spaxel_size  # convert from arcsec to spaxels
-    paralactic_angle = calc_paralactic_angle(airmass, ha, dec, tilt)
-    adr_dx = -delta_r * np.sin(paralactic_angle)[:, None]  # O'xp <-> - east
-    adr_dy = delta_r * np.cos(paralactic_angle)[:, None]
+    pa = paralactic_angle(airmass, ha, dec, tilt, SNIFS_LATITUDE)
+    adr_dx = -delta_r * np.sin(pa)[:, None]  # O'xp <-> - east
+    adr_dy = delta_r * np.cos(pa)[:, None]
 
     # Make a first guess at the sky level based on the data.
     skyguess = guess_sky(ddtdata, 2.0)
@@ -135,7 +140,7 @@ def main(filename, data_dir):
     model = DDTModel(ddtdata.nt, ddtdata.wave, psf_ellipticity, psf_alpha,
                      adr_dx, adr_dy, conf["MU_GALAXY_XY_PRIOR"],
                      conf["MU_GALAXY_LAMBDA_PRIOR"],
-                     spaxel_size, skyguess)
+                     sn_x_init, sn_y_init, skyguess)
 
     # Perform initial fit, holding position constant (at settings from
     # conf file PARAM_TARGET_[X,Y]P, directly above)
@@ -195,7 +200,7 @@ def main(filename, data_dir):
         # Fit the position.
         # TODO: should the sky be varied on each iteration?
         #       (currently, it is not varied)
-        pos = fit_position(ddtdata, model, i_t)
+        pos = fit_position(model, ddtdata, i_t)
                            
         
         # Check if the position moved too much from initial position.
@@ -229,7 +234,7 @@ def main(filename, data_dir):
         if ddtdata.is_final_ref[i_t]:
             continue
 
-        pos = fit_position(ddtdata, model, i_t)
+        pos = fit_position(model, ddtdata, i_t)
 
         # Check if the position moved too much from initial position.
         # If it didn't move too much, update the model.

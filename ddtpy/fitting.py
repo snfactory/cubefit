@@ -242,7 +242,7 @@ def likelihood_penalty(model, data):
     """
 
     lkl_err = 0.0
-    grad = np.empty_like(model.gal)
+    grad = np.zeros_like(model.gal)
     for i_t in range(data.nt):
         m = model.evaluate(i_t, data.xctr[i_t], data.yctr[i_t],
                            (data.ny, data.nx), which='all')
@@ -251,8 +251,7 @@ def likelihood_penalty(model, data):
         lkl_err += np.sum(wr * r)
 
         # gradient
-        grad += model.gradient_helper(i_t, -2*wr, data.xctr[i_t],
-                                      data.yctr[i_t],
+        grad += model.gradient_helper(i_t, -2.*wr, data.xctr[i_t], data.yctr[i_t],
                                       (data.ny, data.nx))
         
     return lkl_err, grad.reshape(model.gal.size)
@@ -335,14 +334,14 @@ def fit_model_all_epoch(model, data, maxiter=1000):
 # TODO: should we change this to use a general-purpose optimizer rather 
 # than leastsq? Leastsq seems like a strange choice for this problem
 # from what I can tell.
-def fit_position(data, model, i_t, maxiter=100):
+def fit_position(model, data, i_t, maxiter=100):
     """Fit data position for epoch i_t, keeping galaxy model
     fixed. Doesn't modify model or data.
 
     Parameters
     ----------
-    data : DDTData
     model : DDTModel
+    data : DDTData
     i_t : int
         Epoch number.
 
