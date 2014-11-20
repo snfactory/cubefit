@@ -300,7 +300,9 @@ def fit_model(model, data, epochs):
 
     print("optimization finished\n"
           "function minimum: {:f}".format(f))
-    print("info dict: ", d)
+    print("info dict: ")
+    for k, v in d.iteritems():
+        print(k, " : ", v)
 
 
 # TODO: should we change this to use a general-purpose optimizer rather 

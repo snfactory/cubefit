@@ -10,8 +10,15 @@ __all__ = ["DDTModel"]
 
 # TODO: take out these asserts eventually
 def _assert_real(x):
-    assert (np.all((x.imag == 0.) & (x.real == 0.)) or
-            np.all(np.abs(x.imag / x.real) < 1.e-10))
+    if np.all((x.imag == 0.) & (x.real == 0.)):
+        return
+    absfrac = np.abs(x.imag / x.real)
+    mask = absfrac < 1.e-4
+    if not np.all(mask):
+        print(x.imag[~mask])
+        print(x.real[~mask])
+        raise RuntimeError("array not real: max imag/real = {:g}"
+                           .format(np.max(absfrac)))
 
 class DDTModel(object):
     """This class is the equivalent of everything else that isn't data
@@ -181,16 +188,17 @@ class DDTModel(object):
                 out[j, :, :] = tmp.real
 
             elif which == 'snscaled':
-                tmp = ifft2(fft2(psf[j, :, :]) * fshift_sn * fshift)
+                tmp = ifft2(fft2(self.psf[i_t, j, :, :]) * fshift_sn * fshift)
                 _assert_real(tmp)
                 out[j, :, :] = tmp.real
 
             elif which == 'all':
                 tmp = ifft2(
                     fshift *
-                    (fft2(self.gal[j, :, :]) * fft2(self.conv[j, :, :]) +
-                     self.sn[i_t,j] * fshift_sn * fft2(self.psf[j, :, :])))
+                    (fft2(self.gal[j, :, :]) * fft2(conv[j, :, :]) +
+                     self.sn[i_t,j] * fshift_sn * fft2(self.psf[i_t,j,:,:])))
                 _assert_real(tmp)
+
                 out[j, :, :] = tmp.real + self.sky[i_t, j]
 
         # Return a slice that matches the data.

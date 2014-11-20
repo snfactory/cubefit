@@ -130,8 +130,12 @@ def main(filename, data_dir):
     delta_r = differential_refraction(airmass, p, t, h, ddtdata.wave, wave_ref)
     delta_r /= spaxel_size  # convert from arcsec to spaxels
     pa = paralactic_angle(airmass, ha, dec, tilt, SNIFS_LATITUDE)
-    adr_dx = -delta_r * np.sin(pa)[:, None]  # O'xp <-> - east
-    adr_dy = delta_r * np.cos(pa)[:, None]
+
+    # debug
+    #adr_dx = -delta_r * np.sin(pa)[:, None]  # O'xp <-> - east
+    #adr_dy = delta_r * np.cos(pa)[:, None]
+    adr_dx = np.zeros((ddtdata.nt, ddtdata.nw), dtype=np.float)
+    adr_dy = np.zeros((ddtdata.nt, ddtdata.nw), dtype=np.float)
 
     # Make a first guess at the sky level based on the data.
     skyguess = guess_sky(ddtdata, 2.0)
@@ -139,7 +143,7 @@ def main(filename, data_dir):
     # Calculate rough average galaxy spectrum from final refs
     # for use in regularization.
     refdata = ddtdata.data[ddtdata.is_final_ref]
-    refdata -= skyguess[ddtdata.is_final_ref]
+    refdata -= skyguess[ddtdata.is_final_ref][:, :, None, None]
     mean_gal_spec = refdata.mean(axis=(0, 2, 3))
 
     # Initialize model
