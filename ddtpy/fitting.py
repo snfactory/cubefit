@@ -5,7 +5,7 @@ import copy
 import numpy as np
 from scipy.optimize import leastsq, fmin_l_bfgs_b
 
-__all__ = ["guess_sky", "fit_sky", "fit_sky_and_sn", "fit_model_all_epoch",
+__all__ = ["guess_sky", "fit_sky", "fit_sky_and_sn", "fit_model",
            "fit_position"]
 
 
@@ -175,86 +175,31 @@ def fit_sky_and_sn(model, data, i_t):
     return sky, sn
 
 
-def penalty_g_all_epoch(x, model, data):
-    """computes likelihood and regularization penalty for a given galaxy model
+def chisq(model, data, i_t):
+    """Return chi squared value and gradent for single data epoch.
     
     Parameters
     ----------
-    x : np.ndarray
-        1-d array, flattened 3-d galaxy model
     model : DDTModel 
     data : DDTData
+    i_t : int
+        Epoch number.
     
     Returns
     -------
-    penalty : float
-    gradient : np.ndarray
-        1-d array of length x.size giving the gradient on penalty.
-
-    Notes
-    -----
-    Used in op_mnb (DDT/OptimPack-1.3.2/yorick/OptimPack1.i)
-    * Compute likelihood term and gradient on NORMALIZED x
-    *       1. compute 4-D model: g(x)
-    *       2. apply convolution: H.g(x)
-    *       3. apply resampling: R.H.g(x)
-    *       4. compute residuals and penalty
-    *       5. compute gradient by transposing steps 3, 2, and 1
+    chisq : float
+    chisq_gradient : np.ndarray (3-d)
+        Gradient with respect to model galaxy.
     """
 
-    model.gal = x.reshape(model.gal.shape)
+    m = model.evaluate(i_t, data.xctr[i_t], data.yctr[i_t],
+                       (data.ny, data.nx), which='all')
+    r = data.data[i_t] - m
+    wr = data.weight[i_t] * r
+    grad = model.gradient_helper(i_t, -2.*wr, data.xctr[i_t],
+                                 data.yctr[i_t], (data.ny, data.nx))
 
-    # Change model's SN and sky to optimal values given this galaxy
-    for i_t in range(data.nt):
-        if i_t == data.master_final_ref:
-            continue
-        if data.is_final_ref[i_t]:
-            sky = fit_sky(model, data, i_t)
-            model.sky[i_t, :] = sky
-        else:
-            sky, sn = fit_sky_and_sn(model, data, i_t)
-            model.sky[i_t, :] = sky
-            model.sn[i_t, :] = sn
-
-    lkl_penalty, lkl_grad = likelihood_penalty(model, data)
-    rgl_penalty, rgl_grad = regularization_penalty(model, data)
-
-    tot_penalty = lkl_penalty + rgl_penalty
-    tot_grad = lkl_grad + rgl_grad
-    
-    return tot_penalty, tot_grad
-
-def likelihood_penalty(model, data):
-    """computes likelihood and likelihood gradient for galaxy model
-    
-    Parameters
-    ----------
-    x : np.ndarray
-        1-d array, flattened 3-d galaxy model
-    model : DDTModel 
-    data : DDTData
-    
-    Returns
-    -------
-    penalty : float
-    gradient : np.ndarray
-        1-d array of length x.size giving the gradient on penalty.
-    """
-
-    lkl_err = 0.0
-    grad = np.zeros_like(model.gal)
-    for i_t in range(data.nt):
-        m = model.evaluate(i_t, data.xctr[i_t], data.yctr[i_t],
-                           (data.ny, data.nx), which='all')
-        r = data.data[i_t] - m
-        wr = data.weight[i_t] * r
-        lkl_err += np.sum(wr * r)
-
-        # gradient
-        grad += model.gradient_helper(i_t, -2.*wr, data.xctr[i_t],
-                                      data.yctr[i_t], (data.ny, data.nx))
-        
-    return lkl_err, grad.reshape(model.gal.size)
+    return np.sum(wr * r), grad
 
 
 def regularization_penalty(model, data):
@@ -262,16 +207,14 @@ def regularization_penalty(model, data):
     
     Parameters
     ----------
-    x : np.ndarray
-        1-d array, flattened 3-d galaxy model
     model : DDTModel 
     data : DDTData
     
     Returns
     -------
     penalty : float
-    gradient : np.ndarray
-        1-d array of length x.size giving the gradient on penalty.
+    penalty_gradient : np.ndarray
+        Gradient with respect to model galaxy (l
     """
 
     galdiff = model.gal - model.galprior
@@ -281,9 +224,9 @@ def regularization_penalty(model, data):
     dx = galdiff[:, :, 1:] - galdiff[:, :, :-1]
 
     # Regularlization penalty term
-    rgl_err = (model.mu_xy * np.sum(dx**2) +
-               model.mu_xy * np.sum(dy**2) +
-               model.mu_wave * np.sum(dw**2))
+    val = (model.mu_xy * np.sum(dx**2) +
+           model.mu_xy * np.sum(dy**2) +
+           model.mu_wave * np.sum(dw**2))
     
     # Gradient in regularization penalty term
     #
@@ -296,35 +239,64 @@ def regularization_penalty(model, data):
     #     gradient[i+1] += 2 * hyper * d
     #     gradient[i]   -= 2 * hyper * d
 
-    rgl_grad = np.zeros(galdiff.shape, dtype=np.float64)
-    rgl_grad[:, :, 1:] += 2. * model.mu_xy * dx
-    rgl_grad[:, :, :-1] -= 2. * model.mu_xy * dx
-    rgl_grad[:, 1:, :] += 2. * model.mu_xy * dy
-    rgl_grad[:, :-1,:] -= 2. * model.mu_xy * dy
-    rgl_grad[1:, :, :] += 2. * model.mu_wave * dw
-    rgl_grad[:-1, :, :] -= 2. * model.mu_wave * dw
+    grad = np.zeros_like(model.gal)
+    grad[:, :, 1:] += 2. * model.mu_xy * dx
+    grad[:, :, :-1] -= 2. * model.mu_xy * dx
+    grad[:, 1:, :] += 2. * model.mu_xy * dy
+    grad[:, :-1,:] -= 2. * model.mu_xy * dy
+    grad[1:, :, :] += 2. * model.mu_wave * dw
+    grad[:-1, :, :] -= 2. * model.mu_wave * dw
     
-    return rgl_err, rgl_grad.reshape(model.gal.size)
+    return val, grad
 
 
-def fit_model_all_epoch(model, data, maxiter=1000):
-    """fit galaxy, SN and sky and update the model accordingly, keeping
-    registration fixed.
-    
+def fit_model(model, data, epochs):
+    """Fit galaxy, SN and sky part of model, keeping data positions fixed.
+
     Parameters
     ----------
     model : DDTModel
+        Model.
     data : DDTData
+        Data.
+    epochs : list of int
+        List of epoch indicies to use in fit.
 
     """
-    
-    x0 = model.gal.reshape((model.gal.size))
 
-    #bounds = zip(np.ones(model.gal.size)*10e-6,
-    #             np.ones(model.gal.size)*data.data.max())
-    x, f, d = fmin_l_bfgs_b(penalty_g_all_epoch, x0, args=(model, data)) 
-    
-    model.gal = x.reshape(model.gal.shape)
+    # Define objective function to minimize. This adjusts SN and Sky
+    # and returns the regularized chi squared and its gradient.
+    def objective_func(galparams):
+
+        # Set galaxy in model.
+        model.gal = galparams.reshape(model.gal.shape)
+
+        # Change model's SN and sky to optimal values given this galaxy
+        for i_t in epochs:
+            if i_t == data.master_final_ref:
+                continue
+            if data.is_final_ref[i_t]:
+                sky = fit_sky(model, data, i_t)
+                model.sky[i_t, :] = sky
+            else:
+                sky, sn = fit_sky_and_sn(model, data, i_t)
+                model.sky[i_t, :] = sky
+                model.sn[i_t, :] = sn
+
+        # Add up chisq for each epoch and add regularization gradient.
+        chisq_tot = 0.
+        chisq_grad = np.zeros_like(model.gal)
+        for i_t in epochs:
+            val, grad = chisq(model, data, i_t)
+            chisq_tot += val
+            chisq_grad += grad
+        rval, rgrad = regularization_penalty(model, data)
+
+        return (chisq_tot + rval), np.ravel(chisq_grad + rgrad)
+
+    galparams0 = np.ravel(model.gal)
+    galparams, f, d = fmin_l_bfgs_b(objective_func, galparams0)
+    model.gal = galparams.reshape(model.gal.shape)
 
     print("optimization finished\n"
           "function minimum: {:f}".format(f))

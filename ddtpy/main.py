@@ -12,7 +12,7 @@ from .psf import params_from_gs, gaussian_plus_moffat_psf_4d
 from .model import DDTModel
 from .data import read_dataset, read_select_header_keys, DDTData
 from .adr import paralactic_angle, differential_refraction
-from .fitting import guess_sky, fit_model_all_epoch, fit_position
+from .fitting import guess_sky, fit_model, fit_position
 
 __all__ = ["main"]
 
@@ -152,7 +152,7 @@ def main(filename, data_dir):
     # conf file PARAM_TARGET_[X,Y]P, directly above)
     # This fits the galaxy, SN and sky and updates the model accordingly,
     # keeping registration fixed.
-    fit_model_all_epoch(model, ddtdata)
+    fit_model(model, ddtdata, [ddtdata.master_final_ref])
 
     # Test plotting
     from .plotting import plot_timeseries
