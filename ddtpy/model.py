@@ -19,7 +19,7 @@ class DDTModel(object):
 
     Parameters
     ----------
-    nt : 2-tuple of int
+    nt : int
         Model dimension in time.
     wave : np.ndarray
         One-dimensional array of wavelengths in angstroms. Should match
@@ -41,6 +41,9 @@ class DDTModel(object):
     skyguess : np.ndarray (2-d)
         Initial guess at sky. Sky is a spatially constant value, so the
         shape is (nt, len(wave)).
+    mean_gal_spec : np.ndarray (1-d)
+        Rough guess at average galaxy spectrum for use in regularization.
+        Shape is (len(wave),).
 
     Notes
     -----
@@ -52,7 +55,8 @@ class DDTModel(object):
     MODEL_SHAPE = (32, 32)
 
     def __init__(self, nt, wave, psf_ellipticity, psf_alpha, adr_dx, adr_dy,
-                 mu_xy, mu_wave, sn_x_init, sn_y_init, skyguess):
+                 mu_xy, mu_wave, sn_x_init, sn_y_init, skyguess,
+                 mean_gal_spec):
 
         ny, nx = self.MODEL_SHAPE
         nw, = wave.shape
@@ -113,14 +117,14 @@ class DDTModel(object):
         # Galaxy, sky, and SN part of the model
         self.gal = np.zeros((nw, ny, nx))
         self.galprior = np.zeros((nw, ny, nx))
+        self.mean_gal_spec = mean_gal_spec
         self.sky = skyguess
         self.sn = np.zeros((nt, nw))  # SN spectrum at each epoch
         self.sn_x_init = sn_x_init  # position of SN in model coordinates
         self.sn_y_init = sn_x_init
         self.sn_x = sn_x_init
         self.sn_y = sn_x_init
-        self.eta = np.ones(nt)  # eta is transmission
-        self.final_ref_sky = np.zeros(nw)
+        self.eta = np.ones(nt)  # eta is transmission; not currently used.
 
     def evaluate(self, i_t, xctr, yctr, shape, which='galaxy'):
         """Evalute the model on a grid for a single epoch.

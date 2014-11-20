@@ -251,8 +251,8 @@ def likelihood_penalty(model, data):
         lkl_err += np.sum(wr * r)
 
         # gradient
-        grad += model.gradient_helper(i_t, -2.*wr, data.xctr[i_t], data.yctr[i_t],
-                                      (data.ny, data.nx))
+        grad += model.gradient_helper(i_t, -2.*wr, data.xctr[i_t],
+                                      data.yctr[i_t], (data.ny, data.nx))
         
     return lkl_err, grad.reshape(model.gal.size)
 
@@ -275,7 +275,7 @@ def regularization_penalty(model, data):
     """
 
     galdiff = model.gal - model.galprior
-    galdiff /= data.data_avg[:, None, None]
+    galdiff /= model.mean_gal_spec[:, None, None]
     dw = galdiff[1:, :, :] - galdiff[:-1, :, :]
     dy = galdiff[:, 1:, :] - galdiff[:, :-1, :]
     dx = galdiff[:, :, 1:] - galdiff[:, :, :-1]

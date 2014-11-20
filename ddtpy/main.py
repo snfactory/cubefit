@@ -136,11 +136,17 @@ def main(filename, data_dir):
     # Make a first guess at the sky level based on the data.
     skyguess = guess_sky(ddtdata, 2.0)
 
+    # Calculate rough average galaxy spectrum from final refs
+    # for use in regularization.
+    refdata = ddtdata.data[ddtdata.is_final_ref]
+    refdata -= skyguess[ddtdata.is_final_ref]
+    mean_gal_spec = refdata.mean(axis=(0, 2, 3))
+
     # Initialize model
     model = DDTModel(ddtdata.nt, ddtdata.wave, psf_ellipticity, psf_alpha,
                      adr_dx, adr_dy, conf["MU_GALAXY_XY_PRIOR"],
                      conf["MU_GALAXY_LAMBDA_PRIOR"],
-                     sn_x_init, sn_y_init, skyguess)
+                     sn_x_init, sn_y_init, skyguess, mean_gal_spec)
 
     # Perform initial fit, holding position constant (at settings from
     # conf file PARAM_TARGET_[X,Y]P, directly above)
