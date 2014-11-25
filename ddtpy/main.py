@@ -12,7 +12,7 @@ from .psf import params_from_gs, gaussian_plus_moffat_psf_4d
 from .model import DDTModel
 from .data import read_dataset, read_select_header_keys, DDTData
 from .adr import paralactic_angle, differential_refraction
-from .fitting import guess_sky, fit_model_all_epoch, fit_position
+from .fitting import guess_sky, fit_model, fit_position
 
 __all__ = ["main"]
 
@@ -130,23 +130,33 @@ def main(filename, data_dir):
     delta_r = differential_refraction(airmass, p, t, h, ddtdata.wave, wave_ref)
     delta_r /= spaxel_size  # convert from arcsec to spaxels
     pa = paralactic_angle(airmass, ha, dec, tilt, SNIFS_LATITUDE)
-    adr_dx = -delta_r * np.sin(pa)[:, None]  # O'xp <-> - east
-    adr_dy = delta_r * np.cos(pa)[:, None]
+
+    # debug
+    #adr_dx = -delta_r * np.sin(pa)[:, None]  # O'xp <-> - east
+    #adr_dy = delta_r * np.cos(pa)[:, None]
+    adr_dx = np.zeros((ddtdata.nt, ddtdata.nw), dtype=np.float)
+    adr_dy = np.zeros((ddtdata.nt, ddtdata.nw), dtype=np.float)
 
     # Make a first guess at the sky level based on the data.
     skyguess = guess_sky(ddtdata, 2.0)
+
+    # Calculate rough average galaxy spectrum from final refs
+    # for use in regularization.
+    refdata = ddtdata.data[ddtdata.is_final_ref]
+    refdata -= skyguess[ddtdata.is_final_ref][:, :, None, None]
+    mean_gal_spec = refdata.mean(axis=(0, 2, 3))
 
     # Initialize model
     model = DDTModel(ddtdata.nt, ddtdata.wave, psf_ellipticity, psf_alpha,
                      adr_dx, adr_dy, conf["MU_GALAXY_XY_PRIOR"],
                      conf["MU_GALAXY_LAMBDA_PRIOR"],
-                     sn_x_init, sn_y_init, skyguess)
+                     sn_x_init, sn_y_init, skyguess, mean_gal_spec)
 
     # Perform initial fit, holding position constant (at settings from
     # conf file PARAM_TARGET_[X,Y]P, directly above)
     # This fits the galaxy, SN and sky and updates the model accordingly,
     # keeping registration fixed.
-    fit_model_all_epoch(model, ddtdata)
+    fit_model(model, ddtdata, [ddtdata.master_final_ref])
 
     # Test plotting
     from .plotting import plot_timeseries

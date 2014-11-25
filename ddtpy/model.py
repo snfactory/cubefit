@@ -10,8 +10,15 @@ __all__ = ["DDTModel"]
 
 # TODO: take out these asserts eventually
 def _assert_real(x):
-    assert (np.all((x.imag == 0.) & (x.real == 0.)) or
-            np.all(np.abs(x.imag / x.real) < 1.e-10))
+    if np.all((x.imag == 0.) & (x.real == 0.)):
+        return
+    absfrac = np.abs(x.imag / x.real)
+    mask = absfrac < 1.e-4
+    if not np.all(mask):
+        print(x.imag[~mask])
+        print(x.real[~mask])
+        raise RuntimeError("array not real: max imag/real = {:g}"
+                           .format(np.max(absfrac)))
 
 class DDTModel(object):
     """This class is the equivalent of everything else that isn't data
@@ -19,7 +26,7 @@ class DDTModel(object):
 
     Parameters
     ----------
-    nt : 2-tuple of int
+    nt : int
         Model dimension in time.
     wave : np.ndarray
         One-dimensional array of wavelengths in angstroms. Should match
@@ -41,6 +48,9 @@ class DDTModel(object):
     skyguess : np.ndarray (2-d)
         Initial guess at sky. Sky is a spatially constant value, so the
         shape is (nt, len(wave)).
+    mean_gal_spec : np.ndarray (1-d)
+        Rough guess at average galaxy spectrum for use in regularization.
+        Shape is (len(wave),).
 
     Notes
     -----
@@ -52,7 +62,8 @@ class DDTModel(object):
     MODEL_SHAPE = (32, 32)
 
     def __init__(self, nt, wave, psf_ellipticity, psf_alpha, adr_dx, adr_dy,
-                 mu_xy, mu_wave, sn_x_init, sn_y_init, skyguess):
+                 mu_xy, mu_wave, sn_x_init, sn_y_init, skyguess,
+                 mean_gal_spec):
 
         ny, nx = self.MODEL_SHAPE
         nw, = wave.shape
@@ -113,14 +124,14 @@ class DDTModel(object):
         # Galaxy, sky, and SN part of the model
         self.gal = np.zeros((nw, ny, nx))
         self.galprior = np.zeros((nw, ny, nx))
+        self.mean_gal_spec = mean_gal_spec
         self.sky = skyguess
         self.sn = np.zeros((nt, nw))  # SN spectrum at each epoch
         self.sn_x_init = sn_x_init  # position of SN in model coordinates
         self.sn_y_init = sn_x_init
         self.sn_x = sn_x_init
         self.sn_y = sn_x_init
-        self.eta = np.ones(nt)  # eta is transmission
-        self.final_ref_sky = np.zeros(nw)
+        self.eta = np.ones(nt)  # eta is transmission; not currently used.
 
     def evaluate(self, i_t, xctr, yctr, shape, which='galaxy'):
         """Evalute the model on a grid for a single epoch.
@@ -177,16 +188,17 @@ class DDTModel(object):
                 out[j, :, :] = tmp.real
 
             elif which == 'snscaled':
-                tmp = ifft2(fft2(psf[j, :, :]) * fshift_sn * fshift)
+                tmp = ifft2(fft2(self.psf[i_t, j, :, :]) * fshift_sn * fshift)
                 _assert_real(tmp)
                 out[j, :, :] = tmp.real
 
             elif which == 'all':
                 tmp = ifft2(
                     fshift *
-                    (fft2(self.gal[j, :, :]) * fft2(self.conv[j, :, :]) +
-                     self.sn[i_t,j] * fshift_sn * fft2(self.psf[j, :, :])))
+                    (fft2(self.gal[j, :, :]) * fft2(conv[j, :, :]) +
+                     self.sn[i_t,j] * fshift_sn * fft2(self.psf[i_t,j,:,:])))
                 _assert_real(tmp)
+
                 out[j, :, :] = tmp.real + self.sky[i_t, j]
 
         # Return a slice that matches the data.

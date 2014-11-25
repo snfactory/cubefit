@@ -5,8 +5,7 @@ from numpy.fft import fft2, ifft2
 from numpy.testing import assert_allclose
 
 import ddtpy
-from ddtpy.fitting import (penalty_g_all_epoch, likelihood_penalty,
-                           regularization_penalty)
+from ddtpy.fitting import chisq, regularization_penalty
 
 
 def convolve_fft(x, kernel):
@@ -31,19 +30,7 @@ class TestFitting:
         ellipticity = 1.5
         alpha = 2.0
 
-        # Create model.
         wave = np.linspace(4000., 6000., nw)
-        adr_dx = np.zeros((nt,nw))
-        adr_dy = np.zeros((nt,nw))
-        mu_xy = 1.0e-3
-        mu_wave = 7.0e-2
-        sky_guess = np.zeros((nt,nw))
-        self.model = ddtpy.DDTModel(nt, wave,
-                                    ellipticity * np.ones((nt, nw)),
-                                    alpha * np.ones((nt, nw)),
-                                    adr_dx, adr_dy, mu_xy, mu_wave,
-                                    0., 0., sky_guess)
-
 
         # Create arbitrary (non-zero!) data.
         self.truegal = ddtpy.gaussian_plus_moffat_psf((32, 32), 13.5, 13.5,
@@ -68,6 +55,21 @@ class TestFitting:
         self.data = ddtpy.DDTData(data, weight, wave, xctr_init, yctr_init,
                                   is_final_ref, master_final_ref, header)
 
+
+        # Create model.
+        mean_gal_spec = data.mean(axis=(0, 2, 3))
+        adr_dx = np.zeros((nt,nw))
+        adr_dy = np.zeros((nt,nw))
+        mu_xy = 1.0e-3
+        mu_wave = 7.0e-2
+        sky_guess = np.zeros((nt,nw))
+        self.model = ddtpy.DDTModel(nt, wave,
+                                    ellipticity * np.ones((nt, nw)),
+                                    alpha * np.ones((nt, nw)),
+                                    adr_dx, adr_dy, mu_xy, mu_wave,
+                                    0., 0., sky_guess, mean_gal_spec)
+
+
     def test_gradient(self):
         """Test that gradient functions (used in galaxy fitting) return values
         'close' to what you get with a finite differences method."""
@@ -75,18 +77,19 @@ class TestFitting:
         x_diff = 1.e-10
 
         # analytic gradient
-        lkl_err, lkl_grad = likelihood_penalty(self.model, self.data)
+        chisq_val, chisq_grad = chisq(self.model, self.data, 0)
 
         # finite differences gradient
-        fd_lkl_grad = np.zeros(self.model.gal.size, dtype=np.float)
+        fd_chisq_grad = np.zeros_like(self.model.gal)
         for j in range(32):
             for i in range(32):
                 self.model.gal[0,j,i] += x_diff
-                new_lkl_err, _ = likelihood_penalty(self.model, self.data)
+                new_chisq_val, _ = chisq(self.model, self.data, 0)
                 self.model.gal[0,j,i] = 0.
-                fd_lkl_grad[j*32+i] = (new_lkl_err - lkl_err) / x_diff
 
-        assert_allclose(lkl_grad, fd_lkl_grad, rtol=0.016)
+                fd_chisq_grad[0,j,i] = (new_chisq_val - chisq_val) / x_diff
+
+        assert_allclose(chisq_grad, fd_chisq_grad, rtol=0.016)
 
 
 """Test the likelihood gradient. 

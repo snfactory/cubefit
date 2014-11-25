@@ -1,8 +1,12 @@
 DDTPy
 =====
 
-API
----
+Overview
+--------
+
+
+Reference/API
+-------------
 
 .. autosummary::
    :toctree: api
@@ -34,7 +38,7 @@ API
    ddtpy.guess_sky
    ddtpy.fit_sky
    ddtpy.fit_sky_and_sn
-   ddtpy.fit_model_all_epoch
+   ddtpy.fit_model
    ddtpy.fit_position
 
 

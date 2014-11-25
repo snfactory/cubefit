@@ -146,6 +146,3 @@ class DDTData(object):
         self.is_final_ref = is_final_ref
         self.master_final_ref = master_final_ref
         self.header = header
-
-        # store average spectrum of final refs (note that this includes sky!)
-        self.data_avg = data[self.is_final_ref].mean(axis=(0, 2, 3))
