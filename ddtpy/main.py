@@ -13,6 +13,7 @@ from .model import DDTModel
 from .data import read_dataset, read_select_header_keys, DDTData
 from .adr import paralactic_angle, differential_refraction
 from .fitting import guess_sky, fit_model, fit_position
+from .extern import ADR
 
 __all__ = ["main"]
 
@@ -130,12 +131,20 @@ def main(filename, data_dir):
     delta_r = differential_refraction(airmass, p, t, h, ddtdata.wave, wave_ref)
     delta_r /= spaxel_size  # convert from arcsec to spaxels
     pa = paralactic_angle(airmass, ha, dec, tilt, SNIFS_LATITUDE)
+    adr_dx = np.zeros((ddtdata.nt, ddtdata.nw), dtype=np.float)
+    adr_dy = np.zeros((ddtdata.nt, ddtdata.nw), dtype=np.float)
+
+
+    for i_t in range(ddtdata.nt):
+        adr = ADR(p[i_t], t[i_t], lref=wave_ref, airmass=airmass[i_t],
+                  theta=pa[i_t])
+        adr_refract = adr.refract(0, 0, wave, unit=spaxel_size)
+        adr_dx[i_t] = adr_refract[0]
+        adr_dy[i_t] = adr_refract[1]
 
     # debug
     #adr_dx = -delta_r * np.sin(pa)[:, None]  # O'xp <-> - east
     #adr_dy = delta_r * np.cos(pa)[:, None]
-    adr_dx = np.zeros((ddtdata.nt, ddtdata.nw), dtype=np.float)
-    adr_dy = np.zeros((ddtdata.nt, ddtdata.nw), dtype=np.float)
 
     # Make a first guess at the sky level based on the data.
     skyguess = guess_sky(ddtdata, 2.0)

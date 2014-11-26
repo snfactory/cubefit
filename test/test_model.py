@@ -111,3 +111,4 @@ parameter j. Changing model parameter j is adjusting a single pixel
 in the model. The result in the data frame is a PSF at the position
 corresponding to model pixel j.
 
+"""

@@ -61,7 +61,7 @@ def water_vapor_pressure(t):
     ----------
     t : array or float
     """
-    t += 273.15
+    t = t + 273.15
     return np.exp(-7205.76 / t) / 100. * (50292. / t)**6.2896
 
 def refraction_index_of_air_minus_one(p, t, h, wave):
@@ -106,7 +106,7 @@ def refraction_index_of_air_minus_one(p, t, h, wave):
          2.554e-4 / (4.1e1 - invwave2))   # 1-d array
 
     # pressure and temperature correction (1-d array):
-    p *= MMHG_PER_MBAR
+    p = p*MMHG_PER_MBAR
     pt_corr = (((1.049 - 0.0157*t) * 1.e-6 * p + 1.) /
                (720.883*(1. + 0.003661*t)) * p)
   
