@@ -88,3 +88,49 @@ def plot_timeseries(data, model=None, band='B'):
                         hspace=0.01, wspace=0.01)
 
     return fig
+
+
+def plot_wave_slices(data, model, nt,
+                     lambdas = [0, 100,200,300,400,500,600,700]):
+    """Plot data, model and residual for a single epoch at a range of
+    wavelength slices"""
+
+    ncol = len(lambdas)
+    nrow = 3
+    figsize = (STAMP_SIZE * ncol, STAMP_SIZE * nrow)
+    fig = plt.figure(figsize=figsize)
+    fig, ax = plt.subplots(nrow, ncol)
+
+    m = model.evaluate(nt, data.xctr[nt], data.yctr[nt],
+                       (data.ny, data.nx), which='all')
+    residual = data.data[nt] - m
+
+
+    for s, l in enumerate(lambdas):
+        data_slice = data.data[nt,l,:,:]
+        model_slice = m[l]
+        residual_slice = data_slice - model_slice
+
+        vmin = np.array([data_slice,model_slice,residual_slice]).min()
+        vmax = np.array([data_slice,model_slice,residual_slice]).max()
+
+        ax[0,s].imshow(data_slice, vmin=vmin, vmax=vmax,
+                       interpolation='nearest')
+        ax[1,s].imshow(model_slice, vmin=vmin, vmax=vmax,
+                       interpolation='nearest')
+        im = ax[2,s].imshow(residual_slice, interpolation='nearest',
+                       vmin = vmin, vmax=vmax)
+
+        ax[0,s].xaxis.set_major_locator(NullLocator())
+        ax[0,s].yaxis.set_major_locator(NullLocator())
+        ax[1,s].xaxis.set_major_locator(NullLocator())
+        ax[1,s].yaxis.set_major_locator(NullLocator())
+        ax[2,s].xaxis.set_major_locator(NullLocator())
+        ax[2,s].yaxis.set_major_locator(NullLocator())
+        #cb = fig.colorbar(im, orientation='horizontal')
+        #[l.set_rotation(45) for l in cb.ax.get_xticklabels()]
+    
+    fig.subplots_adjust(left=0.001, right=0.999, bottom=0.02, top=0.98,
+                        hspace=0.01, wspace=0.01)
+
+    return fig
