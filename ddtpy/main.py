@@ -12,7 +12,7 @@ from .psf import params_from_gs, gaussian_plus_moffat_psf_4d
 from .model import DDTModel
 from .data import read_dataset, read_select_header_keys, DDTData
 from .adr import paralactic_angle, differential_refraction
-from .fitting import guess_sky, fit_model, fit_position
+from .fitting import guess_sky, fit_model, fit_position, fit_sky_and_sn, fit_sky
 from .extern import ADR
 
 __all__ = ["main"]
@@ -157,7 +157,7 @@ def main(filename, data_dir):
 
     # Initialize model
     model = DDTModel(ddtdata.nt, ddtdata.wave, psf_ellipticity, psf_alpha,
-                     adr_dx, adr_dy, conf["MU_GALAXY_XY_PRIOR"],
+                     adr_dx, adr_dy, conf["MU_GALAXY_XY_PRIOR"]/10.,
                      conf["MU_GALAXY_LAMBDA_PRIOR"],
                      sn_x_init, sn_y_init, skyguess, mean_gal_spec)
 
@@ -168,10 +168,12 @@ def main(filename, data_dir):
     fit_model(model, ddtdata, [ddtdata.master_final_ref])
 
     # Test plotting
-    from .plotting import plot_timeseries
+    from .plotting import plot_timeseries, plot_wave_slices
     fig = plot_timeseries(ddtdata, model)
     fig.savefig("testfigure.png")
-    exit()
+    fig2 = plot_wave_slices(ddtdata, model, ddtdata.master_final_ref)
+    fig2.savefig("testslices.png")
+    #exit()
 
     # Fit registration on just the final refs
     # ==================================================================
@@ -227,6 +229,7 @@ def main(filename, data_dir):
         # If it did, cut it from the fitting for the next step.
         dist = math.sqrt((pos[0] - ddtdata.xctr_init[i_t])**2 + 
                          (pos[1] - ddtdata.yctr_init[i_t])**2)
+        
         if dist < maxmove_fit_position:
             ddtdata.xctr[i_t] = pos[0]
             ddtdata.yctr[i_t] = pos[1]
@@ -240,12 +243,22 @@ def main(filename, data_dir):
 
     # Recalculate sn and sky for all exposures with new pointing.
     for i_t in range(ddtdata.nt):
-        model.update_sn_and_sky(ddtdata, i_t)
-
+        if (not ddtdata.is_final_ref[i_t]) or i_t == ddtdata.master_final_ref:
+            continue
+        #model.update_sn_and_sky(ddtdata, i_t)
+        model.sky[i_t,:] = fit_sky(model, ddtdata, i_t)
+        
     # Redo fit of galaxy
-    fit_model_all_epoch(model, ddtdata)
+    fit_model(model, ddtdata,
+              np.arange(ddtdata.nt)[ddtdata.is_final_ref.astype(bool)])
 
+    fig = plot_timeseries(ddtdata, model)
+    fig.savefig("testfigure2.png")
+    for i_t in np.arange(ddtdata.nt)[ddtdata.is_final_ref.astype(bool)]:
+        fig2 = plot_wave_slices(ddtdata, model, i_t)
+        fig2.savefig("testslices_%s.png" % i_t)
     
+
     # Fit registration on just exposures with a supernova (not final refs)
     # ===================================================================
     
@@ -260,15 +273,20 @@ def main(filename, data_dir):
         # If it did, cut it from the fitting for the next step.
         dist = math.sqrt((pos[0] - ddtdata.xctr_init[i_t])**2 + 
                          (pos[1] - ddtdata.yctr_init[i_t])**2)
+        
         if dist < maxmove_fit_position:
             ddtdata.xctr[i_t] = pos[0]
             ddtdata.yctr[i_t] = pos[1]
         else:
             include_in_fit[i_t] = False
 
-        model.update_sn_and_sky(ddtdata, i_t)
-
+        sky, sn = fit_sky_and_sn(model, ddtdata, i_t)
+        model.sky[i_t,:] = sky
+        model.sn[i_t,:] = sn
+    fig = plot_timeseries(ddtdata, model)
+    fig.savefig("testfigure3.png")
     # Redo fit of galaxy
-    fit_model_all_epoch(model, ddtdata)
+    # TODO: go back to DDT, check what should be fit here
+    fit_model(model, ddtdata)
 
     

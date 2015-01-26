@@ -58,10 +58,14 @@ def plot_timeseries(data, model=None, band='B'):
         m = model.evaluate(i_t, data.xctr[i_t], data.yctr[i_t],
                            (data.ny, data.nx), which='all')
         predictions[i_t, :, :] = np.average(m[mask, :, :], axis=0)
-
+    vmin, vmax = np.zeros(data.nt), np.zeros(data.nt)
     for i_t in range(data.nt):
         ax = plt.subplot2grid((nrow, ncol), (0, i_t + 2))
-        ax.imshow(images[i_t], vmin=vmin, vmax=vmax, cmap='Greys',
+        vmin[i_t] = np.array([images[i_t], predictions[i_t],
+                             images[i_t]-predictions[i_t]]).min()
+        vmax[i_t] = np.array([images[i_t], predictions[i_t],
+                             images[i_t]-predictions[i_t]]).max()
+        ax.imshow(images[i_t], vmin=vmin[i_t], vmax=vmax[i_t], cmap='Greys',
                   interpolation='nearest', origin='lower')
         ax.xaxis.set_major_locator(NullLocator())
         ax.yaxis.set_major_locator(NullLocator())
@@ -69,7 +73,7 @@ def plot_timeseries(data, model=None, band='B'):
     # model plot
     for i_t in range(data.nt):
         ax = plt.subplot2grid((nrow, ncol), (1, i_t + 2))
-        ax.imshow(predictions[i_t], vmin=vmin, vmax=vmax, cmap='Greys',
+        ax.imshow(predictions[i_t], vmin=vmin[i_t], vmax=vmax[i_t], cmap='Greys',
                   interpolation='nearest', origin='lower')
         ax.xaxis.set_major_locator(NullLocator())
         ax.yaxis.set_major_locator(NullLocator())
@@ -78,7 +82,7 @@ def plot_timeseries(data, model=None, band='B'):
     for i_t in range(data.nt):
         ax = plt.subplot2grid((nrow, ncol), (2, i_t + 2))
         ax.imshow(images[i_t] - predictions[i_t],
-                  vmin=vmin, vmax=vmax, cmap='Greys',
+                  vmin=vmin[i_t], vmax=vmax[i_t], cmap='Greys',
                   interpolation='nearest', origin='lower')
         ax.xaxis.set_major_locator(NullLocator())
         ax.yaxis.set_major_locator(NullLocator())
