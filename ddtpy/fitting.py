@@ -343,3 +343,52 @@ def fit_position(model, data, i_t, maxiter=100):
         raise RuntimeError("leastsq didn't converge properly")
 
     return pos[0], pos[1]
+
+
+def fit_position_sn_sky(model, data, epochs):
+    """Fit data pointing (nepochs), SN position (in model frame),
+    SN amplitude (nepochs), and sky level (nepochs). This is meant to be
+    used only on epochs with SN light.
+
+    In practice, given the data pointing and SN position, determining
+    the sky level and SN amplitude is a linear problem. Therefore, we
+    have only the data pointing and sn position as parameters in the
+    (nonlinear) optimization and determine the sky and sn amplitude in
+    each iteration.
+    """
+
+    # In the objective function, pos is a 1-d array:
+    #
+    # [sn_x, sn_y, x_ctr[0], y_ctr[0], x_ctr[1], y_ctr[1], ...]
+    #
+    # length is 2 + 2*nepochs
+    def objective_func(pos):
+        totchisq = 0.
+
+        # set model parameters
+        model.sn_x = pos[0]
+        model.sn_y = pos[1]
+
+        for n, i_t in enumerate(epochs):
+            data.xctr[i_t] = pos[2+2*n]
+            data.yctr[i_t] = pos[3+2*n]
+            sky, sn = fit_sky_and_sn(model, data, i_t)
+            model.sky[i_t, :] = sky
+            model.sn[i_t, :] = sn
+            
+            m = model.evaluate(i_t, data.xctr[i_t], data.yctr[i_t],
+                               (data.ny, data.nx), which='all')
+            r = data.data[i_t] - m
+            totchisq += np.sum(data.weight[i_t] * r * r)
+
+        return totchisq
+
+    # initial positions
+    pos0 = np.hstack((model.sn_x, model.sn_y,
+                      np.ravel(zip(data.xctr[epochs], data.yctr[epochs]))))
+
+    pos, info = leastsq(objective_func, pos0)
+    if info not in [1, 2, 3, 4]:
+        raise RuntimeError("leastsq didn't converge properly")
+
+    return pos

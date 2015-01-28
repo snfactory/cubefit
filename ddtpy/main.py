@@ -12,7 +12,8 @@ from .psf import params_from_gs, gaussian_plus_moffat_psf_4d
 from .model import DDTModel
 from .data import read_dataset, read_select_header_keys, DDTData
 from .adr import paralactic_angle, differential_refraction
-from .fitting import guess_sky, fit_model, fit_position, fit_sky_and_sn, fit_sky
+from .fitting import (guess_sky, fit_model, fit_position, fit_sky_and_sn,
+                      fit_sky, fit_position_sn_sky)
 from .extern import ADR
 
 __all__ = ["main"]
@@ -139,6 +140,7 @@ def main(filename, data_dir):
         adr = ADR(p[i_t], t[i_t], lref=wave_ref, airmass=airmass[i_t],
                   theta=pa[i_t])
         adr_refract = adr.refract(0, 0, wave, unit=spaxel_size)
+        assert adr_refract.shape == (2, len(wave))
         adr_dx[i_t] = adr_refract[0]
         adr_dy[i_t] = adr_refract[1]
 
@@ -161,10 +163,11 @@ def main(filename, data_dir):
                      conf["MU_GALAXY_LAMBDA_PRIOR"],
                      sn_x_init, sn_y_init, skyguess, mean_gal_spec)
 
-    # Perform initial fit, holding position constant (at settings from
-    # conf file PARAM_TARGET_[X,Y]P, directly above)
-    # This fits the galaxy, SN and sky and updates the model accordingly,
-    # keeping registration fixed.
+
+    # Fit just the galaxy model to only the *master* final ref,
+    # holding the sky fixed (logic to do that is inside
+    # fit_model). The galaxy model is defined in the frame of the
+    # master final ref.
     fit_model(model, ddtdata, [ddtdata.master_final_ref])
 
     # Test plotting
@@ -194,14 +197,18 @@ def main(filename, data_dir):
     # n_final_ref = numberof( i_fit_galaxy_position);
     # galaxy_offset = array(double, 2, ddt.ddt_data.n_t);
     
-    # Loop over just the final refs excluding the master final ref.
-    for i_t in range(ddtdata.nt):
-        # TODO: Why do we not fit master final ref position? 
-        if (not ddtdata.is_final_ref[i_t]) or i_t == ddtdata.master_final_ref:
-            continue
+    # Loop over just the other final refs (not including master)
+    is_other_final_ref = ddtdata.is_final_ref.copy()
+    is_other_final_ref[ddtdata.master_final_ref] = False
+    other_final_refs = np.flatnonzero(is_other_final_ref)
+
+    for i_t in other_final_refs:
         
         m = model.evaluate(i_t, ddtdata.xctr[i_t], ddtdata.yctr[i_t],
                            (ddtdata.ny, ddtdata.nx), which='all')
+
+        # The next few lines finds spaxels where the model is high and
+        # sets the weight (in the data) for all other spaxels to zero
 
         tmp_m = m.sum(axis=0)  # Sum of model over wavelengths (result = 2-d)
         tmp_mad = np.median(np.abs(tmp_m - np.median(tmp_m)))
@@ -218,7 +225,7 @@ def main(filename, data_dir):
         # (where spaxel sum is less than minimum + 2.5 MAD)
         ddtdata.weight[i_t] = ddtdata.weight[i_t] * mask[None, :, :]
 
-        # Fit the position.
+        # Fit the position for this epoch, keeping the sky fixed.
         # TODO: should the sky be varied on each iteration?
         #       (currently, it is not varied)
         pos = fit_position(model, ddtdata, i_t)
@@ -239,29 +246,35 @@ def main(filename, data_dir):
     # Reset weight
     ddtdata.weight = weight_orig
 
-    # TODO: need to do anything to "setup new pointing" here?
-
-    # Recalculate sn and sky for all exposures with new pointing.
-    for i_t in range(ddtdata.nt):
-        if (not ddtdata.is_final_ref[i_t]) or i_t == ddtdata.master_final_ref:
-            continue
-        #model.update_sn_and_sky(ddtdata, i_t)
+    # Now that we have fit all their positions and reset the weights, 
+    # recalculate sky for all other final refs.
+    for i_t in other_final_refs:
         model.sky[i_t,:] = fit_sky(model, ddtdata, i_t)
         
-    # Redo fit of galaxy
-    fit_model(model, ddtdata,
-              np.arange(ddtdata.nt)[ddtdata.is_final_ref.astype(bool)])
+    # Redo model fit, this time including all final refs.
+    fit_model(model, ddtdata, np.flatnonzero(ddtdata.is_final_ref))
+
 
     fig = plot_timeseries(ddtdata, model)
     fig.savefig("testfigure2.png")
-    for i_t in np.arange(ddtdata.nt)[ddtdata.is_final_ref.astype(bool)]:
+    for i_t in np.flatnonzero(ddtdata.is_final_ref):
         fig2 = plot_wave_slices(ddtdata, model, i_t)
         fig2.savefig("testslices_%s.png" % i_t)
     
 
+
+    # list of non-final refs
+    epochs = [i_t for i_t in range(ddtdata.nt)
+              if not ddtdata.is_final_ref[i_t]]
+    
+    pos = fit_position_sn_sky(model, ddtdata, epochs)
+
+    print(pos)
+
     # Fit registration on just exposures with a supernova (not final refs)
     # ===================================================================
     
+    """
     for i_t in range(ddtdata.nt):
         if ddtdata.is_final_ref[i_t]:
             continue
@@ -283,10 +296,11 @@ def main(filename, data_dir):
         sky, sn = fit_sky_and_sn(model, ddtdata, i_t)
         model.sky[i_t,:] = sky
         model.sn[i_t,:] = sn
+    """
+
     fig = plot_timeseries(ddtdata, model)
     fig.savefig("testfigure3.png")
     # Redo fit of galaxy
     # TODO: go back to DDT, check what should be fit here
-    fit_model(model, ddtdata)
-
+    #fit_model(model, ddtdata)
     

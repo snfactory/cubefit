@@ -128,9 +128,9 @@ class DDTModel(object):
         self.sky = skyguess
         self.sn = np.zeros((nt, nw))  # SN spectrum at each epoch
         self.sn_x_init = sn_x_init  # position of SN in model coordinates
-        self.sn_y_init = sn_x_init
+        self.sn_y_init = sn_y_init
         self.sn_x = sn_x_init
-        self.sn_y = sn_x_init
+        self.sn_y = sn_y_init
         self.eta = np.ones(nt)  # eta is transmission; not currently used.
 
     def evaluate(self, i_t, xctr, yctr, shape, which='galaxy'):
