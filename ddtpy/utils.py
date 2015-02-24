@@ -48,7 +48,7 @@ def fft_shift_phasor_2d(shape, offset):
     this case, the Fourier transform of the function at Nyquist
     frequel N/2 must be real because the Fourier transform of the
     function is Hermitian and because +/- the Nyquist frequency is
-    supported by the same frequel.  When the shift is not a multiple
+    supported by the same array element.  When the shift is not a multiple
     of the sampling step size, the phasor violates this requirement.
     To solve for this issue with have tried different solutions:
  
@@ -97,10 +97,51 @@ def fft_shift_phasor_2d(shape, offset):
 
     # This is the part where we reset the phasor at the nyquist frequency
     # to be real (see comments above).
-    if m % 2 == 0:
-        phasorm[m/2] = np.real(phasorm[m/2])
-    if n % 2 == 0:
-        phasorn[n/2] = np.real(phasorn[n/2])
+    #if m % 2 == 0:
+    #    phasorm[m/2] = np.real(phasorm[m/2])
+    #if n % 2 == 0:
+    #    phasorn[n/2] = np.real(phasorn[n/2])
 
     return np.outer(phasorm, phasorn)
 
+
+def fft_shift_phasor_2d_prime(shape, offset):
+    """fft_shift_phasor_2d with derivative.
+
+    Returns
+    -------
+    val :  np.ndarray (complex)
+        Complex array with shape ``shape``.
+    dm : array of shape `shape`
+        Der. w.r.t. first dimension in offset.
+    dn : array of shape `shape`
+        etc.
+    """
+
+    m, n = shape
+    offm, offn = offset
+
+    # fftfreq() gives frequency corresponding to each array element in
+    # an FFT'd array (between -0.5 and 0.5). Multiplying by 2pi expands
+    # this to (-pi, pi). Finally multiply by offset in array elements.
+    fm = 2. * np.pi * fft.fftfreq(m) * (offm % m)
+    fn = 2. * np.pi * fft.fftfreq(n) * (offn % n)
+
+    phasorm =  np.cos(fm) - 1j*np.sin(fm)
+    phasorn =  np.cos(fn) - 1j*np.sin(fn)
+
+    dphasorm = -np.sin(fm) - 1j*np.cos(fm)
+    dphasorn = -np.sin(fn) - 1j*np.cos(fn)
+
+    # This is the part where we reset the phasor at the nyquist frequency
+    # to be real (see comments above).
+    #if m % 2 == 0:
+    #    phasorm[m/2] = np.real(phasorm[m/2])
+    #if n % 2 == 0:
+    #    phasorn[n/2] = np.real(phasorn[n/2])
+
+    # outer product is a_i * b_j
+    # da_i * b_j
+    resultm = np.outer(dphasorm, phasorn)
+    resultn = np.outer(phasorm, dphasorn)
+    return np.outer(phasorm, phasorn), resultm, resultn

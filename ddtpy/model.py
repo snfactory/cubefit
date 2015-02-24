@@ -175,24 +175,45 @@ class DDTModel(object):
 
         conv = self.conv[i_t]
         out = np.empty((self.nw, self.ny, self.nx), dtype=np.float64)
-                                     
+
+        if which == 'galaxy+der':
+            outdx = np.empty((self.nw, self.ny, self.nx), dtype=np.float64)
+            outdy = np.empty((self.nw, self.ny, self.nx), dtype=np.float64)
+
+
         for j in range(self.nw):
-            fshift = fft_shift_phasor_2d(self.MODEL_SHAPE,
-                                         (yshift + self.adr_dy[i_t, j],
-                                          xshift + self.adr_dx[i_t, j]))
+            offset = (yshift + self.adr_dy[i_t, j],
+                      xshift + self.adr_dx[i_t, j])
 
             if which == 'galaxy':
+                fshift = fft_shift_phasor_2d(self.MODEL_SHAPE, offset)
                 tmp = ifft2(fft2(conv[j, :, :]) * fshift *
                             fft2(self.gal[j, :, :]))
                 _assert_real(tmp)
                 out[j, :, :] = tmp.real
 
+            if which == 'galaxy+der':
+                fshift, fshiftdy, fshiftdx = \
+                    fft_shift_phasor_2d_prime(self.MODEL_SHAPE, offset)
+                c = fft2(conv[j, :, :]) * fft2(self.gal[j, :, :])
+
+                tmp = ifft2(c * fshift)
+                _assert_real(tmp)
+                out[j, :, :] = tmp.real
+
+                tmpdery = ifft2(c * fshiftdy)
+                tmpderx = ifft2(c * fshiftdx)
+                outdy[j, :, :] = tmpdery.real
+                outdx[j, :, :] = tmpderx.real
+
             elif which == 'snscaled':
+                fshift = fft_shift_phasor_2d(self.MODEL_SHAPE, offset)
                 tmp = ifft2(fft2(self.psf[i_t, j, :, :]) * fshift_sn * fshift)
                 _assert_real(tmp)
                 out[j, :, :] = tmp.real
 
             elif which == 'all':
+                fshift = fft_shift_phasor_2d(self.MODEL_SHAPE, offset)
                 tmp = ifft2(
                     fshift *
                     (fft2(self.gal[j, :, :]) * fft2(conv[j, :, :]) +
@@ -200,6 +221,11 @@ class DDTModel(object):
                 _assert_real(tmp)
 
                 out[j, :, :] = tmp.real + self.sky[i_t, j]
+
+        if which == 'galaxy+der':
+            return (out[:, 0:ny, 0:nx],
+                    outdy[:, 0:ny, 0:nx],
+                    outdx[:, 0:ny, 0:nx])
 
         # Return a slice that matches the data.
         return out[:, 0:ny, 0:nx]
