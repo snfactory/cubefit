@@ -7,6 +7,9 @@ import json
 import numpy as np
 from numpy import fft
 import math
+import matplotlib as mpl
+import pickle
+mpl.use('Agg')
 
 from .psf import params_from_gs, gaussian_plus_moffat_psf_4d
 from .model import DDTModel
@@ -30,7 +33,7 @@ def main(filename, data_dir):
     data_dir : str
         Directory containing FITS files given in the config file.
     """
-
+    
     with open(filename) as f:
         conf = json.load(f)
 
@@ -176,6 +179,8 @@ def main(filename, data_dir):
     fig.savefig("testfigure.png")
     fig2 = plot_wave_slices(ddtdata, model, ddtdata.master_final_ref)
     fig2.savefig("testslices.png")
+    fig.clear()
+    fig2.clear()
     #exit()
 
     # Fit registration on just the final refs
@@ -250,18 +255,20 @@ def main(filename, data_dir):
     # recalculate sky for all other final refs.
     for i_t in other_final_refs:
         model.sky[i_t,:] = fit_sky(model, ddtdata, i_t)
-        
+    
     # Redo model fit, this time including all final refs.
     fit_model(model, ddtdata, np.flatnonzero(ddtdata.is_final_ref))
-
-
+    
+    pickle.dump(model, open('model2.pkl','w'))
     fig = plot_timeseries(ddtdata, model)
     fig.savefig("testfigure2.png")
+    fig.clear()
     for i_t in np.flatnonzero(ddtdata.is_final_ref):
         fig2 = plot_wave_slices(ddtdata, model, i_t)
         fig2.savefig("testslices_%s.png" % i_t)
+        fig2.clear()
     
-
+    
 
     # list of non-final refs
     epochs = [i_t for i_t in range(ddtdata.nt)
@@ -269,7 +276,21 @@ def main(filename, data_dir):
     
     pos = fit_position_sn_sky(model, ddtdata, epochs)
 
-    print(pos)
+    pickle.dump(model, open('model3.pkl','w'))
+    pickle.dump(ddtdata, open('data3.pkl','w'))
+    """
+    model = pickle.load(open('model3.pkl','r'))
+    ddtdata = pickle.load(open('data3.pkl','r'))
+    """
+    fig = plot_timeseries(ddtdata, model)
+    fig.savefig("testfigure3.png")
+    fig.clear()
+    for i_t in epochs:
+        fig2 = plot_wave_slices(ddtdata, model, i_t)
+        fig2.savefig("testslices_%s.png" % i_t)
+        fig2.clear()
+
+
 
     # Fit registration on just exposures with a supernova (not final refs)
     # ===================================================================
@@ -298,9 +319,9 @@ def main(filename, data_dir):
         model.sn[i_t,:] = sn
     """
 
-    fig = plot_timeseries(ddtdata, model)
-    fig.savefig("testfigure3.png")
     # Redo fit of galaxy
     # TODO: go back to DDT, check what should be fit here
-    #fit_model(model, ddtdata)
+    fit_model(model, ddtdata, np.arange(ddtdata.nt))
+    fig = plot_timeseries(ddtdata, model)
+    fig.savefig("testfigure4.png")
     

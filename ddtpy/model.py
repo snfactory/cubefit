@@ -13,7 +13,7 @@ def _assert_real(x):
     if np.all((x.imag == 0.) & (x.real == 0.)):
         return
     absfrac = np.abs(x.imag / x.real)
-    mask = absfrac < 1.e-4
+    mask = absfrac < 1.e-3 #1.e-4
     if not np.all(mask):
         print(x.imag[~mask])
         print(x.real[~mask])
