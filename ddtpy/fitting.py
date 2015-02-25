@@ -445,11 +445,23 @@ def fit_position_sn_sky(model, data, epochs):
                                (data.ny, data.nx), which='all')
             r = data.data[i_t] - m
             chisq = np.sum(data.weight[i_t] * r * r)
-            totchisq += chisq #np.sum(data.weight[i_t] * r * r)
+            totchisq += chisq
 
-            grad[2+2*n] = (chi_dx - chisq)/dx
-            grad[3+2*n] = (chi_dy - chisq)/dx
+            old_grad_x = (chi_dx - chisq)/dx
+            old_grad_y = (chi_dy - chisq)/dx
+            
+            # Get the analytic solution for the gradient:
+            m, m_grad_y, m_grad_x = model.evaluate(i_t, data.xctr[i_t],
+                        data.yctr[i_t], (data.ny, data.nx), which='galaxy+der')
 
+            r = data.data[i_t] - m
+            chisq2 = np.sum(data.weight[i_t] * r * r)
+            grad_y = -np.sum(2*data.weight[i_t] * r * m_grad_y)
+            grad_x = -np.sum(2*data.weight[i_t] * r * m_grad_x)
+            grad[2+2*n] = grad_x
+            grad[3+2*n] = grad_y
+            print('Chisq', i_t, chisq, chisq2)
+            print('Grad', old_grad_x, old_grad_y, grad_x, grad_y)
         grad[0] = (grad_helper_chi_x - totchisq)/dx
         grad[1] = (grad_helper_chi_y - totchisq)/dx
         print(totchisq)

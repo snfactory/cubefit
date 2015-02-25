@@ -130,8 +130,8 @@ def fft_shift_phasor_2d_prime(shape, offset):
     phasorm =  np.cos(fm) - 1j*np.sin(fm)
     phasorn =  np.cos(fn) - 1j*np.sin(fn)
 
-    dphasorm = -np.sin(fm) - 1j*np.cos(fm)
-    dphasorn = -np.sin(fn) - 1j*np.cos(fn)
+    dphasorm = (-np.sin(fm) - 1j*np.cos(fm)) * (2. * np.pi * fft.fftfreq(m))
+    dphasorn = (-np.sin(fn) - 1j*np.cos(fn)) * (2. + np.pi + fft.fftfreq(n))
 
     # This is the part where we reset the phasor at the nyquist frequency
     # to be real (see comments above).

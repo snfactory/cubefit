@@ -4,7 +4,7 @@ import numpy as np
 from numpy.fft import fft2, ifft2
 
 from .psf import gaussian_plus_moffat_psf_4d
-from .utils import fft_shift_phasor_2d
+from .utils import fft_shift_phasor_2d, fft_shift_phasor_2d_prime
 
 __all__ = ["DDTModel"]
 
@@ -192,14 +192,15 @@ class DDTModel(object):
                 _assert_real(tmp)
                 out[j, :, :] = tmp.real
 
-            if which == 'galaxy+der':
+            if which == 'all+der':
                 fshift, fshiftdy, fshiftdx = \
                     fft_shift_phasor_2d_prime(self.MODEL_SHAPE, offset)
-                c = fft2(conv[j, :, :]) * fft2(self.gal[j, :, :])
+                c = (fft2(conv[j, :, :]) * fft2(self.gal[j, :, :]) +
+                     self.sn[i_t,j] * fshift_sn * fft2(self.psf[i_t,j,:,:]))
 
                 tmp = ifft2(c * fshift)
                 _assert_real(tmp)
-                out[j, :, :] = tmp.real
+                out[j, :, :] = tmp.real + self.sky[i_t, j]
 
                 tmpdery = ifft2(c * fshiftdy)
                 tmpderx = ifft2(c * fshiftdx)
