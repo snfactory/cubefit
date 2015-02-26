@@ -9,12 +9,13 @@ __all__ = ["guess_sky", "fit_sky", "fit_sky_and_sn", "fit_model",
            "fit_position"]
 
 
-def guess_sky(ddtdata, sig, maxiter=10):
+def guess_sky(cube, clip, maxiter=10):
     """Guess sky based on lower signal spaxels compatible with variance
 
     Parameters
     ----------
-    sig : float
+    cube : DataCube
+    clip : float
         Number of standard deviations (not variances) to use as
         the clipping limit (on individual pixels).
     maxiter : int
@@ -26,47 +27,43 @@ def guess_sky(ddtdata, sig, maxiter=10):
         Sky level for each epoch and wavelength. Shape is (nt, nw).
     """
 
-    nspaxels = ddtdata.data.shape[2] * ddtdata.data.shape[3]
-    sky = np.zeros((ddtdata.nt, ddtdata.nw), dtype=np.float64)
+    nspaxels = cube.ny * cube.nx
 
-    for i in range(ddtdata.nt):
-        data = ddtdata.data[i]
-        weight = np.copy(ddtdata.weight[i])
-        var = 1.0 / weight
+    weight = np.copy(cube.weight)
+    var = 1.0 / weight
 
-        # Loop until ind stops changing size or until a maximum
-        # number of iterations.
-        avg = None
-        oldmask = None
-        mask = None
-        for j in range(maxiter):
-            oldmask = mask
+    # Loop until mask stops changing size or until a maximum
+    # number of iterations.
+    avg = None
+    oldmask = None
+    mask = None
+    for j in range(maxiter):
+        oldmask = mask
 
-            # weighted average spectrum (masked array).
-            # We use a masked array because some of the wavelengths 
-            # may have all-zero weights for every pixel.
-            # The masked array gets propagated so that `mask` is a
-            # masked array of booleans!
-            avg = np.ma.average(data, weights=weight, axis=(1, 2))
-            deviation = data - avg[:, None, None]
-            mask = deviation**2 > sig**2 * var
+        # weighted average spectrum (masked array).
+        # We use a masked array because some of the wavelengths 
+        # may have all-zero weights for every pixel.
+        # The masked array gets propagated so that `mask` is a
+        # masked array of booleans!
+        avg = np.ma.average(cube.data, weights=weight, axis=(1, 2))
+        deviation = cube.data - avg[:, None, None]
+        mask = deviation**2 > clip**2 * var
 
-            # Break if the mask didn't change.
-            if (oldmask is not None and
-                (mask.data == oldmask.data).all() and
-                (mask.mask == oldmask.mask).all()):
-                break
+        # Break if the mask didn't change.
+        if (oldmask is not None and
+            (mask.data == oldmask.data).all() and
+            (mask.mask == oldmask.mask).all()):
+            break
 
-            # set weights of masked pixels to zero. masked elements
-            # of the mask are *not* changed.
-            weight[mask] = 0.0
-            var[mask] = 0.0
+        # set weights of masked pixels to zero. masked elements
+        # of the mask are *not* changed.
+        weight[mask] = 0.0
+        var[mask] = 0.0
 
-        # convert to normal (non-masked) array. Masked wavelengths are 
-        # set to zero in this process.
-        sky[i] = np.asarray(avg)
+    # convert to normal (non-masked) array. Masked wavelengths are 
+    # set to zero in this process.
+    return np.asarray(avg)
 
-    return sky
 
 
 def fit_sky(model, data, i_t):

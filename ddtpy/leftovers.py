@@ -4,6 +4,35 @@
 # TODO: These can be removed after we decide that we're sure we don't
 # need them.
 
+# was in data.py: header keys are currently not used but we might want
+# to use them instead of values from the config file in the future, in which
+# case this dictionary should be an attribute of DataCube.
+SELECT_KEYS = ["OBJECT", "RA", "DEC", "EXPTIME", "EFFTIME", "AIRMASS",
+               "LATITUDE", "HA", "TEMP", "PRESSURE", "CHANNEL", "PARANG",
+               "DDTXP", "DDTYP"]
+def read_select_header_keys(filename):
+    """Read select header entries from a FITS file.
+
+    Parameters
+    ----------
+    filename : str
+        FITS filename.
+
+    Returns
+    -------
+    d : dict
+        Dictionary containing all select keys. Values are None for keys
+        not found in the header.
+    """
+
+    f = fitsio.FITS(filename, "r")
+    fullheader = f[0].read_header()
+    f.close()
+    
+    return {key: fullheader.get(key, None) for key in SELECT_KEYS}
+
+
+
 # was in fitting.py:
 def make_offset_cube(ddt,i_t, sn_offset=None, galaxy_offset=None,
                      recalculate=None):

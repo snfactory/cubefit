@@ -21,6 +21,7 @@ from .extern import ADR
 
 __all__ = ["main"]
 
+MODEL_SHAPE = (32, 32)
 SNIFS_LATITUDE = np.deg2rad(19.8228)
 
 def main(filename, data_dir):
@@ -37,6 +38,17 @@ def main(filename, data_dir):
     with open(filename) as f:
         conf = json.load(f)
 
+    # Load data from list of FITS files.
+    fnames = [os.path.join(data_dir, fname) for fname in conf["IN_CUBE"]]
+    cubes = [read_datacube(fname) for fname in fnames]
+    wave = cubes[0].wave
+    nt = len(cubes)
+    nw = len(wave)
+
+    # Ensure that all cubes have the same wavelengths.
+    if not all(cubes[i].wave == wave for i in range(1, len(cubes))):
+        raise ValueError("all data must have same wavelengths")
+
     # check apodizer flag because the code doesn't support it
     if conf.get("FLAG_APODIZER", 0) >= 2:
         raise RuntimeError("FLAG_APODIZER >= 2 not implemented")
@@ -44,80 +56,20 @@ def main(filename, data_dir):
     spaxel_size = conf["PARAM_SPAXEL_SIZE"]
     
     # Reference wavelength. Used in PSF parameters and ADR.
-    wave_ref = conf.get("PARAM_LAMBDA_REF", 5000.)
+    wave_ref = conf.get("PARAM_LAMBDA_REF", 5000.)  
 
-    # index of final ref. Subtract 1 due to Python zero-indexing.
-    master_final_ref = conf["PARAM_FINAL_REF"] - 1
+    mu_xy = conf["MU_GALAXY_XY_PRIOR"]/10.
+    mu_wave = conf["MU_GALAXY_LAMBDA_PRIOR"]
 
-    # also want array with true/false for final refs.
-    is_final_ref = np.array(conf.get("PARAM_IS_FINAL_REF"))
+    master_ref = conf["PARAM_FINAL_REF"] - 1  # index of master final
+                                              # ref.  Subtract 1 for
+                                              # Python indexing
+    is_ref = conf.get("PARAM_IS_FINAL_REF")
+    assert len(is_ref) == len(cubes)
+    refs = np.flatnonzero(is_ref)  # indicies of all final refs
+    nonmaster_refs = refs[refs != master_ref]  # indicies of all but master.
 
     n_iter_galaxy_prior = conf.get("N_ITER_GALAXY_PRIOR")
-
-    # Load the header from the final ref or first cube
-    fname = os.path.join(data_dir, conf["IN_CUBE"][master_final_ref])
-    header = read_select_header_keys(fname)
-
-    # Load data from list of FITS files.
-    fnames = [os.path.join(data_dir, fname) for fname in conf["IN_CUBE"]]
-    data, weight, wave = read_dataset(fnames)
-
-    # Testing with only a couple wavelengths
-    #data = data[:, 0:1, :, :]
-    #weight = weight[:, 0:1, :, :]
-    #wave = wave[0:1]
-
-    # Zero-weight array elements that are NaN
-    # TODO: why are there nans in here?
-    mask = np.isnan(data)
-    data[mask] = 0.0
-    weight[mask] = 0.0
-
-    # If target positions are given in the config file, set them in
-    # the model.  (Otherwise, the positions default to zero in all
-    # exposures.)
-    if "PARAM_TARGET_XP" in conf:
-        xctr_init = np.array(conf["PARAM_TARGET_XP"])
-    else:
-        xctr_init = np.zeros(ddtdata.nt)
-    if "PARAM_TARGET_YP" in conf:
-        yctr_init = np.array(conf["PARAM_TARGET_YP"])
-    else:
-        yctr_init = np.zeros(ddtdata.nt)
-
-    # calculate all positions relative to master final ref
-    xctr_init -= xctr_init[master_final_ref]
-    yctr_init -= yctr_init[master_final_ref]
-    sn_x_init = -xctr_init[master_final_ref]
-    sn_y_init = -yctr_init[master_final_ref]
-
-    ddtdata = DDTData(data, weight, wave, xctr_init, yctr_init,
-                      is_final_ref, master_final_ref, header)
-
-    # Load PSF model parameters. Currently, the PSF in the model is
-    # represented by an arbitrary 4-d array that is constructed
-    # here. The PSF depends on some aspects of the data, such as
-    # wavelength.  If different types of PSFs need to do different
-    # things, we may wish to represent the PSF with a class, called
-    # something like GaussMoffatPSF.
-    #
-    # GS-PSF --> ES-PSF
-    # G-PSF --> GR-PSF
-    if conf["PARAM_PSF_TYPE"] == "GS-PSF":
-        es_psf_params = np.array(conf["PARAM_PSF_ES"])
-        psf_ellipticity, psf_alpha = params_from_gs(
-            es_psf_params, ddtdata.wave, wave_ref)
-    elif conf["PARAM_PSF_TYPE"] == "G-PSF":
-        raise RuntimeError("G-PSF (from FITS files) not implemented")
-    else:
-        raise RuntimeError("unrecognized PARAM_PSF_TYPE")
-
-    # The following section relates to atmospheric differential
-    # refraction (ADR): Because of ADR, the center of the PSF will be
-    # different at each wavelength, by an amount that we can determine
-    # (pretty well) from the atmospheric conditions and the pointing
-    # and angle of the instrument. We calculate the offsets here as a function
-    # of observation and wavelength and input these to the model.
 
     # atmospheric conditions at each observation time.
     airmass = np.array(conf["PARAM_AIRMASS"])
@@ -130,18 +82,87 @@ def main(filename, data_dir):
     dec = np.deg2rad(np.array(conf["PARAM_DEC"])) # config files in degrees
     tilt = conf["PARAM_MLA_TILT"]
 
+    # PSF Parameters
+    # GS-PSF --> ES-PSF
+    # G-PSF --> GR-PSF
+    if conf["PARAM_PSF_TYPE"] != "GS-PSF":
+        raise RuntimeError("unrecognized PARAM_PSF_TYPE. "
+                           "[G-PSF (from FITS files) not implemented.]")
+    psfparams = conf["PARAM_PSF_ES"]
+
+
+    # If target positions are given in the config file, set them in
+    # the model.  (Otherwise, the positions default to zero in all
+    # exposures.)
+    if "PARAM_TARGET_XP" in conf:
+        xctr_init = np.array(conf["PARAM_TARGET_XP"])
+    else:
+        xctr_init = np.zeros(nt)
+    if "PARAM_TARGET_YP" in conf:
+        yctr_init = np.array(conf["PARAM_TARGET_YP"])
+    else:
+        yctr_init = np.zeros(nt)
+
+    # calculate all positions relative to master final ref
+    xref = xctr_init[master_ref]
+    yref = xctr_init[master_ref]
+    xctr_init -= xref
+    yctr_init -= yref
+    sn_x_init = -xref
+    sn_y_init = -yref
+
+    # -------------------------------------------------------------------------
+    # Point Spread Function (PSF)
+
+    myctr = (MODEL_SHAPE[0] - 1) / 2.
+    mxctr = (MODEL_SHAPE[1] - 1) / 2.
+    psfs = []
+    for i in range(len(psfparams)):
+        psfs.append(psf_3d_from_params(psfparams[i], wave, wave_ref,
+                                       MODEL_SHAPE, mxctr, myctr))
+
+    # We now shift the PSF so that instead of being exactly
+    # centered in the array, it is exactly centered on the lower
+    # left pixel. We do this for using the PSF as a convolution kernel:
+    # For convolution in Fourier space, the (0, 0) element of the kernel
+    # is effectively the "center."
+    # Note that this shifting is different than simply
+    # creating the PSF centered at the lower left pixel to begin
+    # with, due to wrap-around.
+    #
+    # mulitiplying an array by fftconv in fourier space will convolve the
+    # array by the PSF. (`ifft2(fftconv).real` would be the shifted PSF in
+    # real space.)
+    fftconvs = []
+    fshift = fft_shift_phasor_2d(MODEL_SHAPE, (-myctr, -mxctr))
+    for psf in psfs:
+        fftconv = np.empty(psf.shape, dtype=np.complex)
+        for i in range(psf.shape[0]):
+            fftconv[i, :, :] = fft2(psf[i, :, :]) * fshift
+        fftconvs.append(fftconv)
+
+    # -------------------------------------------------------------------------
+    # Atmospheric differential refraction (ADR)
+
+    # The following section relates to atmospheric differential
+    # refraction (ADR): Because of ADR, the center of the PSF will be
+    # different at each wavelength, by an amount that we can determine
+    # (pretty well) from the atmospheric conditions and the pointing
+    # and angle of the instrument. We calculate the offsets here as a function
+    # of observation and wavelength and input these to the model.
+
+    # OLD METHOD:
     # differential refraction as a function of time and wavelength,
     # in arcseconds (2-d array).
-    delta_r = differential_refraction(airmass, p, t, h, ddtdata.wave, wave_ref)
-    delta_r /= spaxel_size  # convert from arcsec to spaxels
+    #delta_r = differential_refraction(airmass, p, t, h, wave, wave_ref)
+    #delta_r /= spaxel_size  # convert from arcsec to spaxels
+
     pa = paralactic_angle(airmass, ha, dec, tilt, SNIFS_LATITUDE)
-    adr_dx = np.zeros((ddtdata.nt, ddtdata.nw), dtype=np.float)
-    adr_dy = np.zeros((ddtdata.nt, ddtdata.nw), dtype=np.float)
 
-
-    for i_t in range(ddtdata.nt):
-        adr = ADR(p[i_t], t[i_t], lref=wave_ref, airmass=airmass[i_t],
-                  theta=pa[i_t])
+    adr_dx = np.zeros((nt, nw))
+    adr_dy = np.zeros((nt, nw))
+    for i in range(nt):
+        adr = ADR(p[i], t[i], lref=wave_ref, airmass=airmass[i], theta=pa[i])
         adr_refract = adr.refract(0, 0, wave, unit=spaxel_size)
         assert adr_refract.shape == (2, len(wave))
         adr_dx[i_t] = adr_refract[0]
@@ -151,21 +172,36 @@ def main(filename, data_dir):
     #adr_dx = -delta_r * np.sin(pa)[:, None]  # O'xp <-> - east
     #adr_dy = delta_r * np.cos(pa)[:, None]
 
-    # Make a first guess at the sky level based on the data.
-    skyguess = guess_sky(ddtdata, 2.0)
+    # -------------------------------------------------------------------------
+    # Guesses
 
-    # Calculate rough average galaxy spectrum from final refs
+    # Make a first guess at the sky level based on the data.
+    skyguesses = [guess_sky(cube, 2.0) for cube in cubes]
+
+    # Calculate rough average galaxy spectrum from all final refs
     # for use in regularization.
-    refdata = ddtdata.data[ddtdata.is_final_ref]
-    refdata -= skyguess[ddtdata.is_final_ref][:, :, None, None]
-    mean_gal_spec = refdata.mean(axis=(0, 2, 3))
+    # TODO: use only spaxels that weren't masked in `guess_sky()`?
+    spectra = np.zeros((len(refs), len(wave)))
+    for i in refs:
+        spectra[i] = np.average(cubes[i].data, axis=(1, 2)) - skyguesses[i]
+    mean_gal_spec = np.average(spectra, axis=0)
+
+    galprior = np.zeros((nw, ny, nx))
+
+    # -------------------------------------------------------------------------
+    # Model parameters
+
+    galmodel = np.zeros((nw, MODEL_SHAPE[0], MODEL_SHAPE[1]))
+    sn = np.zeros((nt, nw))  # SN spectrum at each epoch
+    sn_x = sn_x_init
+    sn_y = sn_y_init
+    xctr = np.copy(xctr_init)
+    yctr = np.copy(yctr_init)
 
     # Initialize model
-    model = DDTModel(ddtdata.nt, ddtdata.wave, psf_ellipticity, psf_alpha,
-                     adr_dx, adr_dy, conf["MU_GALAXY_XY_PRIOR"]/10.,
-                     conf["MU_GALAXY_LAMBDA_PRIOR"],
-                     sn_x_init, sn_y_init, skyguess, mean_gal_spec)
-
+    #model = DDTModel(ddtdata.nt, ddtdata.wave, psf_ellipticity, psf_alpha,
+    #                 adr_dx, adr_dy, mu_xy, mu_wave,
+    #                 sn_x_init, sn_y_init, skyguess, mean_gal_spec)
 
     # Fit just the galaxy model to only the *master* final ref,
     # holding the sky fixed (logic to do that is inside

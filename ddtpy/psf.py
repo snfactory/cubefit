@@ -3,84 +3,7 @@ from __future__ import division
 import math
 import numpy as np
 
-__all__ = ["params_from_gs", "gaussian_plus_moffat_psf",
-           "gaussian_plus_moffat_psf_4d"]
-
-
-def params_from_gs(es_psf, wave, wave_ref):
-    """Return arrays of ellipticity, alpha PSF parameters.
-
-    Parameters
-    ----------
-    es_psf : 2-d array
-
-    wave : 1-d array
-    wave_ref : float
-
-    Returns
-    -------
-    ellipticity : 2-d array
-    alpha : 2-d array
-    """
-
-    relwave = wave / wave_ref
-  
-    # one ellipticity per time (constant across wavelength)
-    ellipticity = es_psf[:, 0]
-    a0 = es_psf[:, 1]
-    a1 = es_psf[:, 2]
-    a2 = es_psf[:, 3]
-
-    # duplicate ellipticity for each wavelength
-    ellipticity = np.repeat(ellipticity[:, np.newaxis], len(wave), axis=1)
-    
-    relwave = wave / wave_ref - 1.
-    alpha = (a0[:, np.newaxis] +
-             a1[:, np.newaxis] * relwave +
-             a2[:, np.newaxis] * relwave**2)
-
-    return ellipticity, alpha
-
-def gaussian_plus_moffat_psf_4d(shape, x0, y0, ellipticity, alpha,
-                                angle=None):
-    """Create a 2-d PSF for a 2-d array of parameters.
-
-    Parameters
-    ----------
-    shape : 2-tuple
-        (ny, nx) shape of spatial component of output array.
-    x0, y0 : float
-        Center of PSF in array coordinates. (0, 0) = centered on lower left
-        pixel.
-    ellipticity : 2-d array
-    alpha : 2-d array
-
-    Returns
-    -------
-    psf : 4-d array
-        Shape is (nt, nw, ny, nx) where (nt, nw) is the shape of ellipticity
-        and alpha.
-    """
-
-    assert ellipticity.shape == alpha.shape
-
-    nt, nw = ellipticity.shape
-    ny, nx = shape
-    if angle is None:
-        angle = np.zeros(nt)
-
-    # allocate output array
-    psf = np.empty((nt, nw, ny, nx), dtype=np.float)
-
-    for i_t in range(nt):
-        for i_w in range(nw):
-            slicepsf = gaussian_plus_moffat_psf(shape, x0, y0,
-                                                ellipticity[i_t, i_w],
-                                                alpha[i_t, i_w], angle[i_t])
-            slicepsf /= np.sum(slicepsf)  # normalize array sum to 1.0.
-            psf[i_t, i_w, :, :] = slicepsf
-
-    return psf
+__all__ = ["gaussian_plus_moffat_psf", "psf_3d_from_params"]
 
 def gaussian_plus_moffat_psf(shape, x0, y0, ellipticity, alpha, angle):
     """Evaluate a gaussian+moffat function on a 2-d grid. 
@@ -138,3 +61,44 @@ def gaussian_plus_moffat_psf(shape, x0, y0, ellipticity, alpha, angle):
     norm_psf = 1. / (1./norm_moffat + eta * 1./norm_gauss)
 
     return norm_psf * (moffat + eta*gauss)
+
+
+def psf_3d_from_params(params, wave, wave_ref, shape, x0, y0):
+    """Create a wavelength-dependent Gaussian+Moffat PSF from given
+    parameters.
+
+    Parameters
+    ----------
+    params : 4-tuple
+        Ellipticty and polynomial parameters in wavelength
+    wave : np.ndarray (1-d)
+        Wavelengths
+    wave_ref : float
+        Reference wavelength
+    shape : 2-tuple
+        (ny, nx) shape of spatial component of output array.
+    x0, y0 : float
+        Center of PSF in array coordinates. (0, 0) = centered on lower left
+        pixel.
+
+    Returns
+    -------
+    psf : 3-d array
+        Shape is (nw, ny, nx) where (nw,) is the shape of wave array.
+
+    """
+
+    relwave = wave / wave_ref - 1.
+    ellipticity = params[0]
+    alpha = params[1] + params[2]*relwave + params[3]*relwave**2
+
+    nw = len(wave)
+    ny, nx = shape
+    psf = np.empty((nw, ny, nx), dtype=np.float)
+    for i in range(nw):
+        psf2d = gaussian_plus_moffat_psf(shape, x0, y0, ellipticity,
+                                         alpha[i], 0.0)
+        psf2d /= np.sum(psf2d)  # normalize array sum to 1.0.
+        psf[i, :, :] = psf2d
+
+    return psf
