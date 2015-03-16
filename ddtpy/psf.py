@@ -5,14 +5,14 @@ import numpy as np
 
 __all__ = ["gaussian_plus_moffat_psf", "psf_3d_from_params"]
 
-def gaussian_plus_moffat_psf(shape, x0, y0, ellipticity, alpha, angle):
+def gaussian_plus_moffat_psf(shape, xctr, yctr, ellipticity, alpha, angle):
     """Evaluate a gaussian+moffat function on a 2-d grid. 
 
     Parameters
     ----------
     shape : 2-tuple
         (ny, nx) of output array.
-    x0, y0 : float
+    xctr, yctr : float
         Center of PSF in array coordinates. (0, 0) = centered on lower left
         pixel.
     ellipticity: float
@@ -44,7 +44,7 @@ def gaussian_plus_moffat_psf(shape, x0, y0, ellipticity, alpha, angle):
 
     # In the next line, output arrays are 2-d, both with shape (ny, nx).
     # dx, for example, gives the dx value at each point in the grid.
-    dx, dy = np.meshgrid(np.arange(nx) - x0, np.arange(ny) - y0)
+    dx, dy = np.meshgrid(np.arange(nx) - xctr, np.arange(ny) - yctr)
 
     # Offsets in rotated coordinate system (dx', dy')
     dx_prime = dx * math.cos(angle) - dy * math.sin(angle)
@@ -63,7 +63,7 @@ def gaussian_plus_moffat_psf(shape, x0, y0, ellipticity, alpha, angle):
     return norm_psf * (moffat + eta*gauss)
 
 
-def psf_3d_from_params(params, wave, wave_ref, shape, x0, y0):
+def psf_3d_from_params(params, wave, wave_ref, shape):
     """Create a wavelength-dependent Gaussian+Moffat PSF from given
     parameters.
 
@@ -77,15 +77,12 @@ def psf_3d_from_params(params, wave, wave_ref, shape, x0, y0):
         Reference wavelength
     shape : 2-tuple
         (ny, nx) shape of spatial component of output array.
-    x0, y0 : float
-        Center of PSF in array coordinates. (0, 0) = centered on lower left
-        pixel.
 
     Returns
     -------
     psf : 3-d array
         Shape is (nw, ny, nx) where (nw,) is the shape of wave array.
-
+        PSF will be spatially centered in array.
     """
 
     relwave = wave / wave_ref - 1.
@@ -94,9 +91,11 @@ def psf_3d_from_params(params, wave, wave_ref, shape, x0, y0):
 
     nw = len(wave)
     ny, nx = shape
+    xctr = (nx - 1) / 2.
+    yctr = (ny - 1) / 2.
     psf = np.empty((nw, ny, nx), dtype=np.float)
     for i in range(nw):
-        psf2d = gaussian_plus_moffat_psf(shape, x0, y0, ellipticity,
+        psf2d = gaussian_plus_moffat_psf(shape, xctr, yctr, ellipticity,
                                          alpha[i], 0.0)
         psf2d /= np.sum(psf2d)  # normalize array sum to 1.0.
         psf[i, :, :] = psf2d

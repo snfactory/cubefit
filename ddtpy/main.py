@@ -23,6 +23,85 @@ __all__ = ["main"]
 
 MODEL_SHAPE = (32, 32)
 SNIFS_LATITUDE = np.deg2rad(19.8228)
+WAVE_REF_DEFAULT = 5000.
+MAXITER_FIT_POSITION = 100  # Max iterations in fit_position
+MAXMOVE_FIT_POSITION = 3.0  # maxmimum movement allowed in fit_position
+MIN_NMAD = 2.5  # Minimum Number of Median Absolute Deviations above
+                # the minimum spaxel value in fit_position
+
+def parse_conf(inconf):
+    """Parse the raw input configuration dictionary. Return a new dictionary.
+    """
+
+    outconf = {}
+
+    outconf["fnames"] = inconf["IN_CUBE"]
+    nt = len(outconf["fnames"])
+    
+    # check apodizer flag because the code doesn't support it
+    if inconf.get("FLAG_APODIZER", 0) >= 2:
+        raise RuntimeError("FLAG_APODIZER >= 2 not implemented")
+
+    outconf["spaxel_size"] = inconf["PARAM_SPAXEL_SIZE"]
+    outconf["wave_ref"] = inconf.get("PARAM_LAMBDA_REF", WAVE_REF_DEFAULT)  
+
+    outconf["mu_xy"] = inconf["MU_GALAXY_XY_PRIOR"]
+    outconf["mu_wave"] = inconf["MU_GALAXY_LAMBDA_PRIOR"]
+
+    # index of master final ref. Subtract 1 for Python indexing.
+    outconf["master_ref"] = inconf["PARAM_FINAL_REF"] - 1
+
+    is_ref = inconf.get("PARAM_IS_FINAL_REF")
+    assert len(is_ref) == nt
+    refs = np.flatnonzero(is_ref)
+
+    # indicies of all final refs
+    outconf["refs"] = refs
+
+    outconf["n_iter_galaxy_prior"] = inconf.get("N_ITER_GALAXY_PRIOR", None)
+
+    # atmospheric conditions at each observation time.
+    outconf["airmass"] = np.array(inconf["PARAM_AIRMASS"])
+    outconf["p"] = np.asarray(inconf.get("PARAM_P", 615.*np.ones(nt)))
+    outconf["t"] = np.asarray(inconf.get("PARAM_T", 2.*np.ones(nt)))
+    outconf["h"] = np.asarray(inconf.get("PARAM_H", np.zeros(nt)))
+
+    # Position of the instrument (note that config file is in degrees)
+    outconf["ha"] = np.deg2rad(np.array(inconf["PARAM_HA"]))
+    outconf["dec"] = np.deg2rad(np.array(inconf["PARAM_DEC"]))
+
+    # TODO: check that this is in radians!
+    outconf["tilt"] = inconf["PARAM_MLA_TILT"]
+
+    if inconf["PARAM_PSF_TYPE"] != "GS-PSF":
+        raise RuntimeError("unrecognized PARAM_PSF_TYPE. "
+                           "[G-PSF (from FITS files) not implemented.]")
+    outconf["psfparams"] = inconf["PARAM_PSF_ES"]
+
+    # If target positions are given in the config file, set them in
+    # the model.  (Otherwise, the positions default to zero in all
+    # exposures.)
+    if "PARAM_TARGET_XP" in inconf:
+        xctr_init = np.array(inconf["PARAM_TARGET_XP"])
+    else:
+        xctr_init = np.zeros(nt)
+    if "PARAM_TARGET_YP" in inconf:
+        yctr_init = np.array(inconf["PARAM_TARGET_YP"])
+    else:
+        yctr_init = np.zeros(nt)
+
+    # In the input file the coordinates are w.r.t where we think the SN is
+    # located. Shift them so that all the coordinates are w.r.t. the center
+    # of the master final ref.
+    xref = xctr_init[outconf["master_ref"]]
+    yref = xctr_init[outconf["master_ref"]]
+    outconf["xctr_init"] = xctr_init - xref
+    outconf["yctr_init"] = yctr_init - yref
+    outconf["sn_x_init"] = -xref
+    outconf["sn_y_init"] = -yref
+
+    return outconf
+
 
 def main(filename, data_dir):
     """Do everything.
@@ -35,12 +114,19 @@ def main(filename, data_dir):
         Directory containing FITS files given in the config file.
     """
     
+    # Read the config file and parse it into a nice dictionary.
     with open(filename) as f:
-        conf = json.load(f)
+        cfg = json.load(f)
+        cfg = parse_conf(cfg)
 
-    # Load data from list of FITS files.
-    fnames = [os.path.join(data_dir, fname) for fname in conf["IN_CUBE"]]
-    cubes = [read_datacube(fname) for fname in fnames]
+    # TODO: This is a hack for the test sn. Generalize this?
+    cfg["mu_xy"] = cfg["mu_xy"] / 10.
+
+    # -------------------------------------------------------------------------
+    # Load data cubes from the list of FITS files.
+
+    cubes = [read_datacube(os.path.join(data_dir, fname))
+             for fname in cfg["fnames"]]
     wave = cubes[0].wave
     nt = len(cubes)
     nw = len(wave)
@@ -49,251 +135,133 @@ def main(filename, data_dir):
     if not all(cubes[i].wave == wave for i in range(1, len(cubes))):
         raise ValueError("all data must have same wavelengths")
 
-    # check apodizer flag because the code doesn't support it
-    if conf.get("FLAG_APODIZER", 0) >= 2:
-        raise RuntimeError("FLAG_APODIZER >= 2 not implemented")
-
-    spaxel_size = conf["PARAM_SPAXEL_SIZE"]
-    
-    # Reference wavelength. Used in PSF parameters and ADR.
-    wave_ref = conf.get("PARAM_LAMBDA_REF", 5000.)  
-
-    mu_xy = conf["MU_GALAXY_XY_PRIOR"]/10.
-    mu_wave = conf["MU_GALAXY_LAMBDA_PRIOR"]
-
-    master_ref = conf["PARAM_FINAL_REF"] - 1  # index of master final
-                                              # ref.  Subtract 1 for
-                                              # Python indexing
-    is_ref = conf.get("PARAM_IS_FINAL_REF")
-    assert len(is_ref) == len(cubes)
-    refs = np.flatnonzero(is_ref)  # indicies of all final refs
-    nonmaster_refs = refs[refs != master_ref]  # indicies of all but master.
-
-    n_iter_galaxy_prior = conf.get("N_ITER_GALAXY_PRIOR")
-
-    # atmospheric conditions at each observation time.
-    airmass = np.array(conf["PARAM_AIRMASS"])
-    p = np.asarray(conf.get("PARAM_P", 615.*np.ones_like(airmass)))
-    t = np.asarray(conf.get("PARAM_T", 2.*np.ones_like(airmass)))
-    h = np.asarray(conf.get("PARAM_H", np.zeros_like(airmass)))
-
-    # Position of the instrument
-    ha = np.deg2rad(np.array(conf["PARAM_HA"]))   # config files in degrees
-    dec = np.deg2rad(np.array(conf["PARAM_DEC"])) # config files in degrees
-    tilt = conf["PARAM_MLA_TILT"]
-
-    # PSF Parameters
-    # GS-PSF --> ES-PSF
-    # G-PSF --> GR-PSF
-    if conf["PARAM_PSF_TYPE"] != "GS-PSF":
-        raise RuntimeError("unrecognized PARAM_PSF_TYPE. "
-                           "[G-PSF (from FITS files) not implemented.]")
-    psfparams = conf["PARAM_PSF_ES"]
-
-
-    # If target positions are given in the config file, set them in
-    # the model.  (Otherwise, the positions default to zero in all
-    # exposures.)
-    if "PARAM_TARGET_XP" in conf:
-        xctr_init = np.array(conf["PARAM_TARGET_XP"])
-    else:
-        xctr_init = np.zeros(nt)
-    if "PARAM_TARGET_YP" in conf:
-        yctr_init = np.array(conf["PARAM_TARGET_YP"])
-    else:
-        yctr_init = np.zeros(nt)
-
-    # calculate all positions relative to master final ref
-    xref = xctr_init[master_ref]
-    yref = xctr_init[master_ref]
-    xctr_init -= xref
-    yctr_init -= yref
-    sn_x_init = -xref
-    sn_y_init = -yref
-
     # -------------------------------------------------------------------------
-    # Point Spread Function (PSF)
+    # Atmospheric conditions for each observation
 
-    myctr = (MODEL_SHAPE[0] - 1) / 2.
-    mxctr = (MODEL_SHAPE[1] - 1) / 2.
-    psfs = []
-    for i in range(len(psfparams)):
-        psfs.append(psf_3d_from_params(psfparams[i], wave, wave_ref,
-                                       MODEL_SHAPE, mxctr, myctr))
-
-    # We now shift the PSF so that instead of being exactly
-    # centered in the array, it is exactly centered on the lower
-    # left pixel. We do this for using the PSF as a convolution kernel:
-    # For convolution in Fourier space, the (0, 0) element of the kernel
-    # is effectively the "center."
-    # Note that this shifting is different than simply
-    # creating the PSF centered at the lower left pixel to begin
-    # with, due to wrap-around.
-    #
-    # mulitiplying an array by fftconv in fourier space will convolve the
-    # array by the PSF. (`ifft2(fftconv).real` would be the shifted PSF in
-    # real space.)
-    fftconvs = []
-    fshift = fft_shift_phasor_2d(MODEL_SHAPE, (-myctr, -mxctr))
-    for psf in psfs:
-        fftconv = np.empty(psf.shape, dtype=np.complex)
-        for i in range(psf.shape[0]):
-            fftconv[i, :, :] = fft2(psf[i, :, :]) * fshift
-        fftconvs.append(fftconv)
-
-    # -------------------------------------------------------------------------
-    # Atmospheric differential refraction (ADR)
-
-    # The following section relates to atmospheric differential
-    # refraction (ADR): Because of ADR, the center of the PSF will be
-    # different at each wavelength, by an amount that we can determine
-    # (pretty well) from the atmospheric conditions and the pointing
-    # and angle of the instrument. We calculate the offsets here as a function
-    # of observation and wavelength and input these to the model.
-
-    # OLD METHOD:
-    # differential refraction as a function of time and wavelength,
-    # in arcseconds (2-d array).
-    #delta_r = differential_refraction(airmass, p, t, h, wave, wave_ref)
-    #delta_r /= spaxel_size  # convert from arcsec to spaxels
-
-    pa = paralactic_angle(airmass, ha, dec, tilt, SNIFS_LATITUDE)
-
-    adr_dx = np.zeros((nt, nw))
-    adr_dy = np.zeros((nt, nw))
+    atms = []
     for i in range(nt):
-        adr = ADR(p[i], t[i], lref=wave_ref, airmass=airmass[i], theta=pa[i])
-        adr_refract = adr.refract(0, 0, wave, unit=spaxel_size)
-        assert adr_refract.shape == (2, len(wave))
-        adr_dx[i_t] = adr_refract[0]
-        adr_dy[i_t] = adr_refract[1]
 
-    # debug
-    #adr_dx = -delta_r * np.sin(pa)[:, None]  # O'xp <-> - east
-    #adr_dy = delta_r * np.cos(pa)[:, None]
+        # Create a 3-d cube representing the Point Spread Function (PSF)
+        # as a function of wavelength.
+        psf = psf_3d_from_params(cfg["psfparams"][i], wave, cfg["wave_ref"],
+                                 MODEL_SHAPE)
+
+        # Atmospheric differential refraction (ADR): Because of ADR,
+        # the center of the PSF will be different at each wavelength,
+        # by an amount that we can determine (pretty well) from the
+        # atmospheric conditions and the pointing and angle of the
+        # instrument. We calculate the offsets here as a function of
+        # observation and wavelength and input these to the model.
+        pa = paralactic_angle(cfg["airmass"][i], cfg["ha"][i], cfg["dec"][i],
+                              cfg["tilt"], SNIFS_LATITUDE)
+        adr = ADR(cfg["p"][i], cfg["t"][i], lref=cfg["wave_ref"],
+                  airmass=cfg["airmass"][i], theta=pa)
+        adr_refract = adr.refract(0, 0, wave, unit=cfg["spaxel_size"])
+
+        # make adr_refract[0, :] correspond to y and adr_refract[1, :] => x 
+        adr_refract = np.flipud(adr_refract)
+
+        atms.append(AtmModel(psf, adr_refract))
 
     # -------------------------------------------------------------------------
-    # Guesses
+    # Initialize all model parameters to be fit
 
-    # Make a first guess at the sky level based on the data.
-    skyguesses = [guess_sky(cube, 2.0) for cube in cubes]
+    galaxy = np.zeros((nw, MODEL_SHAPE[0], MODEL_SHAPE[1]))
+    sky = [guess_sky(cube, 2.0) for cube in cubes]
+    sn = np.zeros((nt, nw))  # SN spectrum at each epoch
+    sn_x = cfg["sn_x_init"]
+    sn_y = cfg["sn_y_init"]
+    xctr = np.copy(cfg["xctr_init"])
+    yctr = np.copy(cfg["yctr_init"])
 
-    # Calculate rough average galaxy spectrum from all final refs
-    # for use in regularization.
+    # -------------------------------------------------------------------------
+    # Regularization penalty parameters
+
+    # Calculate rough average galaxy spectrum from all final refs.
     # TODO: use only spaxels that weren't masked in `guess_sky()`?
     spectra = np.zeros((len(refs), len(wave)))
     for i in refs:
-        spectra[i] = np.average(cubes[i].data, axis=(1, 2)) - skyguesses[i]
+        spectra[i] = np.average(cubes[i].data, axis=(1, 2)) - sky[i]
     mean_gal_spec = np.average(spectra, axis=0)
 
     galprior = np.zeros((nw, ny, nx))
 
+    regpenalty = RegularizationPenalty(galprior, mean_gal_spec, mu_xy, mu_wave)
+
     # -------------------------------------------------------------------------
-    # Model parameters
+    # All the fitting...
 
-    galmodel = np.zeros((nw, MODEL_SHAPE[0], MODEL_SHAPE[1]))
-    sn = np.zeros((nt, nw))  # SN spectrum at each epoch
-    sn_x = sn_x_init
-    sn_y = sn_y_init
-    xctr = np.copy(xctr_init)
-    yctr = np.copy(yctr_init)
+    refs = cfg["refs"]
+    master_ref = cfg["master_ref"]
+    nonmaster_refs = refs[refs != master_ref]
 
-    # Initialize model
-    #model = DDTModel(ddtdata.nt, ddtdata.wave, psf_ellipticity, psf_alpha,
-    #                 adr_dx, adr_dy, mu_xy, mu_wave,
-    #                 sn_x_init, sn_y_init, skyguess, mean_gal_spec)
+    # -------------------------------------------------
+    # Fit just the galaxy model to just the master ref.
 
-    # Fit just the galaxy model to only the *master* final ref,
-    # holding the sky fixed (logic to do that is inside
-    # fit_model). The galaxy model is defined in the frame of the
-    # master final ref.
-    fit_model(model, ddtdata, [ddtdata.master_final_ref])
+    galaxy = fit_galaxy_single(galaxy, sky[master_ref], cubes[master_ref],
+                               (yctr[master_ref], xctr[master_ref]),
+                               atms[master_ref], regpenalty)
 
-    # Test plotting
-    from .plotting import plot_timeseries, plot_wave_slices
-    fig = plot_timeseries(ddtdata, model)
-    fig.savefig("testfigure.png")
-    fig2 = plot_wave_slices(ddtdata, model, ddtdata.master_final_ref)
-    fig2.savefig("testslices.png")
-    fig.clear()
-    fig2.clear()
-    #exit()
+    # -----------------------------------------
+    # Fit the positions of the other final refs
+    #
+    # Here we only use spaxels where the *model* has significant flux.
+    # We define "significant" as some number of median absolute deviations
+    # (MAD) above the minimum flux in the model. We (temporarily) set the
+    # weight of "insignificant" spaxels to zero during this process, then
+    # restore the original weight after we're done.
+    #
+    # If there are less than 20 "significant" spaxels, we do not attempt to
+    # fit the position, but simply leave it as is. 
 
-    # Fit registration on just the final refs
-    # ==================================================================
+    exclude_from_fit = []
+    for i in nonmaster_refs:
+        cube = cubes[i]
+        origweight = cube.weight  # weight before modification
 
-    maxiter_fit_position = 100  # Max iterations in fit_position
-    maxmove_fit_position = 3.0  # maxmimum movement allowed in fit_position
-    mask_nmad = 2.5  # Minimum Number of Median Absolute Deviations above
-                     # the minimum spaxel value in fit_position
-    
-    # Make a copy of the weight at this point, because we're going to
-    # modify the weights in place for the next step.
-    weight_orig = ddtdata.weight.copy()
+        # Evaluate galaxy on this epoch for purpose of masking spaxels.
+        gal = atms[i].evaluate_galaxy(galaxy, (cube.ny, cube.nx),
+                                      (yctr[i], xctr[i]))
 
-    include_in_fit = np.ones(ddtdata.nt, dtype=np.bool)
-
-    # /* Register the galaxy in the other final refs */
-    # i_fit_galaxy_position=where(ddt.ddt_data.is_final_ref);
-    # n_final_ref = numberof( i_fit_galaxy_position);
-    # galaxy_offset = array(double, 2, ddt.ddt_data.n_t);
-    
-    # Loop over just the other final refs (not including master)
-    is_other_final_ref = ddtdata.is_final_ref.copy()
-    is_other_final_ref[ddtdata.master_final_ref] = False
-    other_final_refs = np.flatnonzero(is_other_final_ref)
-
-    for i_t in other_final_refs:
-        
-        m = model.evaluate(i_t, ddtdata.xctr[i_t], ddtdata.yctr[i_t],
-                           (ddtdata.ny, ddtdata.nx), which='all')
-
-        # The next few lines finds spaxels where the model is high and
-        # sets the weight (in the data) for all other spaxels to zero
-
-        tmp_m = m.sum(axis=0)  # Sum of model over wavelengths (result = 2-d)
-        tmp_mad = np.median(np.abs(tmp_m - np.median(tmp_m)))
-
-        # Spaxels where model is greater than minimum + 2.5 * MAD
-        mask = tmp_m > np.min(tmp_m) + mask_nmad * tmp_mad
-        
-        # If there is less than 20 spaxels available, we don't fit
-        # the position
+        # Set weight of low-valued spaxels to zero.
+        gal2d = gal.sum(axis=0)  # Sum of gal over wavelengths
+        mad = np.median(np.abs(gal2d - np.median(gal2d)))
+        mask = gal2d > np.min(gal2d) + MIN_NMAD * mad
         if mask.sum() < 20:
             continue
 
-        # This sets weight to zero on spaxels where mask is False
-        # (where spaxel sum is less than minimum + 2.5 MAD)
-        ddtdata.weight[i_t] = ddtdata.weight[i_t] * mask[None, :, :]
+        cube.weight = origweight * mask[None, :, :]
 
-        # Fit the position for this epoch, keeping the sky fixed.
         # TODO: should the sky be varied on each iteration?
         #       (currently, it is not varied)
-        pos = fit_position(model, ddtdata, i_t)
-                           
+        fyctr, fxctr = fit_position(galaxy, sky[i], cube, (yctr[i], xctr[i]),
+                                    atms[i], MAXITER_FIT_POSITION)
         
+        cube.weight = origweight  # reset weight
+
         # Check if the position moved too much from initial position.
         # If it didn't move too much, update the model.
         # If it did, cut it from the fitting for the next step.
-        dist = math.sqrt((pos[0] - ddtdata.xctr_init[i_t])**2 + 
-                         (pos[1] - ddtdata.yctr_init[i_t])**2)
-        
-        if dist < maxmove_fit_position:
-            ddtdata.xctr[i_t] = pos[0]
-            ddtdata.yctr[i_t] = pos[1]
+        dist = math.sqrt((fyctr - yctr[i])**2 + (fxctr - xctr[i])**2)
+        if dist < MAXMOVE_FIT_POSITION:
+            yctr[i] = fyctr
+            xctr[i] = fxctr
         else:
-            include_in_fit[i_t] = False
+            exclude_from_fit.append(i)
 
-    # Reset weight
-    ddtdata.weight = weight_orig
+        # new estimate of sky in this epoch
+        gal = atms[i].evaluate_galaxy(galaxy, (cube.ny, cube.nx),
+                                      (yctr[i], xctri]))
+        sky[i][:] = np.average(cube.data - gal, weights=cube.weights,
+                               axis=(1, 2))
 
-    # Now that we have fit all their positions and reset the weights, 
-    # recalculate sky for all other final refs.
-    for i_t in other_final_refs:
-        model.sky[i_t,:] = fit_sky(model, ddtdata, i_t)
-    
+    # -------------------------------------------------------------------------
     # Redo model fit, this time including all final refs.
-    fit_model(model, ddtdata, np.flatnonzero(ddtdata.is_final_ref))
+
+    fit_galaxy_multi(galaxy,
+                     [sky[i] for i in refs],
+                     [cubes[i] for i in refs],
+                     
     
     pickle.dump(model, open('model2.pkl','w'))
     fig = plot_timeseries(ddtdata, model)

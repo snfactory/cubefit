@@ -11,9 +11,9 @@ def paralactic_angle(airmass, ha, dec, tilt, lat):
 
     Parameters
     ----------
-    airmass : 1-d array
-    ha : 1-d array
-    dec : 1-d array
+    airmass : float
+    ha : float
+    dec : float
     tilt : float
     lat : float
         Earth latitude of instrument in radians.
@@ -23,19 +23,17 @@ def paralactic_angle(airmass, ha, dec, tilt, lat):
 
     # TODO: original Yorick code says this breaks when ha = 0
     #       but not clear to me why that would be.
-    sin_z = np.sqrt(1. - cos_z**2)  
-
-    sin_paralactic = np.sin(ha) * np.cos(lat) / sin_z
-
-    cos_paralactic = (np.sin(lat)*np.cos(dec) -
-                      np.cos(lat)*np.sin(dec)*np.cos(ha)) / sin_z
+    sin_z = math.sqrt(1. - cos_z**2)
 
     # treat individually cases where airmass == 1.
-    mask = (sin_z == 0.)
-    if np.any(mask):
-        sin_paralactic[mask] = 0.
-        cos_paralactic[mask] = 1.
-  
+    if sin_z == 0.:
+        sin_paralactic = 0.
+        cos_paralactic = 1.
+    else:
+        sin_paralactic = math.sin(ha) * math.cos(lat) / sin_z
+        cos_paralactic = (math.sin(lat)*math.cos(dec) -
+                          math.cos(lat)*math.sin(dec)*math.cos(ha)) / sin_z
+
     # add the tilt
     # alpha = paralactic - tilt
     sin_xy = sin_paralactic*math.cos(tilt) - math.sin(tilt)*cos_paralactic
@@ -44,15 +42,15 @@ def paralactic_angle(airmass, ha, dec, tilt, lat):
     # Consistency test (TODO: Move this to tests?)
     # Is this test correct? shouldn't sin^2 + cos^2 = 1?
     one_xy = sin_xy**2 + cos_xy**2 - 1.
-    mask = np.abs(one_xy >= 1.)
-    if np.any(mask) and np.any(airmass[mask] > 1.01):
+    if one_xy >= 1. and airmass > 1.01:
         raise RuntimeError("something went wrong with paralactic angle calc")
-  
+
     # arctan gives an angle between -pi and pi
     # and paralactic_angle is between 0 and 2pi, positive from North toward
     # East.
     # NB: due to numerical resolution, tan(pi/2.) is well defined.
-    return np.arctan2(sin_xy, cos_xy)
+    return math.atan2(sin_xy, cos_xy)
+
 
 def water_vapor_pressure(t):
     """Vapor pressure of water in mBar, given temperature in Celcius
@@ -63,6 +61,7 @@ def water_vapor_pressure(t):
     """
     t = t + 273.15
     return np.exp(-7205.76 / t) / 100. * (50292. / t)**6.2896
+
 
 def refraction_index_of_air_minus_one(p, t, h, wave):
     """Return n(lambda) - 1, where n(lambda) is the refraction index of air.

@@ -480,3 +480,52 @@ def calc_airmass(ha, dec):
   cos_z = (np.sin(SNIFS_LATITUDE) * np.sin(dec) +
            np.cos(SNIFS_LATITUDE) * np.cos(dec) * np.cos(ha))
   return 1./cos_z
+
+# was in adr.py, replaced with non-vectorized version for clarity.
+def paralactic_angle_vectorized(airmass, ha, dec, tilt, lat):
+    """Return paralactic angle in radians, including MLA tilt
+
+    Parameters
+    ----------
+    airmass : 1-d array
+    ha : 1-d array
+    dec : 1-d array
+    tilt : float
+    lat : float
+        Earth latitude of instrument in radians.
+    """
+
+    cos_z = 1./airmass
+
+    # TODO: original Yorick code says this breaks when ha = 0
+    #       but not clear to me why that would be.
+    sin_z = np.sqrt(1. - cos_z**2)  
+
+    sin_paralactic = np.sin(ha) * np.cos(lat) / sin_z
+
+    cos_paralactic = (np.sin(lat)*np.cos(dec) -
+                      np.cos(lat)*np.sin(dec)*np.cos(ha)) / sin_z
+
+    # treat individually cases where airmass == 1.
+    mask = (sin_z == 0.)
+    if np.any(mask):
+        sin_paralactic[mask] = 0.
+        cos_paralactic[mask] = 1.
+  
+    # add the tilt
+    # alpha = paralactic - tilt
+    sin_xy = sin_paralactic*math.cos(tilt) - math.sin(tilt)*cos_paralactic
+    cos_xy = cos_paralactic*math.cos(tilt) + math.sin(tilt)*sin_paralactic
+    
+    # Consistency test (TODO: Move this to tests?)
+    # Is this test correct? shouldn't sin^2 + cos^2 = 1?
+    one_xy = sin_xy**2 + cos_xy**2 - 1.
+    mask = np.abs(one_xy >= 1.)
+    if np.any(mask) and np.any(airmass[mask] > 1.01):
+        raise RuntimeError("something went wrong with paralactic angle calc")
+  
+    # arctan gives an angle between -pi and pi
+    # and paralactic_angle is between 0 and 2pi, positive from North toward
+    # East.
+    # NB: due to numerical resolution, tan(pi/2.) is well defined.
+    return np.arctan2(sin_xy, cos_xy)
