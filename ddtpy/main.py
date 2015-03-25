@@ -131,6 +131,12 @@ def main(filename, data_dir):
     nt = len(cubes)
     nw = len(wave)
 
+    # assign some local variables for convenience
+    refs = cfg["refs"]
+    master_ref = cfg["master_ref"]
+    nonmaster_refs = refs[refs != master_ref]
+    nonrefs = [i for i in range(nt) if i not in refs]
+
     # Ensure that all cubes have the same wavelengths.
     if not all(cubes[i].wave == wave for i in range(1, len(cubes))):
         raise ValueError("all data must have same wavelengths")
@@ -167,7 +173,7 @@ def main(filename, data_dir):
     # Initialize all model parameters to be fit
 
     galaxy = np.zeros((nw, MODEL_SHAPE[0], MODEL_SHAPE[1]))
-    sky = [guess_sky(cube, 2.0) for cube in cubes]
+    skys = [guess_sky(cube, 2.0) for cube in cubes]
     sn = np.zeros((nt, nw))  # SN spectrum at each epoch
     sn_x = cfg["sn_x_init"]
     sn_y = cfg["sn_y_init"]
@@ -181,7 +187,7 @@ def main(filename, data_dir):
     # TODO: use only spaxels that weren't masked in `guess_sky()`?
     spectra = np.zeros((len(refs), len(wave)))
     for i in refs:
-        spectra[i] = np.average(cubes[i].data, axis=(1, 2)) - sky[i]
+        spectra[i] = np.average(cubes[i].data, axis=(1, 2)) - skys[i]
     mean_gal_spec = np.average(spectra, axis=0)
 
     galprior = np.zeros((nw, ny, nx))
@@ -189,20 +195,15 @@ def main(filename, data_dir):
     regpenalty = RegularizationPenalty(galprior, mean_gal_spec, mu_xy, mu_wave)
 
     # -------------------------------------------------------------------------
-    # All the fitting...
-
-    refs = cfg["refs"]
-    master_ref = cfg["master_ref"]
-    nonmaster_refs = refs[refs != master_ref]
-
-    # -------------------------------------------------
     # Fit just the galaxy model to just the master ref.
 
-    galaxy = fit_galaxy_single(galaxy, sky[master_ref], cubes[master_ref],
+    data = cubes[master_ref].data - skys[master_ref][:, None, None]
+    weight = cubes[master_ref].weight
+    galaxy = fit_galaxy_single(galaxy, data, weight,
                                (yctr[master_ref], xctr[master_ref]),
                                atms[master_ref], regpenalty)
 
-    # -----------------------------------------
+    # -------------------------------------------------------------------------
     # Fit the positions of the other final refs
     #
     # Here we only use spaxels where the *model* has significant flux.
@@ -217,7 +218,6 @@ def main(filename, data_dir):
     exclude_from_fit = []
     for i in nonmaster_refs:
         cube = cubes[i]
-        origweight = cube.weight  # weight before modification
 
         # Evaluate galaxy on this epoch for purpose of masking spaxels.
         gal = atms[i].evaluate_galaxy(galaxy, (cube.ny, cube.nx),
@@ -229,55 +229,54 @@ def main(filename, data_dir):
         mask = gal2d > np.min(gal2d) + MIN_NMAD * mad
         if mask.sum() < 20:
             continue
+        weight = cube.weight * mask[None, :, :]
 
-        cube.weight = origweight * mask[None, :, :]
-
-        # TODO: should the sky be varied on each iteration?
-        #       (currently, it is not varied)
-        fyctr, fxctr = fit_position(galaxy, sky[i], cube, (yctr[i], xctr[i]),
-                                    atms[i], MAXITER_FIT_POSITION)
-        
-        cube.weight = origweight  # reset weight
+        fctr, sky[i] = fit_position_sky(galaxy, cube.data, weight,
+                                        (yctr[i], xctr[i]), atms[i],
+                                        MAXITER_FIT_POSITION)
 
         # Check if the position moved too much from initial position.
         # If it didn't move too much, update the model.
         # If it did, cut it from the fitting for the next step.
-        dist = math.sqrt((fyctr - yctr[i])**2 + (fxctr - xctr[i])**2)
+        dist = math.sqrt((fctr[0] - yctr[i])**2 + (fctr[1] - xctr[i])**2)
         if dist < MAXMOVE_FIT_POSITION:
-            yctr[i] = fyctr
-            xctr[i] = fxctr
+            yctr[i] = fctr[0]
+            xctr[i] = fctr[1]
         else:
             exclude_from_fit.append(i)
 
-        # new estimate of sky in this epoch
-        gal = atms[i].evaluate_galaxy(galaxy, (cube.ny, cube.nx),
-                                      (yctr[i], xctri]))
-        sky[i][:] = np.average(cube.data - gal, weights=cube.weights,
-                               axis=(1, 2))
 
     # -------------------------------------------------------------------------
     # Redo model fit, this time including all final refs.
 
-    fit_galaxy_multi(galaxy,
-                     [sky[i] for i in refs],
-                     [cubes[i] for i in refs],
-                     
-    
-    pickle.dump(model, open('model2.pkl','w'))
-    fig = plot_timeseries(ddtdata, model)
-    fig.savefig("testfigure2.png")
-    fig.clear()
-    for i_t in np.flatnonzero(ddtdata.is_final_ref):
-        fig2 = plot_wave_slices(ddtdata, model, i_t)
-        fig2.savefig("testslices_%s.png" % i_t)
-        fig2.clear()
-    
-    
+    datas = [cube.data[i] - skys[i][:, None, None] for i in refs]
+    weights = [cube.weight[i] for i in refs]
+    ctrs = [(yctr[i], xctr[i]) for i in refs]
+    atms = [atms[i] for i in refs]
+    galaxy = fit_galaxy_multi(galaxy, datas, weights, ctrs, atms, regpenalty)
 
-    # list of non-final refs
-    epochs = [i_t for i_t in range(ddtdata.nt)
-              if not ddtdata.is_final_ref[i_t]]
+    #pickle.dump(model, open('model2.pkl','w'))
+    #fig = plot_timeseries(ddtdata, model)
+    #fig.savefig("testfigure2.png")
+    #fig.clear()
+    #for i_t in np.flatnonzero(ddtdata.is_final_ref):
+    #    fig2 = plot_wave_slices(ddtdata, model, i_t)
+    #    fig2.savefig("testslices_%s.png" % i_t)
+    #    fig2.clear()
     
+    # Fit registration on just exposures with a supernova (not final refs)
+    # ===================================================================
+
+    # -------------------------------------------------------------------------
+    # Fit position of data and SN in non-references
+    #
+    # Now we think we have a good galaxy model. We fix this and fit
+    # the relative position of the remaining epochs (which presumably
+    # all have some SN light). We simultaneously fit the position of
+    # the SN itself.
+
+    # `nonrefs` is indicies of non-final refs
+
     pos = fit_position_sn_sky(model, ddtdata, epochs)
 
     pickle.dump(model, open('model3.pkl','w'))
@@ -294,10 +293,6 @@ def main(filename, data_dir):
         fig2.savefig("testslices_%s.png" % i_t)
         fig2.clear()
 
-
-
-    # Fit registration on just exposures with a supernova (not final refs)
-    # ===================================================================
     
     """
     for i_t in range(ddtdata.nt):
