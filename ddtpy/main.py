@@ -11,12 +11,11 @@ import matplotlib as mpl
 import pickle
 mpl.use('Agg')
 
-from .psf import params_from_gs, gaussian_plus_moffat_psf_4d
-from .model import DDTModel
-from .data import read_dataset, read_select_header_keys, DDTData
-from .adr import paralactic_angle, differential_refraction
-from .fitting import (guess_sky, fit_model, fit_position, fit_sky_and_sn,
-                      fit_sky, fit_position_sn_sky)
+from .psf import psf_3d_from_params
+from .model import AtmModel, RegularizationPenalty
+from .data import read_datcube
+from .adr import paralactic_angle
+from .fitting import *
 from .extern import ADR
 
 __all__ = ["main"]
@@ -175,8 +174,7 @@ def main(filename, data_dir):
     galaxy = np.zeros((nw, MODEL_SHAPE[0], MODEL_SHAPE[1]))
     skys = [guess_sky(cube, 2.0) for cube in cubes]
     sn = np.zeros((nt, nw))  # SN spectrum at each epoch
-    sn_x = cfg["sn_x_init"]
-    sn_y = cfg["sn_y_init"]
+    snctr = (cfg["sn_y_init"], cfg["sn_x_init"])
     xctr = np.copy(cfg["xctr_init"])
     yctr = np.copy(cfg["yctr_init"])
 
@@ -264,9 +262,6 @@ def main(filename, data_dir):
     #    fig2.savefig("testslices_%s.png" % i_t)
     #    fig2.clear()
     
-    # Fit registration on just exposures with a supernova (not final refs)
-    # ===================================================================
-
     # -------------------------------------------------------------------------
     # Fit position of data and SN in non-references
     #
@@ -275,52 +270,41 @@ def main(filename, data_dir):
     # all have some SN light). We simultaneously fit the position of
     # the SN itself.
 
-    # `nonrefs` is indicies of non-final refs
+    datas = [cube.data[i] for i in nonrefs]
+    weights = [cube.weight[i] for i in nonrefs]
+    ctrs = [(yctr[i], xctr[i]) for i in nonrefs]
+    atms = [atms[i] for i in nonrefs]
+    fctrs, snctr, fsne, fskys = fit_position_sn_sky_multi(galaxy, datas,
+                                                          weights, ctrs,
+                                                          snctr, atms)
 
-    pos = fit_position_sn_sky(model, ddtdata, epochs)
+    # put fitted results back in parameter lists.
+    for i,j in enumerate(nonrefs):
+        skys[j] = fskys[i]
+        sn[j, :] = fsne[i]
+        yctr[j], xctr[j] = fctrs[i]
 
-    pickle.dump(model, open('model3.pkl','w'))
-    pickle.dump(ddtdata, open('data3.pkl','w'))
-    """
-    model = pickle.load(open('model3.pkl','r'))
-    ddtdata = pickle.load(open('data3.pkl','r'))
-    """
-    fig = plot_timeseries(ddtdata, model)
-    fig.savefig("testfigure3.png")
-    fig.clear()
-    for i_t in epochs:
-        fig2 = plot_wave_slices(ddtdata, model, i_t)
-        fig2.savefig("testslices_%s.png" % i_t)
-        fig2.clear()
+
+    # pickle.dump(model, open('model3.pkl','w'))
+    # pickle.dump(ddtdata, open('data3.pkl','w'))
+    # """
+    #model = pickle.load(open('model3.pkl','r'))
+    #ddtdata = pickle.load(open('data3.pkl','r'))
+    #"""
+    #fig = plot_timeseries(ddtdata, model)
+    #fig.savefig("testfigure3.png")
+    #fig.clear()
+    #for i_t in epochs:
+    #    fig2 = plot_wave_slices(ddtdata, model, i_t)
+    #    fig2.savefig("testslices_%s.png" % i_t)
+    #    fig2.clear()
+
+    # -------------------------------------------------------------------------
+    # Redo fit of galaxy, using ALL epochs.
+
+    # TODO: go back to DDT, check what should be fit here
 
     
-    """
-    for i_t in range(ddtdata.nt):
-        if ddtdata.is_final_ref[i_t]:
-            continue
-
-        pos = fit_position(model, ddtdata, i_t)
-
-        # Check if the position moved too much from initial position.
-        # If it didn't move too much, update the model.
-        # If it did, cut it from the fitting for the next step.
-        dist = math.sqrt((pos[0] - ddtdata.xctr_init[i_t])**2 + 
-                         (pos[1] - ddtdata.yctr_init[i_t])**2)
-        
-        if dist < maxmove_fit_position:
-            ddtdata.xctr[i_t] = pos[0]
-            ddtdata.yctr[i_t] = pos[1]
-        else:
-            include_in_fit[i_t] = False
-
-        sky, sn = fit_sky_and_sn(model, ddtdata, i_t)
-        model.sky[i_t,:] = sky
-        model.sn[i_t,:] = sn
-    """
-
-    # Redo fit of galaxy
-    # TODO: go back to DDT, check what should be fit here
-    fit_model(model, ddtdata, np.arange(ddtdata.nt))
-    fig = plot_timeseries(ddtdata, model)
-    fig.savefig("testfigure4.png")
+    #fig = plot_timeseries(ddtdata, model)
+    #fig.savefig("testfigure4.png")
     

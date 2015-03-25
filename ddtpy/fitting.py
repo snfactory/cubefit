@@ -5,6 +5,8 @@ import copy
 import numpy as np
 from scipy.optimize import leastsq, fmin_l_bfgs_b, fmin_bfgs
 
+__all__ = ["guess_sky", "fit_galaxy_single", "fit_galaxy_multi",
+           "fit_position_sky", "fit_position_sn_sky_multi"]
 
 def guess_sky(cube, clip, maxiter=10):
     """Guess sky based on lower signal spaxels compatible with variance
@@ -147,8 +149,8 @@ def fit_galaxy_single(galaxy0, data, weight, ctr, atm, regpenalty):
     galparams0 = np.ravel(galaxy0)
     dshape = data.shape[1:3]
 
-    # Define objective function to minimize. This adjusts SN and Sky
-    # and returns the regularized chi squared and its gradient.
+    # Define objective function to minimize.
+    # Returns chi^2 (including regularization term) and its gradient.
     def objective_func(galparams):
 
         # galparams is 1-d (raveled version of galaxy); reshape to 3-d.
@@ -273,19 +275,35 @@ def fit_position_sky(galaxy, data, weight, ctr0, atm, maxiter):
     return tuple(ctr), sky
 
 
-def fit_position_sn_sky(galaxy, datas, weights, ctrs0, snctr0, atms, maxiter):
+def fit_position_sn_sky_multi(galaxy, datas, weights, ctrs0, snctr0, atms):
     """Fit data pointing (nepochs), SN position (in model frame),
     SN amplitude (nepochs), and sky level (nepochs). This is meant to be
     used only on epochs with SN light.
 
     Parameters
     ----------
-
+    galaxy : ndarray (3-d)
+    datas : list of ndarray (3-d)
+    weights : list of ndarray (3-d)
+    ctrs0 : list of tuples
+        Initial data positions (y, x)
+    snctr0 : tuple
+        Initial SN position.
+    atms : list of AtmModels
 
     Returns
     -------
-    
+    fctrs : list of tuples
+        Fitted data positions.
+    fsnctr : tuple
+        Fitted SN position.
+    sne : list of ndarray (1-d)
+        Fitted SN spectra for each epoch.
+    skys : list of ndarray (1-d)
+        Fitted sky spectra for each epoch.
 
+    Notes
+    -----
     Given the data pointing and SN position, determining
     the sky level and SN amplitude is a linear problem. Therefore, we
     have only the data pointing and sn position as parameters in the
@@ -293,140 +311,85 @@ def fit_position_sn_sky(galaxy, datas, weights, ctrs0, snctr0, atms, maxiter):
     each iteration.
     """
 
-    # In the objective function, pos is a 1-d array:
-    #
-    # [sn_y, sn_x, y_ctr[0], x_ctr[0], y_ctr[1], x_ctr[1], ...]
-    #
-    # length is 2 + 2*nepochs
-    def objective_func(allctrs):
+    BOUND = 2. # +/- position bound in spaxels
+    EPS = 0.01  # size of change in spaxels for gradient calculation
 
-        # pull sn ctr and data ctrs out of input array.
-        snctr = (allctrs[0], allctrs[1])
-        ctrs = [(c[i], c[i+1]) for i in range(2, len(allctrs), 2)]
+    nepochs = len(datas)
+    assert len(weights) == len(ctrs0) == len(atms) == nepochs
+
+    def objective_func(allctrs):
+        """Function to minimize. `allctrs` is a 1-d ndarray:
+        
+        [yctr[0], xctr[0], yctr[1], xctr[1], ..., snyctr, snxctr]
+
+        where the indicies are 
+        """
+
+        allctrs = allctrs.reshape((nepochs+1, 2))
+        snctr = tuple(allctrs[nepochs, :])
 
         # initialize return values
         grad = np.zeros_like(allctrs)
         chisq = 0.
 
-        for data, weight, ctr, atm in zip(datas, weights, ctrs, atms):
+        for i in range(nepochs):
+            data = datas[i]
+            weight = weights[i]
+            atm = atms[i]
+            ctr = tuple(allctrs[i, :])
 
-            # calculate chisq for this epoch
+            # calculate chisq for this epoch, add to total.
             gal = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
             psf = atm.evaluate_point_source(snctr, data.shape[1:3], ctr)
             sky, sn = determine_sky_and_sn(gal, psf, data, weight)
             scene = sky[:, None, None] + gal + sn[:, None, None] * psf
-            chisq = np.sum(weight * (data - scene)**2)
+            epoch_chisq = np.sum(weight * (data - scene)**2)
+            chisq += epoch_chisq
 
-        # -------------------------------------------------------------------
-        # old
-        dx = 0.01
-        grad_helper_chi_x = 0.
-        grad_helper_chi_y = 0.
-        sn_grad_helper = np.zeros(len(pos)-2)
+            # calculate change in chisq from changing the sn position,
+            # in this epoch.
+            for j, snctr2 in (0, (snctr[0]+EPS, snctr[1]    ),
+                              1, (snctr[0]    , snctr[1]+EPS)):
+                psf = atm.evaluate_point_source(snctr2, data.shape[1:3], ctr)
+                sky, sn = determine_sky_and_sn(gal, psf, data, weight)
+                scene = sky[:, None, None] + gal + sn[:, None, None] * psf
+                new_epoch_chisq = np.sum(weight * (data - scene)**2)
+                grad[nepochs, j] += (new_epoch_chisq - epoch_chisq) / EPS
 
-        # Do x-direction gradient on sn position in model
-        model.sn_x = pos[0]+dx
-        model.sn_y = pos[1]
+            # calculate change in chisq from changing the data position for
+            # this epoch.
+            for j, ctr2 in (0, (ctr[0]+EPS, ctr[1]    ),
+                            1, (ctr[0]    , ctr[1]+EPS)):
+                gal = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr2)
+                psf = atm.evaluate_point_source(snctr, data.shape[1:3], ctr2)
+                sky, sn = determine_sky_and_sn(gal, psf, data, weight)
+                scene = sky[:, None, None] + gal + sn[:, None, None] * psf
+                new_epoch_chisq = np.sum(weight * (data - scene)**2)
+                grad[i, j] = (new_epoch_chisq - epoch_chisq) / EPS
 
-        for n, i_t in enumerate(epochs):
-            data.xctr[i_t] = pos[2+2*n]
-            data.yctr[i_t] = pos[3+2*n]
-            sky, sn = determine_sky_and_sn(model, data, i_t)
-            model.sky[i_t, :] = sky
-            model.sn[i_t, :] = sn
-            
-            m = model.evaluate(i_t, data.xctr[i_t], data.yctr[i_t],
-                               (data.ny, data.nx), which='all')
-            r = data.data[i_t] - m
-            grad_helper_chi_x += np.sum(data.weight[i_t] * r * r)
+        # reshape gradient to 1-d upon return.
+        return chisq, np.ravel(grad)
 
-        # Do y-direction gradient on sn position in model
-        model.sn_x = pos[0]
-        model.sn_y = pos[1]+dx
+    # initial positions & bounds
+    allctrs0 = np.ravel(np.vstack((ctrs0, snctr0)))
+    bounds = zip(allctrs0 - BOUND, allctrs0 + BOUND)
 
-        for n, i_t in enumerate(epochs):
-            data.xctr[i_t] = pos[2+2*n]
-            data.yctr[i_t] = pos[3+2*n]
-            sky, sn = fit_sky_and_sn(model, data, i_t)
-            model.sky[i_t, :] = sky
-            model.sn[i_t, :] = sn
-            
-            m = model.evaluate(i_t, data.xctr[i_t], data.yctr[i_t],
-                               (data.ny, data.nx), which='all')
-            r = data.data[i_t] - m
-            grad_helper_chi_y += np.sum(data.weight[i_t] * r * r)
+    fallctrs, info = fmin_l_bfgs_b(objective_func, allctrs0,
+                                   iprint=0, callback=print, bounds=bounds)
 
+    # pull out fitted positions
+    fallctrs = fallctrs.reshape((nepochs+1, 2))
+    fsnctr = tuple(fallctrs[nepochs, :])
+    fctrs = [tuple(allctrs[i, :]) for i in range(nepochs)]
 
-        # set model parameters
-        model.sn_x = pos[0]
-        model.sn_y = pos[1]
+    # evaluate final sky and sn in each epoch
+    skys = []
+    sne = []
+    for i in range(nepochs):
+        gal = atms[i].evaluate_galaxy(galaxy, datas[i].shape[1:3], fctrs[i])
+        psf = atms[i].evaluate_point_source(snctr, datas[i].shape[1:3], fsnctr)
+        sky, sn = determine_sky_and_sn(gal, psf, datas[i], weights[i])
+        skys.append(sky)
+        sne.append(sn)
 
-        for n, i_t in enumerate(epochs):
-            # Do x-direction gradient on data position wrt model
-            data.xctr[i_t] = pos[2+2*n]+dx
-            data.yctr[i_t] = pos[3+2*n]
-            sky, sn = fit_sky_and_sn(model, data, i_t)
-            model.sky[i_t, :] = sky
-            model.sn[i_t, :] = sn
-            
-            m = model.evaluate(i_t, data.xctr[i_t], data.yctr[i_t],
-                               (data.ny, data.nx), which='all')
-            r = data.data[i_t] - m
-            chi_dx = np.sum(data.weight[i_t] * r * r)
-
-            # Do y-direction gradient on data position wrt model
-            data.xctr[i_t] = pos[2+2*n]
-            data.yctr[i_t] = pos[3+2*n]+dx
-            sky, sn = fit_sky_and_sn(model, data, i_t)
-            model.sky[i_t, :] = sky
-            model.sn[i_t, :] = sn
-            
-            m = model.evaluate(i_t, data.xctr[i_t], data.yctr[i_t],
-                               (data.ny, data.nx), which='all')
-            r = data.data[i_t] - m
-            chi_dy = np.sum(data.weight[i_t] * r * r)
-
-            # Get chisq for pos
-            data.xctr[i_t] = pos[2+2*n]
-            data.yctr[i_t] = pos[3+2*n]
-            sky, sn = fit_sky_and_sn(model, data, i_t)
-            model.sky[i_t, :] = sky
-            model.sn[i_t, :] = sn
-            
-            m = model.evaluate(i_t, data.xctr[i_t], data.yctr[i_t],
-                               (data.ny, data.nx), which='all')
-            r = data.data[i_t] - m
-            chisq = np.sum(data.weight[i_t] * r * r)
-            totchisq += chisq
-
-            old_grad_x = (chi_dx - chisq)/dx
-            old_grad_y = (chi_dy - chisq)/dx
-            
-            # Get the analytic solution for the gradient:
-            m, m_grad_y, m_grad_x = model.evaluate(i_t, data.xctr[i_t],
-                        data.yctr[i_t], (data.ny, data.nx), which='galaxy+der')
-
-            r = data.data[i_t] - m
-            chisq2 = np.sum(data.weight[i_t] * r * r)
-            grad_y = -np.sum(2*data.weight[i_t] * r * m_grad_y)
-            grad_x = -np.sum(2*data.weight[i_t] * r * m_grad_x)
-            grad[2+2*n] = grad_x
-            grad[3+2*n] = grad_y
-            print('Chisq', i_t, chisq, chisq2)
-            print('Grad', old_grad_x, old_grad_y, grad_x, grad_y)
-        grad[0] = (grad_helper_chi_x - totchisq)/dx
-        grad[1] = (grad_helper_chi_y - totchisq)/dx
-        print(totchisq)
-        return totchisq, grad
-
-    # initial positions
-    pos0 = np.hstack((model.sn_x, model.sn_y,
-                      np.ravel(zip(data.xctr[epochs], data.yctr[epochs]))))
-    bounds = zip(-2*np.ones(len(pos0)), 2*np.ones(len(pos0)))
-    #pos, info
-    pos_fit = fmin_l_bfgs_b(objective_func, pos0, #approx_grad=True,
-                            iprint=0, callback=call, bounds=bounds)
-    #if info not in [1, 2, 3, 4]:
-    #    raise RuntimeError("leastsq didn't converge properly")
-    print(pos_fit)
-    return pos_fit[0]
+    return fctrs, fsnctr, sne, skys
