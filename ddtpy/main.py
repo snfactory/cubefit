@@ -13,7 +13,7 @@ mpl.use('Agg')
 
 from .psf import psf_3d_from_params
 from .model import AtmModel, RegularizationPenalty
-from .data import read_datcube
+from .data import read_datacube
 from .adr import paralactic_angle
 from .fitting import *
 from .extern import ADR
@@ -50,7 +50,7 @@ def parse_conf(inconf):
     # index of master final ref. Subtract 1 for Python indexing.
     outconf["master_ref"] = inconf["PARAM_FINAL_REF"] - 1
 
-    is_ref = inconf.get("PARAM_IS_FINAL_REF")
+    is_ref = np.array(inconf.get("PARAM_IS_FINAL_REF"))
     assert len(is_ref) == nt
     refs = np.flatnonzero(is_ref)
 
@@ -118,9 +118,6 @@ def main(filename, data_dir):
         cfg = json.load(f)
         cfg = parse_conf(cfg)
 
-    # TODO: This is a hack for the test sn. Generalize this?
-    cfg["mu_xy"] = cfg["mu_xy"] / 10.
-
     # -------------------------------------------------------------------------
     # Load data cubes from the list of FITS files.
 
@@ -137,7 +134,7 @@ def main(filename, data_dir):
     nonrefs = [i for i in range(nt) if i not in refs]
 
     # Ensure that all cubes have the same wavelengths.
-    if not all(cubes[i].wave == wave for i in range(1, len(cubes))):
+    if not all(np.all(cubes[i].wave == wave) for i in range(1, nt)):
         raise ValueError("all data must have same wavelengths")
 
     # -------------------------------------------------------------------------
@@ -184,13 +181,14 @@ def main(filename, data_dir):
     # Calculate rough average galaxy spectrum from all final refs.
     # TODO: use only spaxels that weren't masked in `guess_sky()`?
     spectra = np.zeros((len(refs), len(wave)))
-    for i in refs:
-        spectra[i] = np.average(cubes[i].data, axis=(1, 2)) - skys[i]
+    for j, i in enumerate(refs):
+        spectra[j] = np.average(cubes[i].data, axis=(1, 2)) - skys[i]
     mean_gal_spec = np.average(spectra, axis=0)
 
-    galprior = np.zeros((nw, ny, nx))
+    galprior = np.zeros((nw, MODEL_SHAPE[0], MODEL_SHAPE[1]))
 
-    regpenalty = RegularizationPenalty(galprior, mean_gal_spec, mu_xy, mu_wave)
+    regpenalty = RegularizationPenalty(galprior, mean_gal_spec, cfg["mu_xy"],
+                                       cfg["mu_wave"])
 
     # -------------------------------------------------------------------------
     # Fit just the galaxy model to just the master ref.
@@ -229,9 +227,8 @@ def main(filename, data_dir):
             continue
         weight = cube.weight * mask[None, :, :]
 
-        fctr, sky[i] = fit_position_sky(galaxy, cube.data, weight,
-                                        (yctr[i], xctr[i]), atms[i],
-                                        MAXITER_FIT_POSITION)
+        fctr, skys[i] = fit_position_sky(galaxy, cube.data, weight,
+                                         (yctr[i], xctr[i]), atms[i])
 
         # Check if the position moved too much from initial position.
         # If it didn't move too much, update the model.
@@ -247,11 +244,12 @@ def main(filename, data_dir):
     # -------------------------------------------------------------------------
     # Redo model fit, this time including all final refs.
 
-    datas = [cube.data[i] - skys[i][:, None, None] for i in refs]
-    weights = [cube.weight[i] for i in refs]
+    datas = [cubes[i].data - skys[i][:, None, None] for i in refs]
+    weights = [cubes[i].weight for i in refs]
     ctrs = [(yctr[i], xctr[i]) for i in refs]
-    atms = [atms[i] for i in refs]
-    galaxy = fit_galaxy_multi(galaxy, datas, weights, ctrs, atms, regpenalty)
+    atms_refs = [atms[i] for i in refs]
+    galaxy = fit_galaxy_multi(galaxy, datas, weights, ctrs, atms_refs,
+                              regpenalty)
 
     #pickle.dump(model, open('model2.pkl','w'))
     #fig = plot_timeseries(ddtdata, model)
@@ -270,13 +268,13 @@ def main(filename, data_dir):
     # all have some SN light). We simultaneously fit the position of
     # the SN itself.
 
-    datas = [cube.data[i] for i in nonrefs]
-    weights = [cube.weight[i] for i in nonrefs]
+    datas = [cubes[i].data for i in nonrefs]
+    weights = [cubes[i].weight for i in nonrefs]
     ctrs = [(yctr[i], xctr[i]) for i in nonrefs]
-    atms = [atms[i] for i in nonrefs]
+    atms_nonrefs = [atms[i] for i in nonrefs]
     fctrs, snctr, fsne, fskys = fit_position_sn_sky_multi(galaxy, datas,
                                                           weights, ctrs,
-                                                          snctr, atms)
+                                                          snctr, atms_nonrefs)
 
     # put fitted results back in parameter lists.
     for i,j in enumerate(nonrefs):

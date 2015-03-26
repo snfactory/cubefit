@@ -160,7 +160,7 @@ def fit_galaxy_single(galaxy0, data, weight, ctr, atm, regpenalty):
         wdiff = weight * diff
         chisq_val = np.sum(wdiff * diff)
         chisq_grad = atm.gradient_helper(-2. * wdiff, dshape, ctr)
-        rval, rgrad = regpenalty(galaxy)
+        rval, rgrad = regpenalty(gal3d)
 
         # Reshape gradient to 1-d when returning.
         return (chisq_val + rval), np.ravel(chisq_grad + rgrad)
@@ -174,7 +174,7 @@ def fit_galaxy_single(galaxy0, data, weight, ctr, atm, regpenalty):
     for k, v in d.iteritems():
         print(k, " : ", v)
 
-    return galparams.reshape(galaxy.shape)
+    return galparams.reshape(galaxy0.shape)
 
 
 def fit_galaxy_multi(galaxy0, datas, weights, ctrs, atms, regpenalty):
@@ -207,7 +207,7 @@ def fit_galaxy_multi(galaxy0, datas, weights, ctrs, atms, regpenalty):
             wdiff = weight * diff
             val += np.sum(wdiff * diff)
             grad += atm.gradient_helper(-2. * wdiff, dshape, ctr)
-        rval, rgrad = regpenalty(galaxy)
+        rval, rgrad = regpenalty(gal3d)
 
         # Reshape gradient to 1-d when returning.
         return (val + rval), np.ravel(grad + rgrad)
@@ -227,7 +227,7 @@ def fit_galaxy_multi(galaxy0, datas, weights, ctrs, atms, regpenalty):
 # TODO: should we change this to use a general-purpose optimizer rather 
 # than leastsq? Leastsq seems like a strange choice for this problem
 # from what I can tell.
-def fit_position_sky(galaxy, data, weight, ctr0, atm, maxiter):
+def fit_position_sky(galaxy, data, weight, ctr0, atm):
     """Fit data position and sky for a single epoch (fixed galaxy model).
 
     Parameters
@@ -264,7 +264,7 @@ def fit_position_sky(galaxy, data, weight, ctr0, atm, maxiter):
         out = sqrtweight * (resid - sky[:, None, None])
         return np.ravel(out)
 
-    ctr, info = leastsq(objective_func, ctr0, maxiter=maxiter)
+    ctr, info = leastsq(objective_func, ctr0)
     if info not in [1, 2, 3, 4]:
         raise RuntimeError("leastsq didn't converge properly")
 
@@ -348,8 +348,8 @@ def fit_position_sn_sky_multi(galaxy, datas, weights, ctrs0, snctr0, atms):
 
             # calculate change in chisq from changing the sn position,
             # in this epoch.
-            for j, snctr2 in (0, (snctr[0]+EPS, snctr[1]    ),
-                              1, (snctr[0]    , snctr[1]+EPS)):
+            for j, snctr2 in ((0, (snctr[0]+EPS, snctr[1]    )),
+                              (1, (snctr[0]    , snctr[1]+EPS))):
                 psf = atm.evaluate_point_source(snctr2, data.shape[1:3], ctr)
                 sky, sn = determine_sky_and_sn(gal, psf, data, weight)
                 scene = sky[:, None, None] + gal + sn[:, None, None] * psf
@@ -358,8 +358,8 @@ def fit_position_sn_sky_multi(galaxy, datas, weights, ctrs0, snctr0, atms):
 
             # calculate change in chisq from changing the data position for
             # this epoch.
-            for j, ctr2 in (0, (ctr[0]+EPS, ctr[1]    ),
-                            1, (ctr[0]    , ctr[1]+EPS)):
+            for j, ctr2 in ((0, (ctr[0]+EPS, ctr[1]    )),
+                            (1, (ctr[0]    , ctr[1]+EPS))):
                 gal = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr2)
                 psf = atm.evaluate_point_source(snctr, data.shape[1:3], ctr2)
                 sky, sn = determine_sky_and_sn(gal, psf, data, weight)
@@ -374,20 +374,21 @@ def fit_position_sn_sky_multi(galaxy, datas, weights, ctrs0, snctr0, atms):
     allctrs0 = np.ravel(np.vstack((ctrs0, snctr0)))
     bounds = zip(allctrs0 - BOUND, allctrs0 + BOUND)
 
-    fallctrs, info = fmin_l_bfgs_b(objective_func, allctrs0,
+    fallctrs, f, d = fmin_l_bfgs_b(objective_func, allctrs0,
                                    iprint=0, callback=print, bounds=bounds)
 
     # pull out fitted positions
     fallctrs = fallctrs.reshape((nepochs+1, 2))
     fsnctr = tuple(fallctrs[nepochs, :])
-    fctrs = [tuple(allctrs[i, :]) for i in range(nepochs)]
+    fctrs = [tuple(fallctrs[i, :]) for i in range(nepochs)]
 
     # evaluate final sky and sn in each epoch
     skys = []
     sne = []
     for i in range(nepochs):
         gal = atms[i].evaluate_galaxy(galaxy, datas[i].shape[1:3], fctrs[i])
-        psf = atms[i].evaluate_point_source(snctr, datas[i].shape[1:3], fsnctr)
+        psf = atms[i].evaluate_point_source(fsnctr, datas[i].shape[1:3],
+                                            fctrs[i])
         sky, sn = determine_sky_and_sn(gal, psf, datas[i], weights[i])
         skys.append(sky)
         sne.append(sn)

@@ -148,7 +148,7 @@ class AtmModel(object):
         fshift_point = fft_shift_phasor_2d((self.ny, self.nx), pos)
 
         for i in range(self.nw):
-            tmp = ifft2(self.fftconv[i, :, :] * fshift_sn * fshift)
+            tmp = ifft2(self.fftconv[i, :, :] * fshift_point * fshift)
             assert_real(tmp)
             out[i, :, :] = tmp.real[0:shape[0], 0:shape[1]]
 
@@ -193,13 +193,13 @@ class AtmModel(object):
 class RegularizationPenalty(object):
     """Callable that returns the penalty and gradient on it."""
     
-    def __init__(galprior, mean_gal_spec, mu_xy, mu_wave):
+    def __init__(self, galprior, mean_gal_spec, mu_xy, mu_wave):
         self.galprior = galprior
         self.mean_gal_spec = mean_gal_spec
         self.mu_xy = mu_xy
         self.mu_wave = mu_wave
 
-    def __call__(galmodel):
+    def __call__(self, galmodel):
         """Return regularization penalty and gradient for a given galaxy model.
 
         Parameters

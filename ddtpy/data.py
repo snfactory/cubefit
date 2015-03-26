@@ -1,7 +1,7 @@
 import numpy as np
 import fitsio
 
-__all__ = ["DataCube", "read_dataset"]
+__all__ = ["DataCube", "read_datacube"]
 
 class DataCube(object):
     """A container for data and weight arrays.
