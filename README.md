@@ -10,7 +10,7 @@ Dependencies
 * numpy
 * scipy (for optimization)
 * fitsio - https://github.com/esheldon/fitsio
-
+* pyfftw - http://hgomersall.github.io/pyFFTW
 
 Install & Tests
 ---------------

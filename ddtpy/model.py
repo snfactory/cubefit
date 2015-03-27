@@ -1,11 +1,12 @@
 from __future__ import print_function
 
 import numpy as np
+import pyfftw
 from numpy.fft import fft2, ifft2
 
 from .utils import fft_shift_phasor_2d
 
-__all__ = ["AtmModel", "RegularizationPenalty"]
+__all__ = ["AtmModel", "AtmModelOld", "RegularizationPenalty"]
 
 # -----------------------------------------------------------------------------
 # Helper functions
@@ -73,13 +74,12 @@ class AtmModel(object):
 
     """
 
-    def __init__(self, psf, adr_refract):
+    def __init__(self, psf, adr_refract, fftw_threads=1):
 
         self.shape = psf.shape
         self.nw, self.ny, self.nx = psf.shape
         spatial_shape = self.ny, self.nx
-
-        self.fftconv = np.empty(psf.shape, dtype=np.complex)
+        nbyte = pyfftw.simd_alignment
 
         # The attribute `fftconv` stores the Fourier-space array
         # necessary to convolve another array by the PSF. This is done
@@ -98,8 +98,9 @@ class AtmModel(object):
         # real space, shifted to be centered on the lower-left pixel.
         shift = -(self.ny - 1) / 2., -(self.nx - 1) / 2.
         fshift = fft_shift_phasor_2d(spatial_shape, shift)
-        for i in range(self.nw):
-            self.fftconv[i, :, :] = fft2(psf[i, :, :]) * fshift
+        self.fftconv = fft2(psf) * fshift
+        self.fftconv = pyfftw.n_byte_align(self.fftconv, nbyte,
+                                           dtype=np.complex64)
 
         # Check that ADR has the correct shape.
         assert adr_refract.shape == (2, self.nw)
@@ -110,34 +111,39 @@ class AtmModel(object):
             fshift = fft_shift_phasor_2d(spatial_shape, shift)
             self.fftconv[i, :, :] *= fshift
 
+        # set up input and output arrays for performing forward and reverse
+        # FFTs.
+        self.fftin = pyfftw.n_byte_align_empty(self.shape, nbyte,
+                                               dtype=np.complex64)
+        self.fftout = pyfftw.n_byte_align_empty(self.shape, nbyte,
+                                                dtype=np.complex64)
+        self.fft = pyfftw.FFTW(self.fftin, self.fftout, axes=(1, 2),
+                               threads=fftw_threads)
+        self.ifft = pyfftw.FFTW(self.fftout, self.fftin, axes=(1, 2),
+                                threads=fftw_threads,
+                                direction='FFTW_BACKWARD')
+        self.fftnorm = 1. / (self.ny * self.nx) 
+
     def evaluate_galaxy(self, galmodel, shape, ctr):
         """convolve, shift and sample the galaxy model"""
-
-        assert galmodel.shape == self.shape
-
-        # allocate output array
-        outshape = self.nw, shape[0], shape[1]
-        out = np.empty(outshape, dtype=np.float64)
 
         # shift necessary to put model onto data coordinates
         offset = yxoffset((self.ny, self.nx), shape, ctr)
         fshift = fft_shift_phasor_2d((self.ny, self.nx),
                                      (-offset[0], -offset[1]))
 
-        for i in range(self.nw):
-            tmp = ifft2(self.fftconv[i, :, :] * fshift *
-                        fft2(galmodel[i, :, :]))
-            assert_real(tmp)
-            out[i, :, :] = tmp.real[0:shape[0], 0:shape[1]]
+        # ifft2(self.fftconv * fshift * fft2(galmodel))
+        np.copyto(self.fftin, galmodel)  # copy input array to complex array
+        self.fft.execute()  # populates self.fftout
+        self.fftout *= fshift
+        self.fftout *= self.fftconv
+        self.ifft.execute() # populates self.fftin
+        self.fftin *= self.fftnorm
 
-        return out
+        return self.fftin.real[:, 0:shape[0], 0:shape[1]]
 
     def evaluate_point_source(self, pos, shape, ctr):
         """Evaluate a point source at the given position."""
-
-        # allocate output array
-        outshape = self.nw, shape[0], shape[1]
-        out = np.empty(outshape, dtype=np.float64)
 
         # shift necessary to put model onto data coordinates
         offset = yxoffset((self.ny, self.nx), shape, ctr)
@@ -147,12 +153,12 @@ class AtmModel(object):
         # Shift to move point source from 0, 0 in model coords to `pos`.
         fshift_point = fft_shift_phasor_2d((self.ny, self.nx), pos)
 
-        for i in range(self.nw):
-            tmp = ifft2(self.fftconv[i, :, :] * fshift_point * fshift)
-            assert_real(tmp)
-            out[i, :, :] = tmp.real[0:shape[0], 0:shape[1]]
+        # following block is like ifft2(fftconv * fshift_point * fshift)
+        np.copyto(self.fftout, self.fftconv)
+        self.fftout *= fshift_point * fshift * self.fftnorm
+        self.ifft.execute()
 
-        return out
+        return self.fftin.real[:, 0:shape[0], 0:shape[1]]
 
     def gradient_helper(self, x, shape, ctr):
         """Not sure exactly what this does yet.

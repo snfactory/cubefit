@@ -22,20 +22,10 @@ def stringify(obj):
     return "\n".join(lines)
 
 
-def fft_shift_phasor_2d(shape, offset):
-    """Return a complex phasor suitable to fine shift an array be OFFSET
-    
-    Parameters
-    ----------
-    shape : iterable (int)
-        Length 2 iterable giving shape of array.
-    offset : iterable (float)
-        Offset in array elements in each dimension.
-
-    Returns
-    -------
-    z : np.ndarray (complex)
-        Complex array with shape ``shape``.
+def fft_shift_phasor(n, d):
+    """Return a 1-d complex array of length `n` that, when mulitplied
+    element-wise by another array in Fourier space, results in a shift
+    by `d` in real space.
 
     Notes
     -----
@@ -77,32 +67,43 @@ def fft_shift_phasor_2d(shape, offset):
     step size for methods (a), (c) and (d) -- making them suitable as
     interpolation functions -- not for (b) which involves some
     smoothing (the phasor at Nyquist frequency is set to zero).
- 
     """
-    
-    if not len(offset) == len(shape) == 2:
-        raise ValueError("length of offset and shape must be 2")
-
-    m, n = shape
-    offm, offn = offset
 
     # fftfreq() gives frequency corresponding to each array element in
     # an FFT'd array (between -0.5 and 0.5). Multiplying by 2pi expands
     # this to (-pi, pi). Finally multiply by offset in array elements.
-    fm = 2. * np.pi * fft.fftfreq(m) * (offm % m)
-    fn = 2. * np.pi * fft.fftfreq(n) * (offn % n)
+    f = 2. * np.pi * fft.fftfreq(n) * (d % n)
 
-    phasorm =  np.cos(fm) - 1j*np.sin(fm)
-    phasorn =  np.cos(fn) - 1j*np.sin(fn)
+    result = np.cos(f) - 1j*np.sin(f)  # or equivalently: np.exp(-1j * f)
 
-    # This is the part where we reset the phasor at the nyquist frequency
-    # to be real (see comments above).
-    #if m % 2 == 0:
-    #    phasorm[m/2] = np.real(phasorm[m/2])
-    #if n % 2 == 0:
-    #    phasorn[n/2] = np.real(phasorn[n/2])
+    # TODO: not sure if this is necessary!! (see note in docstring)
+    # if n % 2 == 0:
+    #     result[n/2] = np.real(result[n/2])
 
-    return np.outer(phasorm, phasorn)
+    return result
+
+def fft_shift_phasor_2d(shape, offset):
+    """Return phasor array used to shift an array (in real space) by
+    multiplication in fourier space.
+    
+    Parameters
+    ----------
+    shape : (int, int)
+        Length 2 iterable giving shape of array.
+    offset : (float, float)
+        Offset in array elements in each dimension.
+
+    Returns
+    -------
+    z : np.ndarray (complex; 2-d)
+        Complex array with shape ``shape``.
+
+    """
+    
+    ny, nx = shape
+    dy, dx = offset
+    return np.outer(fft_shift_phasor(ny, dy),
+                    fft_shift_phasor(nx, dx))
 
 
 def fft_shift_phasor_2d_prime(shape, offset):

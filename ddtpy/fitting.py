@@ -312,7 +312,7 @@ def fit_position_sn_sky_multi(galaxy, datas, weights, ctrs0, snctr0, atms):
     """
 
     BOUND = 2. # +/- position bound in spaxels
-    EPS = 0.01  # size of change in spaxels for gradient calculation
+    EPS = 0.001  # size of change in spaxels for gradient calculation
 
     nepochs = len(datas)
     assert len(weights) == len(ctrs0) == len(atms) == nepochs
@@ -376,6 +376,13 @@ def fit_position_sn_sky_multi(galaxy, datas, weights, ctrs0, snctr0, atms):
 
     fallctrs, f, d = fmin_l_bfgs_b(objective_func, allctrs0,
                                    iprint=0, callback=print, bounds=bounds)
+
+    print("optimization finished\n"
+          "function minimum: {:f}".format(f))
+    print("info dict: ")
+    for k, v in d.iteritems():
+        print(k, " : ", v)
+
 
     # pull out fitted positions
     fallctrs = fallctrs.reshape((nepochs+1, 2))

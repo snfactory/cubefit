@@ -163,7 +163,7 @@ def main(filename, data_dir):
         # make adr_refract[0, :] correspond to y and adr_refract[1, :] => x 
         adr_refract = np.flipud(adr_refract)
 
-        atms.append(AtmModel(psf, adr_refract))
+        atms.append(AtmModel(psf, adr_refract, fftw_threads=1))
 
     # -------------------------------------------------------------------------
     # Initialize all model parameters to be fit
