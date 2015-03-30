@@ -71,6 +71,9 @@ class AtmModel(object):
     psf : ndarray (3-d)
         PSF as a function of wavelength - assumed to be spatially centered
         in array.
+    adr_refract : ndarray (2-d)
+        Array with shape (2, nw) where [0, :] corresponds to the refraction
+        in y and [1, :] corresponds to the refraction in x at each wavelength.
 
     """
 

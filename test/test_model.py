@@ -5,7 +5,6 @@ from numpy.fft import fft2, ifft2
 from numpy.testing import assert_allclose
 
 import ddtpy
-from ddtpy.fitting import chisq, regularization_penalty
 
 
 def convolve_fft(x, kernel):
@@ -18,6 +17,16 @@ def convolve_fft(x, kernel):
     fshift = ddtpy.fft_shift_phasor_2d(kernel.shape, (-xctr, -yctr))
     
     return ifft2(fft2(kernel) * fft2(x) * fshift).real
+
+
+def chisq(galaxy, data, weight, ctr, atm):
+    m = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
+    diff = data - m
+    wdiff = weight * diff
+    chisq_val = np.sum(wdiff * diff)
+    chisq_grad = atm.gradient_helper(-2. * wdiff, data.shape[1:3], ctr)
+
+    return chisq_val, chisq_grad
 
 
 class TestFitting:
@@ -37,59 +46,53 @@ class TestFitting:
                                                       4.5, 6.0, 0.5)
         psf = ddtpy.gaussian_plus_moffat_psf((32, 32), 15.5, 15.5,
                                              ellipticity, alpha, 0.)
+
+        # convolve the true galaxy model with the psf, take a 15x15 subslice
         data_2d = convolve_fft(self.truegal, psf)
-        data = np.empty((nt, nw, 15, 15))
+        data = np.empty((nw, 15, 15))
         xoff = 8
         yoff = 8
-        data[0, 0, :, :] = data_2d[yoff:yoff+15, xoff:xoff+15]
+        data[0, :, :] = data_2d[yoff:yoff+15, xoff:xoff+15]
+
+        self.data = data
+        self.weight = np.ones_like(data)
         self.xctr_true = 15.5 - (xoff + 7.)
         self.yctr_true = 15.5 - (yoff + 7.)
 
-        # Create a DDTData instance from the data.
-        weight = np.ones_like(data)
-        header = {}
-        is_final_ref = np.ones(nt,dtype = bool)
-        master_final_ref = 0
-        xctr_init = np.zeros(nt)
-        yctr_init = np.zeros(nt)
-        self.data = ddtpy.DDTData(data, weight, wave, xctr_init, yctr_init,
-                                  is_final_ref, master_final_ref, header)
+        # add a wavelength dimension (length 1.... nw must be 1!)
+        self.truegal = self.truegal[None, :, :]
+        psf = psf[None, :, :]
 
+        # make a fake AtmModel
+        adr_refract = np.zeros((2, nw))
+        self.atm = ddtpy.AtmModel(psf, adr_refract)
 
-        # Create model.
-        mean_gal_spec = data.mean(axis=(0, 2, 3))
-        adr_dx = np.zeros((nt,nw))
-        adr_dy = np.zeros((nt,nw))
-        mu_xy = 1.0e-3
-        mu_wave = 7.0e-2
-        sky_guess = np.zeros((nt,nw))
-        self.model = ddtpy.DDTModel(nt, wave,
-                                    ellipticity * np.ones((nt, nw)),
-                                    alpha * np.ones((nt, nw)),
-                                    adr_dx, adr_dy, mu_xy, mu_wave,
-                                    0., 0., sky_guess, mean_gal_spec)
+        # model
+        self.galaxy = np.zeros_like(self.truegal)
 
 
     def test_gradient(self):
         """Test that gradient functions (used in galaxy fitting) return values
         'close' to what you get with a finite differences method."""
         
-        x_diff = 1.e-10
+        EPS = 1.e-10
 
         # analytic gradient
-        chisq_val, chisq_grad = chisq(self.model, self.data, 0)
+        chisq_val, chisq_grad = chisq(self.galaxy, self.data, self.weight,
+                                      (0., 0.), self.atm)
 
         # finite differences gradient
-        fd_chisq_grad = np.zeros_like(self.model.gal)
+        fd_chisq_grad = np.zeros_like(self.galaxy)
         for j in range(32):
             for i in range(32):
-                self.model.gal[0,j,i] += x_diff
-                new_chisq_val, _ = chisq(self.model, self.data, 0)
-                self.model.gal[0,j,i] = 0.
+                self.galaxy[0,j,i] += EPS
+                new_chisq_val, _ = chisq(self.galaxy, self.data, self.weight,
+                                      (0., 0.), self.atm)
+                self.galaxy[0,j,i] = 0.
 
-                fd_chisq_grad[0,j,i] = (new_chisq_val - chisq_val) / x_diff
+                fd_chisq_grad[0,j,i] = (new_chisq_val - chisq_val) / EPS
 
-        assert_allclose(chisq_grad, fd_chisq_grad, rtol=0.016)
+        assert_allclose(chisq_grad, fd_chisq_grad, rtol=0.02)
 
 
 """Test the likelihood gradient. 
