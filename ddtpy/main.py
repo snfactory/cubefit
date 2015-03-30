@@ -1,21 +1,18 @@
 from __future__ import print_function, division
 
 import os.path
-from copy import deepcopy
 import json
+import math
+import cPickle as pickle
 
 import numpy as np
-from numpy import fft
-import math
-import matplotlib as mpl
-import pickle
-mpl.use('Agg')
 
 from .psf import psf_3d_from_params
 from .model import AtmModel, RegularizationPenalty
 from .data import read_datacube
 from .adr import paralactic_angle
-from .fitting import *
+from .fitting import (guess_sky, fit_galaxy_single, fit_galaxy_multi,
+                      fit_position_sky, fit_position_sn_sky_multi)
 from .extern import ADR
 
 __all__ = ["main"]
@@ -102,7 +99,7 @@ def parse_conf(inconf):
     return outconf
 
 
-def main(filename, data_dir):
+def main(filename, data_dir, output_filename):
     """Do everything.
 
     Parameters
@@ -111,6 +108,8 @@ def main(filename, data_dir):
         JSON-formatted config file.
     data_dir : str
         Directory containing FITS files given in the config file.
+    output_filename : str
+        File to write output to (currently in pickle form).
     """
 
     output_dict = {}
@@ -169,8 +168,6 @@ def main(filename, data_dir):
 
         atms.append(AtmModel(psf, adr_refract, fftw_threads=1))
 
-    output_dict['Atms'] = atms
-
     # -------------------------------------------------------------------------
     # Initialize all model parameters to be fit
 
@@ -204,9 +201,21 @@ def main(filename, data_dir):
     galaxy = fit_galaxy_single(galaxy, data, weight,
                                (yctr[master_ref], xctr[master_ref]),
                                atms[master_ref], regpenalty)
+
+    # evaluate galaxy on data for saving intermediate results
+    galeval = []
+    psfeval = []
+    for i in range(nt):
+        galeval.append(atms[i].evaluate_galaxy(galaxy,
+                                               cubes[i].data.shape[1:3],
+                                               (yctr[i], xctr[i])))
+        psfeval.append(atms[i].evaluate_point_source(snctr,
+                                                     cubes[i].data.shape[1:3],
+                                                     (yctr[i], xctr[i])))
     output_dict['MasterRefFit'] = {'galaxy' : galaxy, 'snctr' : snctr,
                                    'ctrs' : zip(xctr, yctr), 'skys' : skys,
-                                   'sn' : sn}
+                                   'sn' : sn, 'galeval': galeval,
+                                   'psfeval': psfeval}
 
     # -------------------------------------------------------------------------
     # Fit the positions of the other final refs
@@ -259,9 +268,21 @@ def main(filename, data_dir):
     atms_refs = [atms[i] for i in refs]
     galaxy = fit_galaxy_multi(galaxy, datas, weights, ctrs, atms_refs,
                               regpenalty)
+
+    # evaluate galaxy on data for saving intermediate results
+    galeval = []
+    psfeval = []
+    for i in range(nt):
+        galeval.append(atms[i].evaluate_galaxy(galaxy,
+                                               cubes[i].data.shape[1:3],
+                                               (yctr[i], xctr[i])))
+        psfeval.append(atms[i].evaluate_point_source(snctr,
+                                                     cubes[i].data.shape[1:3],
+                                                     (yctr[i], xctr[i])))
     output_dict['AllRefFit'] = {'galaxy' : galaxy, 'snctr' : snctr,
-                                'ctrs' : zip(yctr, xctr), 'skys' : skys,
-                                'sn' : sn}
+                                'ctrs' : zip(xctr, yctr), 'skys' : skys,
+                                'sn' : sn, 'galeval': galeval,
+                                'psfeval': psfeval}
         
     # -------------------------------------------------------------------------
     # Fit position of data and SN in non-references
@@ -285,16 +306,29 @@ def main(filename, data_dir):
         sn[j, :] = fsne[i]
         yctr[j], xctr[j] = fctrs[i]
 
+    # evaluate galaxy on data for saving intermediate results
+    galeval = []
+    psfeval = []
+    for i in range(nt):
+        galeval.append(atms[i].evaluate_galaxy(galaxy,
+                                               cubes[i].data.shape[1:3],
+                                               (yctr[i], xctr[i])))
+        psfeval.append(atms[i].evaluate_point_source(snctr,
+                                                     cubes[i].data.shape[1:3],
+                                                     (yctr[i], xctr[i])))
     output_dict['FinalFit'] = {'galaxy' : galaxy, 'snctr' : snctr,
-                               'ctrs' : zip(yctr, xctr), 'sn' : sn,
-                               'skys' : skys}
-
+                               'ctrs' : zip(xctr, yctr), 'skys' : skys,
+                               'sn' : sn, 'galeval': galeval,
+                               'psfeval': psfeval}
 
     # -------------------------------------------------------------------------
     # Redo fit of galaxy, using ALL epochs.
 
     # TODO: go back to DDT, check what should be fit here
 
-    output_file = open(data_dir + 'DDT_output.pkl', 'wb')
+    # -------------------------------------------------------------------------
+    # Dump results dictionary to pickle.
+
+    output_file = open(output_filename, 'wb')
     pickle.dump(output_dict, output_file, protocol=2)
     output_file.close()

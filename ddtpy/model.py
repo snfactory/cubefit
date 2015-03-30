@@ -6,7 +6,7 @@ from numpy.fft import fft2, ifft2
 
 from .utils import fft_shift_phasor_2d
 
-__all__ = ["AtmModel", "AtmModelOld", "RegularizationPenalty"]
+__all__ = ["AtmModel", "RegularizationPenalty"]
 
 # -----------------------------------------------------------------------------
 # Helper functions

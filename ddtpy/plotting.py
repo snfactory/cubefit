@@ -2,12 +2,11 @@ from __future__ import print_function, division
 
 import numpy as np
 import matplotlib as mpl
-import pickle
 mpl.use('Agg')
 from matplotlib import pyplot as plt
 from matplotlib.ticker import NullLocator
 
-__all__ = ["plot_timeseries", "plot_all"]
+__all__ = ["plot_timeseries"]
 
 BAND_LIMITS = {'U': (3400., 3900.),
                'B': (4102., 5100.),
@@ -16,7 +15,7 @@ BAND_LIMITS = {'U': (3400., 3900.),
 STAMP_SIZE = .75 #1.5
 
 
-def plot_timeseries(ddt_output, band='B'):
+def plot_timeseries(ddt_output, band='B', fname=None):
     """Return a figure showing data and model.
 
     Parameters
@@ -27,7 +26,6 @@ def plot_timeseries(ddt_output, band='B'):
     """
 
     data_cubes = ddt_output['Data']
-    atms = ddt_output['Atms']
     nt = len(data_cubes)
     cube_shape = data_cubes[0].data.shape
     wave = data_cubes[0].wave
@@ -63,12 +61,8 @@ def plot_timeseries(ddt_output, band='B'):
         ax.yaxis.set_major_locator(NullLocator())
 
         for i_t in range(nt):
-            galaxy_model = atms[i_t].evaluate_galaxy(result['galaxy'],
-                                                     cube_shape[1:],
-                                                     result['ctrs'][i_t])
-            psf_model = atms[i_t].evaluate_point_source(result['snctr'],
-                                                        cube_shape[1:],
-                                                        result['ctrs'][i_t])
+            galaxy_model = result['galeval'][i_t]
+            psf_model = result['psfeval'][i_t]
             prediction = (result['skys'][i_t][:, None, None] + galaxy_model +
                           result['sn'][i_t][:, None, None] * psf_model)
             residual = prediction - data_cubes[i_t].data
@@ -138,7 +132,10 @@ def plot_timeseries(ddt_output, band='B'):
     fig.subplots_adjust(left=0.001, right=0.999, bottom=0.02, top=0.98,
                         hspace=0.01, wspace=0.01)
 
-    return fig
+    if fname is None:
+        return fig
+    plt.savefig(fname)
+    plt.close()
 
 
 def plot_wave_slices(data, model, nt,
@@ -185,23 +182,3 @@ def plot_wave_slices(data, model, nt,
                         hspace=0.01, wspace=0.01)
 
     return fig
-
-
-def plot_all(ddt_output_file):
-    """Take output from main (models after each step) and make plots
-
-    Parameters
-    ----------
-    all_models : .npz file
-        Dictionary with all models
-
-    """
-
-    ddt_file = open(ddt_output_file, 'rb')
-    ddt_output = pickle.load(ddt_file)
-    ddt_file.close()
-
-    fig = plot_timeseries(ddt_output)
-
-    plt.savefig('Models_Timeseries.eps')
-

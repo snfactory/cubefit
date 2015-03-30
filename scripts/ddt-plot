@@ -1,14 +1,18 @@
 #!/usr/bin/env python
 from __future__ import print_function
 
+import cPickle as pickle
+from argparse import ArgumentParser
 import ddtpy
 
-from argparse import ArgumentParser
-
-parser = ArgumentParser(description="DDT: Datacube Deconvolution Thingy")
-parser.add_argument("filename", help="configuration file")
-#parser.add_argument("data_dir", help="directory containing FITS data files")
-
+parser = ArgumentParser(description="ddt-plot")
+parser.add_argument("result_filename",
+                    help="output from ddt-fit (.pkl file)")
+parser.add_argument("figure_filename", help="target filename")
 args = parser.parse_args()
 
-ddtpy.plot_all(args.filename)
+f = open(args.result_filename, 'rb')
+result_dict = pickle.load(f)
+f.close()
+
+ddtpy.plot_timeseries(result_dict, fname=args.figure_filename)
