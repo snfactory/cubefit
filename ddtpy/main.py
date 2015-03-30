@@ -112,6 +112,8 @@ def main(filename, data_dir):
     data_dir : str
         Directory containing FITS files given in the config file.
     """
+
+    output_dict = {}
     
     # Read the config file and parse it into a nice dictionary.
     with open(filename) as f:
@@ -126,12 +128,14 @@ def main(filename, data_dir):
     wave = cubes[0].wave
     nt = len(cubes)
     nw = len(wave)
+    output_dict['Data'] = cubes
 
     # assign some local variables for convenience
     refs = cfg["refs"]
     master_ref = cfg["master_ref"]
     nonmaster_refs = refs[refs != master_ref]
     nonrefs = [i for i in range(nt) if i not in refs]
+    output_dict['Refs'] = refs
 
     # Ensure that all cubes have the same wavelengths.
     if not all(np.all(cubes[i].wave == wave) for i in range(1, nt)):
@@ -164,6 +168,8 @@ def main(filename, data_dir):
         adr_refract = np.flipud(adr_refract)
 
         atms.append(AtmModel(psf, adr_refract, fftw_threads=1))
+
+    output_dict['Atms'] = atms
 
     # -------------------------------------------------------------------------
     # Initialize all model parameters to be fit
@@ -198,6 +204,9 @@ def main(filename, data_dir):
     galaxy = fit_galaxy_single(galaxy, data, weight,
                                (yctr[master_ref], xctr[master_ref]),
                                atms[master_ref], regpenalty)
+    output_dict['MasterRefFit'] = {'galaxy' : galaxy, 'snctr' : snctr,
+                                   'ctrs' : zip(xctr, yctr), 'skys' : skys,
+                                   'sn' : sn}
 
     # -------------------------------------------------------------------------
     # Fit the positions of the other final refs
@@ -250,16 +259,10 @@ def main(filename, data_dir):
     atms_refs = [atms[i] for i in refs]
     galaxy = fit_galaxy_multi(galaxy, datas, weights, ctrs, atms_refs,
                               regpenalty)
-
-    #pickle.dump(model, open('model2.pkl','w'))
-    #fig = plot_timeseries(ddtdata, model)
-    #fig.savefig("testfigure2.png")
-    #fig.clear()
-    #for i_t in np.flatnonzero(ddtdata.is_final_ref):
-    #    fig2 = plot_wave_slices(ddtdata, model, i_t)
-    #    fig2.savefig("testslices_%s.png" % i_t)
-    #    fig2.clear()
-    
+    output_dict['AllRefFit'] = {'galaxy' : galaxy, 'snctr' : snctr,
+                                'ctrs' : zip(yctr, xctr), 'skys' : skys,
+                                'sn' : sn}
+        
     # -------------------------------------------------------------------------
     # Fit position of data and SN in non-references
     #
@@ -282,27 +285,16 @@ def main(filename, data_dir):
         sn[j, :] = fsne[i]
         yctr[j], xctr[j] = fctrs[i]
 
+    output_dict['FinalFit'] = {'galaxy' : galaxy, 'snctr' : snctr,
+                               'ctrs' : zip(yctr, xctr), 'sn' : sn,
+                               'skys' : skys}
 
-    # pickle.dump(model, open('model3.pkl','w'))
-    # pickle.dump(ddtdata, open('data3.pkl','w'))
-    # """
-    #model = pickle.load(open('model3.pkl','r'))
-    #ddtdata = pickle.load(open('data3.pkl','r'))
-    #"""
-    #fig = plot_timeseries(ddtdata, model)
-    #fig.savefig("testfigure3.png")
-    #fig.clear()
-    #for i_t in epochs:
-    #    fig2 = plot_wave_slices(ddtdata, model, i_t)
-    #    fig2.savefig("testslices_%s.png" % i_t)
-    #    fig2.clear()
 
     # -------------------------------------------------------------------------
     # Redo fit of galaxy, using ALL epochs.
 
     # TODO: go back to DDT, check what should be fit here
 
-    
-    #fig = plot_timeseries(ddtdata, model)
-    #fig.savefig("testfigure4.png")
-    
+    output_file = open(data_dir + 'DDT_output.pkl', 'wb')
+    pickle.dump(output_dict, output_file, protocol=2)
+    output_file.close()

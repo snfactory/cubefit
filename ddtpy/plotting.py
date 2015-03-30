@@ -2,19 +2,21 @@ from __future__ import print_function, division
 
 import numpy as np
 import matplotlib as mpl
+import pickle
 mpl.use('Agg')
 from matplotlib import pyplot as plt
 from matplotlib.ticker import NullLocator
 
-__all__ = ["plot_timeseries"]
+__all__ = ["plot_timeseries", "plot_all"]
 
 BAND_LIMITS = {'U': (3400., 3900.),
                'B': (4102., 5100.),
                'V': (6289., 7607.)}
 
-STAMP_SIZE = 1.5
+STAMP_SIZE = .75 #1.5
 
-def plot_timeseries(data, model=None, band='B'):
+
+def plot_timeseries(ddt_output, band='B'):
     """Return a figure showing data and model.
 
     Parameters
@@ -24,15 +26,68 @@ def plot_timeseries(data, model=None, band='B'):
     band : str
     """
 
+    data_cubes = ddt_output['Data']
+    atms = ddt_output['Atms']
+    nt = len(data_cubes)
+    cube_shape = data_cubes[0].data.shape
+    wave = data_cubes[0].wave
+    for i_t in range(nt):
+        plt.plot(ddt_output['FinalFit']['sn'][i_t])
+        plt.savefig('sn_demo.eps')
     # one column for each data epoch, plus 2 extras for model
-    ncol = data.nt + 2
-    nrow = 4
+    ncol = nt + 2
+    nrow = 7
     figsize = (STAMP_SIZE * ncol, STAMP_SIZE * nrow)
     fig = plt.figure(figsize=figsize)
 
     # upper and lower wavelength limits
     wmin, wmax = BAND_LIMITS[band]
+    mask = (wave > wmin) & (wave < wmax)
 
+    for i_t, cube in enumerate(data_cubes):
+        data_image = np.average(cube.data[mask, :, :], axis=0)
+        ax = plt.subplot2grid((nrow, ncol), (0, i_t + 2))
+        ax.imshow(data_image, #vmin=vmin[i_t], vmax=vmax[i_t],
+                  cmap='Greys',
+                  interpolation='nearest', origin='lower')
+        ax.xaxis.set_major_locator(NullLocator())
+        ax.yaxis.set_major_locator(NullLocator())
+
+    for f, fit_result in enumerate(['MasterRefFit', 'AllRefFit', 'FinalFit']):
+        result = ddt_output[fit_result]
+        print(fit_result, result.keys())   
+        image = np.average(result['galaxy'][mask, :, :], axis=0)
+        ax = plt.subplot2grid((nrow, ncol), (1+2*f,0), rowspan=2, colspan=2)
+        ax.imshow(image, cmap='Greys', interpolation='nearest', origin='lower')
+        ax.xaxis.set_major_locator(NullLocator())
+        ax.yaxis.set_major_locator(NullLocator())
+
+        for i_t in range(nt):
+            galaxy_model = atms[i_t].evaluate_galaxy(result['galaxy'],
+                                                     cube_shape[1:],
+                                                     result['ctrs'][i_t])
+            psf_model = atms[i_t].evaluate_point_source(result['snctr'],
+                                                        cube_shape[1:],
+                                                        result['ctrs'][i_t])
+            prediction = (result['skys'][i_t][:, None, None] + galaxy_model +
+                          result['sn'][i_t][:, None, None] * psf_model)
+            residual = prediction - data_cubes[i_t].data
+            
+            prediction_image = np.average(prediction[mask, :, :], axis=0)
+            residual_image = np.average(residual[mask, :, :], axis=0)
+            ax1 = plt.subplot2grid((nrow, ncol), (1+2*f,i_t+2))
+            ax1.imshow(prediction_image, cmap='Greys', interpolation='nearest',
+                      origin='lower')
+            ax2 = plt.subplot2grid((nrow, ncol), (1+2*f+1,i_t+2))
+            ax2.imshow(residual_image, cmap='Greys', interpolation='nearest',
+                      origin='lower')
+            ax1.xaxis.set_major_locator(NullLocator())
+            ax1.yaxis.set_major_locator(NullLocator())
+            ax2.xaxis.set_major_locator(NullLocator())
+            ax2.yaxis.set_major_locator(NullLocator())
+            
+
+    """
     # plot model, if given
     if model is not None:
         ax = plt.subplot2grid((nrow, ncol), (0, 0), rowspan=2, colspan=2)
@@ -61,16 +116,6 @@ def plot_timeseries(data, model=None, band='B'):
                            (data.ny, data.nx), which='all')
         predictions[i_t, :, :] = np.average(m[mask, :, :], axis=0)
     vmin, vmax = np.zeros(data.nt), np.zeros(data.nt)
-    for i_t in range(data.nt):
-        ax = plt.subplot2grid((nrow, ncol), (0, i_t + 2))
-        vmin[i_t] = np.array([images[i_t], predictions[i_t],
-                             images[i_t]-predictions[i_t]]).min()
-        vmax[i_t] = np.array([images[i_t], predictions[i_t],
-                             images[i_t]-predictions[i_t]]).max()
-        ax.imshow(images[i_t], vmin=vmin[i_t], vmax=vmax[i_t], cmap='Greys',
-                  interpolation='nearest', origin='lower')
-        ax.xaxis.set_major_locator(NullLocator())
-        ax.yaxis.set_major_locator(NullLocator())
 
     # model plot
     for i_t in range(data.nt):
@@ -88,7 +133,7 @@ def plot_timeseries(data, model=None, band='B'):
                   interpolation='nearest', origin='lower')
         ax.xaxis.set_major_locator(NullLocator())
         ax.yaxis.set_major_locator(NullLocator())
-        
+    """
 
     fig.subplots_adjust(left=0.001, right=0.999, bottom=0.02, top=0.98,
                         hspace=0.01, wspace=0.01)
@@ -140,3 +185,23 @@ def plot_wave_slices(data, model, nt,
                         hspace=0.01, wspace=0.01)
 
     return fig
+
+
+def plot_all(ddt_output_file):
+    """Take output from main (models after each step) and make plots
+
+    Parameters
+    ----------
+    all_models : .npz file
+        Dictionary with all models
+
+    """
+
+    ddt_file = open(ddt_output_file, 'rb')
+    ddt_output = pickle.load(ddt_file)
+    ddt_file.close()
+
+    fig = plot_timeseries(ddt_output)
+
+    plt.savefig('Models_Timeseries.eps')
+
