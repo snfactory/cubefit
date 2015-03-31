@@ -33,8 +33,8 @@ def yxoffset(shape1, shape2, ctr):
     (8.5, 8.5)
     >>> yxoffset((32, 32), (15, 15), (1., 0.))
     (9.5, 8.5)
-    >>> yxoffset((32, 32), (15, 15), (1., 0.))
-    (9.5, 8.5)
+    >>> yxoffset((32, 32), (15, 15), (0., 1.))
+    (8.5, 9.5)
 
     Raises
     ------
@@ -143,7 +143,7 @@ class AtmModel(object):
         self.ifft.execute() # populates self.fftin
         self.fftin *= self.fftnorm
 
-        return self.fftin.real[:, 0:shape[0], 0:shape[1]]
+        return np.copy(self.fftin.real[:, 0:shape[0], 0:shape[1]])
 
     def evaluate_point_source(self, pos, shape, ctr):
         """Evaluate a point source at the given position."""
@@ -153,15 +153,19 @@ class AtmModel(object):
         fshift = fft_shift_phasor_2d((self.ny, self.nx),
                                      (-offset[0], -offset[1]))
 
-        # Shift to move point source from 0, 0 in model coords to `pos`.
-        fshift_point = fft_shift_phasor_2d((self.ny, self.nx), pos)
+        # Shift to move point source from the lower left in the model array
+        # to `pos` in model *coordinates*. Note that in model coordinates,
+        # (0, 0) corresponds to array position (ny-1)/2., (nx-1)/2.
+        fshift_point = fft_shift_phasor_2d((self.ny, self.nx),
+                                           ((self.ny-1)/2. + pos[0],
+                                            (self.nx-1)/2. + pos[1]))
 
         # following block is like ifft2(fftconv * fshift_point * fshift)
         np.copyto(self.fftout, self.fftconv)
         self.fftout *= fshift_point * fshift * self.fftnorm
         self.ifft.execute()
 
-        return self.fftin.real[:, 0:shape[0], 0:shape[1]]
+        return np.copy(self.fftin.real[:, 0:shape[0], 0:shape[1]])
 
     def gradient_helper(self, x, shape, ctr):
         """Not sure exactly what this does yet.

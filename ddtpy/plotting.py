@@ -31,7 +31,7 @@ def plot_timeseries(ddt_output, band='B', fname=None):
     wave = data_cubes[0].wave
     for i_t in range(nt):
         plt.plot(ddt_output['FinalFit']['sn'][i_t])
-        plt.savefig('sn_demo.eps')
+    plt.savefig('sn_demo.eps')
     # one column for each data epoch, plus 2 extras for model
     ncol = nt + 2
     nrow = 7

@@ -5,8 +5,8 @@ import copy
 import numpy as np
 from scipy.optimize import leastsq, fmin_l_bfgs_b, fmin_bfgs
 
-__all__ = ["guess_sky", "fit_galaxy_single", "fit_galaxy_multi",
-           "fit_position_sky", "fit_position_sn_sky_multi"]
+__all__ = ["guess_sky", "fit_galaxy_single", "fit_galaxy_sky_multi",
+           "fit_position_sky", "fit_position_sky_sn_multi"]
 
 def guess_sky(cube, clip, maxiter=10):
     """Guess sky based on lower signal spaxels compatible with variance
@@ -177,7 +177,7 @@ def fit_galaxy_single(galaxy0, data, weight, ctr, atm, regpenalty):
     return galparams.reshape(galaxy0.shape)
 
 
-def fit_galaxy_multi(galaxy0, datas, weights, ctrs, atms, regpenalty):
+def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty):
     """Fit the galaxy model to multiple data cubes.
 
     Parameters
@@ -204,6 +204,11 @@ def fit_galaxy_multi(galaxy0, datas, weights, ctrs, atms, regpenalty):
         for data, weight, ctr, atm in zip(datas, weights, ctrs, atms):
             m = atm.evaluate_galaxy(gal3d, dshape, ctr)
             diff = data - m
+
+            # determine sky (linear problem) and subtract it off.
+            sky = np.average(diff, weights=weight, axis=(1, 2))
+            diff -= sky[:, None, None]
+            
             wdiff = weight * diff
             val += np.sum(wdiff * diff)
             grad += atm.gradient_helper(-2. * wdiff, dshape, ctr)
@@ -221,7 +226,16 @@ def fit_galaxy_multi(galaxy0, datas, weights, ctrs, atms, regpenalty):
     for k, v in d.iteritems():
         print(k, " : ", v)
 
-    return galparams.reshape(galaxy0.shape)
+    galaxy = galparams.reshape(galaxy0.shape)
+
+    # get last-calculated skys
+    skys = []
+    for data, weight, ctr, atm in zip(datas, weights, ctrs, atms):
+        gal = atm.evaluate_galaxy(galaxy, dshape, ctr)
+        sky = np.average(data - gal, weights=weight, axis=(1, 2))
+        skys.append(sky)
+
+    return galaxy, skys
 
 
 # TODO: should we change this to use a general-purpose optimizer rather 
@@ -275,7 +289,7 @@ def fit_position_sky(galaxy, data, weight, ctr0, atm):
     return tuple(ctr), sky
 
 
-def fit_position_sn_sky_multi(galaxy, datas, weights, ctrs0, snctr0, atms):
+def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, atms):
     """Fit data pointing (nepochs), SN position (in model frame),
     SN amplitude (nepochs), and sky level (nepochs). This is meant to be
     used only on epochs with SN light.
@@ -297,10 +311,10 @@ def fit_position_sn_sky_multi(galaxy, datas, weights, ctrs0, snctr0, atms):
         Fitted data positions.
     fsnctr : tuple
         Fitted SN position.
+    skys : list of ndarray (1-d)
+        FItted sky spectra for each epoch.
     sne : list of ndarray (1-d)
         Fitted SN spectra for each epoch.
-    skys : list of ndarray (1-d)
-        Fitted sky spectra for each epoch.
 
     Notes
     -----
@@ -338,7 +352,7 @@ def fit_position_sn_sky_multi(galaxy, datas, weights, ctrs0, snctr0, atms):
             atm = atms[i]
             ctr = tuple(allctrs[i, :])
 
-            # calculate chisq for this epoch, add to total.
+            # calculate chisq for this epoch; add to total.
             gal = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
             psf = atm.evaluate_point_source(snctr, data.shape[1:3], ctr)
             sky, sn = determine_sky_and_sn(gal, psf, data, weight)
@@ -400,4 +414,4 @@ def fit_position_sn_sky_multi(galaxy, datas, weights, ctrs0, snctr0, atms):
         skys.append(sky)
         sne.append(sn)
 
-    return fctrs, fsnctr, sne, skys
+    return fctrs, fsnctr, skys, sne

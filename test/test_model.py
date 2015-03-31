@@ -31,7 +31,7 @@ def chisq(galaxy, data, weight, ctr, atm):
 
 class TestFitting:
     def setup_class(self):
-        """Create an instance of DDTData and DDTModel so that we can fit them"""
+        """Create some dummy data and an AtmModel."""
 
         # some settings
         nt = 1
@@ -66,6 +66,7 @@ class TestFitting:
         # make a fake AtmModel
         adr_refract = np.zeros((2, nw))
         self.atm = ddtpy.AtmModel(psf, adr_refract)
+        self.psf = psf
 
         # model
         self.galaxy = np.zeros_like(self.truegal)
@@ -93,6 +94,17 @@ class TestFitting:
                 fd_chisq_grad[0,j,i] = (new_chisq_val - chisq_val) / EPS
 
         assert_allclose(chisq_grad, fd_chisq_grad, rtol=0.02)
+
+    def test_point_source(self):
+        """Test that evaluate_point_source returns the expected point source.
+        """
+
+        psf = self.atm.evaluate_point_source((0., 0.), (15, 15), (0., 0.))
+        
+        from matplotlib import pyplot as plt
+
+        plt.imshow(psf[0], origin='lower', cmap='Greys', interpolation='nearest')
+        plt.savefig("testpsf.png")
 
 
 """Test the likelihood gradient. 

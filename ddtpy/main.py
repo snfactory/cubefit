@@ -4,6 +4,7 @@ import os.path
 import json
 import math
 import cPickle as pickle
+from copy import copy
 
 import numpy as np
 
@@ -11,8 +12,8 @@ from .psf import psf_3d_from_params
 from .model import AtmModel, RegularizationPenalty
 from .data import read_datacube
 from .adr import paralactic_angle
-from .fitting import (guess_sky, fit_galaxy_single, fit_galaxy_multi,
-                      fit_position_sky, fit_position_sn_sky_multi)
+from .fitting import (guess_sky, fit_galaxy_single, fit_galaxy_sky_multi,
+                      fit_position_sky, fit_position_sky_sn_multi)
 from .extern import ADR
 
 __all__ = ["main"]
@@ -97,6 +98,24 @@ def parse_conf(inconf):
     outconf["sn_y_init"] = -yref
 
     return outconf
+
+
+def result_dict(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms):
+    """Package parameters into a dictionary for saving to a pickle file."""
+
+    # evaluate galaxy & PSF on data
+    galeval = []
+    psfeval = []
+    for i in range(len(atms)):
+        tg = atms[i].evaluate_galaxy(galaxy, dshape, (yctr[i], xctr[i]))
+        galeval.append(tg.copy())
+        tp = atms[i].evaluate_point_source(snctr, dshape, (yctr[i], xctr[i]))
+        psfeval.append(tp.copy())
+
+    return {'galaxy' : galaxy, 'snctr' : snctr,
+            'ctrs' : zip(copy(xctr), copy(yctr)),
+            'skys' : copy(skys), 'sn' : sn.copy(), 'galeval': galeval,
+            'psfeval': psfeval}
 
 
 def main(filename, data_dir, output_filename):
@@ -195,27 +214,16 @@ def main(filename, data_dir, output_filename):
 
     # -------------------------------------------------------------------------
     # Fit just the galaxy model to just the master ref.
-
+    
     data = cubes[master_ref].data - skys[master_ref][:, None, None]
     weight = cubes[master_ref].weight
     galaxy = fit_galaxy_single(galaxy, data, weight,
                                (yctr[master_ref], xctr[master_ref]),
                                atms[master_ref], regpenalty)
 
-    # evaluate galaxy on data for saving intermediate results
-    galeval = []
-    psfeval = []
-    for i in range(nt):
-        galeval.append(atms[i].evaluate_galaxy(galaxy,
-                                               cubes[i].data.shape[1:3],
-                                               (yctr[i], xctr[i])))
-        psfeval.append(atms[i].evaluate_point_source(snctr,
-                                                     cubes[i].data.shape[1:3],
-                                                     (yctr[i], xctr[i])))
-    output_dict['MasterRefFit'] = {'galaxy' : galaxy, 'snctr' : snctr,
-                                   'ctrs' : zip(xctr, yctr), 'skys' : skys,
-                                   'sn' : sn, 'galeval': galeval,
-                                   'psfeval': psfeval}
+    output_dict['MasterRefFit'] = result_dict(galaxy, skys, sn, snctr,
+                                              yctr, xctr,
+                                              (cubes[0].ny, cubes[0].nx), atms)
 
     # -------------------------------------------------------------------------
     # Fit the positions of the other final refs
@@ -262,27 +270,21 @@ def main(filename, data_dir, output_filename):
     # -------------------------------------------------------------------------
     # Redo model fit, this time including all final refs.
 
-    datas = [cubes[i].data - skys[i][:, None, None] for i in refs]
+    datas = [cubes[i].data for i in refs]
     weights = [cubes[i].weight for i in refs]
     ctrs = [(yctr[i], xctr[i]) for i in refs]
     atms_refs = [atms[i] for i in refs]
-    galaxy = fit_galaxy_multi(galaxy, datas, weights, ctrs, atms_refs,
-                              regpenalty)
+    galaxy, fskys = fit_galaxy_sky_multi(galaxy, datas, weights, ctrs,
+                                         atms_refs, regpenalty)
 
-    # evaluate galaxy on data for saving intermediate results
-    galeval = []
-    psfeval = []
-    for i in range(nt):
-        galeval.append(atms[i].evaluate_galaxy(galaxy,
-                                               cubes[i].data.shape[1:3],
-                                               (yctr[i], xctr[i])))
-        psfeval.append(atms[i].evaluate_point_source(snctr,
-                                                     cubes[i].data.shape[1:3],
-                                                     (yctr[i], xctr[i])))
-    output_dict['AllRefFit'] = {'galaxy' : galaxy, 'snctr' : snctr,
-                                'ctrs' : zip(xctr, yctr), 'skys' : skys,
-                                'sn' : sn, 'galeval': galeval,
-                                'psfeval': psfeval}
+    # put fitted skys back in `skys`
+    for i,j in enumerate(refs):
+        skys[j] = fskys[i]
+
+    output_dict['AllRefFit'] = result_dict(galaxy, skys, sn, snctr,
+                                           yctr, xctr,
+                                           (cubes[0].ny, cubes[0].nx), atms)
+
         
     # -------------------------------------------------------------------------
     # Fit position of data and SN in non-references
@@ -296,7 +298,7 @@ def main(filename, data_dir, output_filename):
     weights = [cubes[i].weight for i in nonrefs]
     ctrs = [(yctr[i], xctr[i]) for i in nonrefs]
     atms_nonrefs = [atms[i] for i in nonrefs]
-    fctrs, snctr, fsne, fskys = fit_position_sn_sky_multi(galaxy, datas,
+    fctrs, snctr, fskys, fsne = fit_position_sky_sn_multi(galaxy, datas,
                                                           weights, ctrs,
                                                           snctr, atms_nonrefs)
 
@@ -306,20 +308,9 @@ def main(filename, data_dir, output_filename):
         sn[j, :] = fsne[i]
         yctr[j], xctr[j] = fctrs[i]
 
-    # evaluate galaxy on data for saving intermediate results
-    galeval = []
-    psfeval = []
-    for i in range(nt):
-        galeval.append(atms[i].evaluate_galaxy(galaxy,
-                                               cubes[i].data.shape[1:3],
-                                               (yctr[i], xctr[i])))
-        psfeval.append(atms[i].evaluate_point_source(snctr,
-                                                     cubes[i].data.shape[1:3],
-                                                     (yctr[i], xctr[i])))
-    output_dict['FinalFit'] = {'galaxy' : galaxy, 'snctr' : snctr,
-                               'ctrs' : zip(xctr, yctr), 'skys' : skys,
-                               'sn' : sn, 'galeval': galeval,
-                               'psfeval': psfeval}
+    output_dict['FinalFit'] = result_dict(galaxy, skys, sn, snctr,
+                                          yctr, xctr,
+                                          (cubes[0].ny, cubes[0].nx), atms)
 
     # -------------------------------------------------------------------------
     # Redo fit of galaxy, using ALL epochs.
@@ -328,7 +319,9 @@ def main(filename, data_dir, output_filename):
 
     # -------------------------------------------------------------------------
     # Dump results dictionary to pickle.
-
+    
+    if os.path.exists(output_filename) and os.path.isfile(output_filename):
+        os.remove(output_filename)
     output_file = open(output_filename, 'wb')
     pickle.dump(output_dict, output_file, protocol=2)
     output_file.close()
