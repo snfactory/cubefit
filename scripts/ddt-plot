@@ -8,11 +8,19 @@ import ddtpy
 parser = ArgumentParser(description="ddt-plot")
 parser.add_argument("result_filename",
                     help="output from ddt-fit (.pkl file)")
-parser.add_argument("figure_filename", help="target filename")
+parser.add_argument("figure_prefix", help="output prefix")
+parser.add_argument("parameter_file", help="ddt input json file")
+
 args = parser.parse_args()
 
 f = open(args.result_filename, 'rb')
 result_dict = pickle.load(f)
 f.close()
 
-ddtpy.plot_timeseries(result_dict, fname=args.figure_filename)
+ddtpy.plot_timeseries(result_dict, fname='%s_timeseries.eps' 
+                      % args.figure_prefix)
+ddtpy.plot_wave_slices(result_dict, fname='%s_waveslice.eps' 
+                       % args.figure_prefix)
+ddtpy.plot_sn(result_dict, args.parameter_file,
+	      fname='%s_sn.eps' % args.figure_prefix)
+
