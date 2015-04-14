@@ -157,11 +157,12 @@ def fit_galaxy_single(galaxy0, data, weight, ctr, atm, regpenalty):
         gal3d = galparams.reshape(galaxy0.shape)
         m = atm.evaluate_galaxy(gal3d, dshape, ctr)
         diff = data - m
+        
         wdiff = weight * diff
         chisq_val = np.sum(wdiff * diff)
         chisq_grad = atm.gradient_helper(-2. * wdiff, dshape, ctr)
         rval, rgrad = regpenalty(gal3d)
-
+        print(chisq_val + rval)
         # Reshape gradient to 1-d when returning.
         return (chisq_val + rval), np.ravel(chisq_grad + rgrad)
 
@@ -208,12 +209,12 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty):
             # determine sky (linear problem) and subtract it off.
             sky = np.average(diff, weights=weight, axis=(1, 2))
             diff -= sky[:, None, None]
-            
             wdiff = weight * diff
             val += np.sum(wdiff * diff)
             grad += atm.gradient_helper(-2. * wdiff, dshape, ctr)
-        rval, rgrad = regpenalty(gal3d)
 
+        rval, rgrad = regpenalty(gal3d)
+        print(val+rval)
         # Reshape gradient to 1-d when returning.
         return (val + rval), np.ravel(grad + rgrad)
 
@@ -387,9 +388,14 @@ def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, atms):
     # initial positions & bounds
     allctrs0 = np.ravel(np.vstack((ctrs0, snctr0)))
     bounds = zip(allctrs0 - BOUND, allctrs0 + BOUND)
-
+    
+    def callback(params):
+        for i in range(len(params)//2-1):
+            print('Epoch %s: %s, %s' % (i, params[2*i], params[2*i+1]))
+        print('SN position %s, %s' % (params[-2], params[-1]))
+    callback(bounds)
     fallctrs, f, d = fmin_l_bfgs_b(objective_func, allctrs0,
-                                   iprint=0, callback=print, bounds=bounds)
+                                   iprint=0, callback=callback, bounds=bounds)
 
     print("optimization finished\n"
           "function minimum: {:f}".format(f))

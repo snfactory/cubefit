@@ -3,6 +3,8 @@ import fitsio
 
 __all__ = ["DataCube", "read_datacube"]
 
+RESCALE = 10**17
+
 class DataCube(object):
     """A container for data and weight arrays.
 
@@ -35,6 +37,7 @@ def read_datacube(filename):
     """Read a two-HDU FITS file into memory.
 
     Assumes 1st HDU is data and 2nd HDU is variance.
+    Scale data by 10**17 so that optimizer works better.
 
     Returns
     -------
@@ -47,8 +50,8 @@ def read_datacube(filename):
 
     with fitsio.FITS(filename, "r") as f:
         header = f[0].read_header()
-        data = f[0].read()
-        variance = f[1].read()
+        data = f[0].read() * RESCALE
+        variance = f[1].read() 
 
     n = header["NAXIS3"]
     crpix = header["CRPIX3"]-1.0  # FITS is 1-indexed, numpy as 0-indexed 
@@ -57,7 +60,7 @@ def read_datacube(filename):
     wave = crval + cdelt * (np.arange(n) - crpix)
 
     weight = 1. / variance
-    
+    weight /= RESCALE**2
     # Zero-weight array elements that are NaN
     # TODO: why are there nans in here?
     mask = np.isnan(data)

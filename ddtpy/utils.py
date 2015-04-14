@@ -76,9 +76,9 @@ def fft_shift_phasor(n, d):
 
     result = np.cos(f) - 1j*np.sin(f)  # or equivalently: np.exp(-1j * f)
 
-    # TODO: not sure if this is necessary!! (see note in docstring)
-    # if n % 2 == 0:
-    #     result[n/2] = np.real(result[n/2])
+    # This is where we set the Nyquist frequency to be purely real (see above)
+    if n % 2 == 0:
+        result[n/2] = np.real(result[n/2])
 
     return result
 
@@ -136,10 +136,10 @@ def fft_shift_phasor_2d_prime(shape, offset):
 
     # This is the part where we reset the phasor at the nyquist frequency
     # to be real (see comments above).
-    #if m % 2 == 0:
-    #    phasorm[m/2] = np.real(phasorm[m/2])
-    #if n % 2 == 0:
-    #    phasorn[n/2] = np.real(phasorn[n/2])
+    if m % 2 == 0:
+        phasorm[m/2] = np.real(phasorm[m/2])
+    if n % 2 == 0:
+        phasorn[n/2] = np.real(phasorn[n/2])
 
     # outer product is a_i * b_j
     # da_i * b_j

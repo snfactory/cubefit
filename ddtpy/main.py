@@ -92,10 +92,10 @@ def parse_conf(inconf):
     # of the master final ref.
     xref = xctr_init[outconf["master_ref"]]
     yref = xctr_init[outconf["master_ref"]]
-    outconf["xctr_init"] = xctr_init - xref
-    outconf["yctr_init"] = yctr_init - yref
-    outconf["sn_x_init"] = -xref
-    outconf["sn_y_init"] = -yref
+    outconf["xctr_init"] = -(xctr_init - xref)
+    outconf["yctr_init"] = -(yctr_init - yref)
+    outconf["sn_x_init"] = -(-xref)
+    outconf["sn_y_init"] = -(-yref)
 
     return outconf
 
@@ -111,10 +111,11 @@ def result_dict(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms):
         galeval.append(tg.copy())
         tp = atms[i].evaluate_point_source(snctr, dshape, (yctr[i], xctr[i]))
         psfeval.append(tp.copy())
-
+    
     return {'galaxy' : galaxy, 'snctr' : snctr,
-            'ctrs' : zip(copy(xctr), copy(yctr)),
-            'skys' : copy(skys), 'sn' : sn.copy(), 'galeval': galeval,
+            'ctrs' : zip(copy(yctr), copy(xyctr)),
+            'skys' : copy(skys), 'sn' : sn.copy(),
+            'galeval': galeval,
             'psfeval': psfeval}
 
 
@@ -220,7 +221,7 @@ def main(filename, data_dir, output_filename):
     galaxy = fit_galaxy_single(galaxy, data, weight,
                                (yctr[master_ref], xctr[master_ref]),
                                atms[master_ref], regpenalty)
-
+    
     output_dict['MasterRefFit'] = result_dict(galaxy, skys, sn, snctr,
                                               yctr, xctr,
                                               (cubes[0].ny, cubes[0].nx), atms)

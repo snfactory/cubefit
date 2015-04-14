@@ -4,8 +4,8 @@ import numpy as np
 import json
 import fitsio
 from glob import glob
-import matplotlib as mpl
-mpl.use('Agg')
+#import matplotlib as mpl # Uncomment these if ddt run as batch job
+#mpl.use('Agg')
 from matplotlib import pyplot as plt
 from matplotlib.ticker import NullLocator
 
@@ -15,8 +15,9 @@ BAND_LIMITS = {'U': (3400., 3900.),
                'B': (4102., 5100.),
                'V': (6289., 7607.)}
 
+RESCALE = 10**17 # Should match rescale in data.py
 STAMP_SIZE = .9 #1.5
-IDR_PREFIX = '/home/cmsaunders/ACEv2/training/'
+IDR_PREFIX = '/home/cmsaunders/ACEv2/*/'
 
 def plot_timeseries(ddt_output, band='B', fname=None):
     """Return a figure showing data and model.
@@ -59,8 +60,7 @@ def plot_timeseries(ddt_output, band='B', fname=None):
             ax.set_ylabel('Data')
 
     for f, fit_result in enumerate(['MasterRefFit', 'AllRefFit', 'FinalFit']):
-        result = ddt_output[fit_result]
-        print(fit_result, result.keys())   
+        result = ddt_output[fit_result] 
         image = np.average(result['galaxy'][mask, :, :], axis=0)
         ax = plt.subplot2grid((nrow, ncol), (1+2*f,0), rowspan=2, colspan=2)
         ax.imshow(image, cmap='Greys', interpolation='nearest', origin='lower')
@@ -73,7 +73,7 @@ def plot_timeseries(ddt_output, band='B', fname=None):
             psf_model = result['psfeval'][i_t]
             prediction = (result['skys'][i_t][:, None, None] + galaxy_model +
                           result['sn'][i_t][:, None, None] * psf_model)
-            residual = prediction - data_cubes[i_t].data
+            residual = data_cubes[i_t].data - prediction
             
             prediction_image = np.average(prediction[mask, :, :], axis=0)
             residual_image = np.average(residual[mask, :, :], axis=0)
@@ -130,25 +130,24 @@ def plot_wave_slices(ddt_output,fname=None, slices = None):
 
     # two rows per final ref (model and residual)
     ncol = 2*len(refs)
-    #  one column for each wavelength slice
+    # one column for each wavelength slice
     nrow = len(wave_slices)
-    figsize = (STAMP_SIZE * ncol, STAMP_SIZE * nrow)
+    figsize = (STAMP_SIZE * nrow, STAMP_SIZE * ncol)
     fig = plt.figure(figsize=figsize)
 
     """Plot data, model and residual for each final ref epoch at a range of
     wavelength slices"""
 
     for r, i_t in enumerate(refs):
-        
         for s, slice in enumerate(wave_slices):
             data_slice = data_cubes[i_t].data[slice,:,:]
             model_slice = ddt_output['FinalFit']['galeval'][i_t][slice,:,:]
-            residual_slice = data_slice - model_slice
+            residual_slice = data_slice - model_slice 
 
             vmin = None
             vmax = None
-            ax1 = plt.subplot2grid((nrow, ncol), (r*2, s))
-            ax2 = plt.subplot2grid((nrow, ncol), (r*2+1, s))
+            ax1 = plt.subplot2grid((ncol, nrow), (r*2, s))
+            ax2 = plt.subplot2grid((ncol, nrow), (r*2+1, s))
 
             ax1.imshow(model_slice, vmin=vmin, vmax=vmax,
                        interpolation='nearest', origin='lower')
@@ -164,7 +163,7 @@ def plot_wave_slices(ddt_output,fname=None, slices = None):
                 ax2.set_ylabel('%s Residual' % i_t, fontsize=8)
             if r == len(refs) -1:
                 ax2.set_xlabel('$\lambda =%s$' % wave[slice], fontsize=10)
-    fig.subplots_adjust(left=0.03, right=0.999, bottom=0.04, top=0.98,
+    fig.subplots_adjust(left=0.03, right=0.999, bottom=0.06, top=0.98,
                         hspace=0.01, wspace=0.01)
 
     if fname is None:
@@ -198,10 +197,11 @@ def plot_sn(ddt_output, json_file, fname=None):
     sn_max = max(sn_spec.max() for sn_spec in sn_spectra)
 
     cfg = json.load(open(json_file))
-    in_cube_files = cfg["IN_CUBE"]
+    in_cube_files = cfg["IN_CUBE_DDTNAME"]
     channel = cfg["PARAM_CHANNEL"]
     day_exp_nums = [file.split('_')[2:5] for file in in_cube_files]
-
+    day_exp_nums.sort()
+    
     sn_name = json_file.split('/')[-1].split('_')[0]
     idr_files = glob(IDR_PREFIX+'%s/*%s.fits' % (sn_name, channel))
     phase_strings = [file.split('_')[-2] for file in idr_files]
@@ -211,6 +211,7 @@ def plot_sn(ddt_output, json_file, fname=None):
               for phase_string in phase_strings]
     phase_sort = np.array(phases).argsort()
     fig = plt.figure(figsize=(7,8))
+
     for p, phase_arg in enumerate(phase_sort):
 
         file = idr_files[phase_arg]
@@ -218,8 +219,8 @@ def plot_sn(ddt_output, json_file, fname=None):
         
         with fitsio.FITS(file, 'r') as f:
             header = f[0].read_header()
-            data = f[0].read()
-            variance = f[1].read()
+            data = f[0].read() * RESCALE
+            variance = f[1].read() * RESCALE**2
 
         n = header["NAXIS1"]
         #crpix = header["CRPIX1"]-1.0  # FITS is 1-indexed, numpy as 0-indexed 
@@ -232,6 +233,7 @@ def plot_sn(ddt_output, json_file, fname=None):
                                              day_exp in day_exp_nums]))
         
         plt.plot(sn_wave, data/sn_max + p/2., color='k')
+
         for i_t in i_t_match:
             plt.plot(wave, sn_spectra[i_t]/sn_max + p/2., color='r')
         plt.text(sn_wave[-20], p/2., 'Phase = '+str(phase))

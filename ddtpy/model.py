@@ -197,7 +197,6 @@ class AtmModel(object):
         for i in range(self.nw):
             tmp = ifft2(np.conj(self.fftconv[i, :, :] * fshift) *
                         fft2(out[i, :, :]))
-            assert_real(tmp)
             out[i, :, :] = tmp.real
 
         return out
