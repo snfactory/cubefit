@@ -1,6 +1,10 @@
 About the Gradient Calculation
 ==============================
 
+.. warning::
+
+   This document is a work in progress!
+
 Matrix representation of discrete Fourier transforms
 ----------------------------------------------------
 
@@ -48,7 +52,7 @@ Now, note that the matrix :math:`\mathbf{F}` has the properties
 
 .. math::
 
-   \mathbf{F}^{-1} = \frac{1}{N} \overbar{\mathbf{F}}
+   \mathbf{F}^{-1} = \frac{1}{N} \bar{\mathbf{F}}
 
-where :math:`\overbar{\mathbf{F}}` is the element-wise complex
+where :math:`\bar{\mathbf{F}}` is the element-wise complex
 conjugate of :math:`\mathbf{F}`.
