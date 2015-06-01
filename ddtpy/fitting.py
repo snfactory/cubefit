@@ -3,7 +3,7 @@ from __future__ import print_function, division
 import copy
 
 import numpy as np
-from scipy.optimize import leastsq, fmin_l_bfgs_b, fmin_bfgs
+from scipy.optimize import fmin_l_bfgs_b, fmin_bfgs, fmin
 
 from .model import yxbounds
 
@@ -164,7 +164,7 @@ def fit_galaxy_single(galaxy0, data, weight, ctr, atm, regpenalty):
         chisq_val = np.sum(wdiff * diff)
         chisq_grad = atm.gradient_helper(-2. * wdiff, dshape, ctr)
         rval, rgrad = regpenalty(gal3d)
-        print(chisq_val + rval)
+        print(chisq_val + rval, ' (%s, %s)' % (chisq_val, rval))
         # Reshape gradient to 1-d when returning.
         return (chisq_val + rval), np.ravel(chisq_grad + rgrad)
 
@@ -216,7 +216,7 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty):
             grad += atm.gradient_helper(-2. * wdiff, dshape, ctr)
 
         rval, rgrad = regpenalty(gal3d)
-        print(val+rval)
+        print(val+rval, ' (%s, %s)' % (val, rval))
         # Reshape gradient to 1-d when returning.
         return (val + rval), np.ravel(grad + rgrad)
 
@@ -264,7 +264,6 @@ def fit_position_sky(galaxy, data, weight, ctr0, atm):
     """
 
     spatial_shape = data.shape[1:3]
-    sqrtweight = np.sqrt(weight)
 
     # Define a function that returns the sqrt(weight) * (data-model)
     # for the given epoch i_t, given the data position.
@@ -278,12 +277,14 @@ def fit_position_sky(galaxy, data, weight, ctr0, atm):
         resid = data - gal
         sky = np.average(resid, weights=weight, axis=(1, 2))
 
-        out = sqrtweight * (resid - sky[:, None, None])
-        return np.ravel(out)
+        out = weight * (resid - sky[:, None, None])**2
+        return np.sum(out)
 
-    ctr, info = leastsq(objective_func, ctr0)
-    if info not in [1, 2, 3, 4]:
-        raise RuntimeError("leastsq didn't converge properly")
+    ctr_optimize = fmin(objective_func, ctr0, full_output=1)
+    ctr = ctr_optimize[0]
+    info = ctr_optimize[4]
+    if info  in [1, 2]:
+        raise RuntimeError("fmin reached max iterations or fn calls")
 
     # get last-calculated sky.
     gal = atm.evaluate_galaxy(galaxy, spatial_shape, ctr)

@@ -17,7 +17,7 @@ BAND_LIMITS = {'U': (3400., 3900.),
 
 RESCALE = 10**17 # Should match rescale in data.py
 STAMP_SIZE = .9 #1.5
-IDR_PREFIX = '/home/cmsaunders/ACEv2/*/'
+IDR_PREFIX = '/home/cmsaunders/ACEv2/'
 
 def plot_timeseries(ddt_output, band='B', fname=None):
     """Return a figure showing data and model.
@@ -47,23 +47,28 @@ def plot_timeseries(ddt_output, band='B', fname=None):
     # upper and lower wavelength limits
     wmin, wmax = BAND_LIMITS[band]
     mask = (wave > wmin) & (wave < wmax)
-
+    vmin, vmax = np.zeros(nt), np.zeros(nt)
+    z_mask = []
     for i_t, cube in enumerate(data_cubes):
         data_image = np.average(cube.data[mask, :, :], axis=0)
+        z_mask.append(data_image != 0)
+        vmax[i_t] = 1.1*np.max(data_image)
+        vmin[i_t] = -0.2*np.max(data_image)
         ax = plt.subplot2grid((nrow, ncol), (0, i_t + 2))
         ax.imshow(data_image, #vmin=vmin[i_t], vmax=vmax[i_t],
-                  cmap='Greys',
+                  cmap='jet', vmin = vmin[i_t], vmax = vmax[i_t],
                   interpolation='nearest', origin='lower')
         ax.xaxis.set_major_locator(NullLocator())
         ax.yaxis.set_major_locator(NullLocator())
         if i_t == 0:
             ax.set_ylabel('Data')
 
+
     for f, fit_result in enumerate(['MasterRefFit', 'AllRefFit', 'FinalFit']):
         result = ddt_output[fit_result] 
         image = np.average(result['galaxy'][mask, :, :], axis=0)
         ax = plt.subplot2grid((nrow, ncol), (1+2*f,0), rowspan=2, colspan=2)
-        ax.imshow(image, cmap='Greys', interpolation='nearest', origin='lower')
+        ax.imshow(image, cmap='jet', interpolation='nearest', origin='lower')
         ax.xaxis.set_major_locator(NullLocator())
         ax.yaxis.set_major_locator(NullLocator())
         ax.set_ylabel(fit_result)
@@ -74,15 +79,20 @@ def plot_timeseries(ddt_output, band='B', fname=None):
             prediction = (result['skys'][i_t][:, None, None] + galaxy_model +
                           result['sn'][i_t][:, None, None] * psf_model)
             residual = data_cubes[i_t].data - prediction
-            
             prediction_image = np.average(prediction[mask, :, :], axis=0)
             residual_image = np.average(residual[mask, :, :], axis=0)
+            if np.min(residual_image[z_mask[i_t]]) < vmin[i_t]:
+                print('Vmin too big', np.sum(residual_image[z_mask[i_t]] < vmin[i_t]))
+            if np.min(prediction_image[z_mask[i_t]]) < vmin[i_t]:
+                print('Vmin too big for pred', np.min(prediction_image[z_mask[i_t]]), vmin[i_t])
+            if np.max(prediction_image[z_mask[i_t]]) > vmax[i_t]:
+                print('Vmax too small for pred', np.max(prediction_image[z_mask[i_t]]), vmax[i_t])
             ax1 = plt.subplot2grid((nrow, ncol), (1+2*f,i_t+2))
-            ax1.imshow(prediction_image, cmap='Greys', interpolation='nearest',
-                      origin='lower')
+            ax1.imshow(prediction_image, cmap='jet', interpolation='nearest',
+                      origin='lower', vmin=vmin[i_t], vmax=vmax[i_t])
             ax2 = plt.subplot2grid((nrow, ncol), (1+2*f+1,i_t+2))
-            ax2.imshow(residual_image, cmap='Greys', interpolation='nearest',
-                      origin='lower')
+            ax2.imshow(residual_image, cmap='jet', interpolation='nearest',
+                      origin='lower', vmin=vmin[i_t], vmax=vmax[i_t])
             ax1.xaxis.set_major_locator(NullLocator())
             ax1.yaxis.set_major_locator(NullLocator())
             ax2.xaxis.set_major_locator(NullLocator())
@@ -200,12 +210,12 @@ def plot_sn(ddt_output, json_file, fname=None):
     in_cube_files = cfg["IN_CUBE_DDTNAME"]
     channel = cfg["PARAM_CHANNEL"]
     day_exp_nums = [file.split('_')[2:5] for file in in_cube_files]
-    day_exp_nums.sort()
-    
+
     sn_name = json_file.split('/')[-1].split('_')[0]
-    idr_files = glob(IDR_PREFIX+'%s/*%s.fits' % (sn_name, channel))
+    idr_files = (glob(IDR_PREFIX+'training/%s/*%s.fits' % (sn_name, channel))+
+                 glob(IDR_PREFIX+'validation/%s/*%s.fits' % (sn_name, channel)))
     phase_strings = [file.split('_')[-2] for file in idr_files]
-    
+
     phases = [((-1 if phase_string[0] == 'M' else 1) *
                float(phase_string[1:])/1000.)
               for phase_string in phase_strings]
@@ -213,7 +223,7 @@ def plot_sn(ddt_output, json_file, fname=None):
     fig = plt.figure(figsize=(7,8))
 
     for p, phase_arg in enumerate(phase_sort):
-
+        
         file = idr_files[phase_arg]
         phase = phases[phase_arg]
         
@@ -231,7 +241,7 @@ def plot_sn(ddt_output, json_file, fname=None):
         file_day_exp = header["FILENAME"].split('_')[1:4]
         i_t_match = np.flatnonzero(np.array([day_exp == file_day_exp for
                                              day_exp in day_exp_nums]))
-        
+
         plt.plot(sn_wave, data/sn_max + p/2., color='k')
 
         for i_t in i_t_match:

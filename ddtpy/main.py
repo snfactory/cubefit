@@ -113,7 +113,7 @@ def result_dict(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms):
         psfeval.append(tp.copy())
     
     return {'galaxy' : galaxy, 'snctr' : snctr,
-            'ctrs' : zip(copy(yctr), copy(xyctr)),
+            'ctrs' : zip(copy(yctr), copy(xctr)),
             'skys' : copy(skys), 'sn' : sn.copy(),
             'galeval': galeval,
             'psfeval': psfeval}
@@ -286,7 +286,7 @@ def main(filename, data_dir, output_filename):
                                            yctr, xctr,
                                            (cubes[0].ny, cubes[0].nx), atms)
 
-        
+
     # -------------------------------------------------------------------------
     # Fit position of data and SN in non-references
     #
@@ -312,7 +312,7 @@ def main(filename, data_dir, output_filename):
     output_dict['FinalFit'] = result_dict(galaxy, skys, sn, snctr,
                                           yctr, xctr,
                                           (cubes[0].ny, cubes[0].nx), atms)
-
+                                          
     # -------------------------------------------------------------------------
     # Redo fit of galaxy, using ALL epochs.
 

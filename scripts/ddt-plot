@@ -10,6 +10,8 @@ parser.add_argument("result_filename",
                     help="output from ddt-fit (.pkl file)")
 parser.add_argument("figure_prefix", help="output prefix")
 parser.add_argument("parameter_file", help="ddt input json file")
+parser.add_argument('-b', '--band', help='timeseries band', default='B',
+                    dest='band')
 
 args = parser.parse_args()
 
@@ -18,7 +20,7 @@ result_dict = pickle.load(f)
 f.close()
 
 ddtpy.plot_timeseries(result_dict, fname='%s_timeseries.eps' 
-                      % args.figure_prefix)
+                      % args.figure_prefix, band=args.band)
 ddtpy.plot_wave_slices(result_dict, fname='%s_waveslice.eps' 
                        % args.figure_prefix)
 ddtpy.plot_sn(result_dict, args.parameter_file,
