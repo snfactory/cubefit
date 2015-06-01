@@ -263,7 +263,18 @@ def fit_position_sky(galaxy, data, weight, ctr0, atm):
         Fitted sky.
     """
 
-    spatial_shape = data.shape[1:3]
+    BOUND = 2. # +/- position bound in spaxels
+    minbound = np.array(ctr0) - BOUND
+    maxbound = np.array(ctr0) + BOUND
+
+    gshape = galaxy.shape[1:3]  # model shape
+    dshape = data.shape[1:3]
+
+    (yminabs, ymaxabs), (xminabs, xmaxabs) = yxbounds(gshape, dshape)
+    minbound[0] = max(minbound[0], yminabs)  # ymin
+    maxbound[0] = min(maxbound[0], ymaxabs)  # ymax
+    minbound[1] = max(minbound[1], xminabs)  # xmin
+    maxbound[1] = min(maxbound[1], xmaxabs)  # xmax
 
     # Define a function that returns the sqrt(weight) * (data-model)
     # for the given epoch i_t, given the data position.
@@ -271,13 +282,17 @@ def fit_position_sky(galaxy, data, weight, ctr0, atm):
     # function's return value, so we're minimizing
     # sum(weight * residual^2), which seems reasonable.
     def objective_func(ctr):
-        gal = atm.evaluate_galaxy(galaxy, spatial_shape, ctr)
+        if not (minbound[0] < ctr[0] < maxbound[0] and 
+                minbound[1] < ctr[1] < maxbound[1]):
+            return np.inf
+        gal = atm.evaluate_galaxy(galaxy, dshape, ctr)
 
         # determine sky (linear problem)
         resid = data - gal
         sky = np.average(resid, weights=weight, axis=(1, 2))
 
         out = weight * (resid - sky[:, None, None])**2
+        print(ctr, np.sum(out))
         return np.sum(out)
 
     ctr_optimize = fmin(objective_func, ctr0, full_output=1)
@@ -287,7 +302,7 @@ def fit_position_sky(galaxy, data, weight, ctr0, atm):
         raise RuntimeError("fmin reached max iterations or fn calls")
 
     # get last-calculated sky.
-    gal = atm.evaluate_galaxy(galaxy, spatial_shape, ctr)
+    gal = atm.evaluate_galaxy(galaxy, dshape, ctr)
     sky = np.average(data - gal, weights=weight, axis=(1, 2))
 
     return tuple(ctr), sky
