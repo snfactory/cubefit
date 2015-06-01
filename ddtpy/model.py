@@ -59,6 +59,39 @@ def yxoffset(shape1, shape2, ctr):
 
     return ymin2 - ymin1, xmin2 - xmin1
 
+def yxbounds(shape1, shape2):
+    """Bounds on the relative position of two arrays such that they overlap.
+
+    Given the shapes of two arrays (second array smaller) return the range of
+    allowed center offsets such that the second array is wholly contained in
+    the first.
+
+    Parameters
+    ----------
+    shape1 : tuple
+        Shape of larger array.
+    shape2 : tuple
+        Shape of smaller array.
+
+    Returns
+    -------
+    ybounds : tuple
+         Length 2 tuple giving ymin, ymax.
+    xbounds : tuple
+         Length 2 tuple giving xmin, xmax.
+
+    Examples
+    --------
+    >>> yxbounds((32, 32), (15, 15))
+    (-8.5, 8.5), (-8.5, 8.5)
+
+    """
+
+    yd = (shape1[0] - shape2[0]) / 2.
+    xd = (shape1[1] - shape2[1]) / 2.
+
+    return (-yd, yd), (-xd, xd)
+
 
 # -----------------------------------------------------------------------------
 

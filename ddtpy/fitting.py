@@ -5,6 +5,8 @@ import copy
 import numpy as np
 from scipy.optimize import leastsq, fmin_l_bfgs_b, fmin_bfgs
 
+from .model import yxbounds
+
 __all__ = ["guess_sky", "fit_galaxy_single", "fit_galaxy_sky_multi",
            "fit_position_sky", "fit_position_sky_sn_multi"]
 
@@ -385,15 +387,33 @@ def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, atms):
         # reshape gradient to 1-d upon return.
         return chisq, np.ravel(grad)
 
-    # initial positions & bounds
+    # Initial parameter array. Has order [y0, x0, y1, x1, ... , ysn, xsn].
     allctrs0 = np.ravel(np.vstack((ctrs0, snctr0)))
-    bounds = zip(allctrs0 - BOUND, allctrs0 + BOUND)
-    
+
+    # Default parameter bounds for all parameters.
+    minbound = allctrs0 - BOUND
+    maxbound = allctrs0 + BOUND
+
+    # For data position parameters, check that bounds do not extend
+    # past the edge of the model and adjust the minbound and maxbound.
+    # For SN position bounds, we don't do any checking like this.
+    gshape = galaxy.shape[1:3]  # model shape
+    for i in range(nepochs):
+        dshape = datas[i].shape[1:3]
+        (yminabs, ymaxabs), (xminabs, xmaxabs) = yxbounds(gshape, dshape)
+        minbound[2*i] = max(minbound[2*i], yminabs)  # ymin
+        maxbound[2*i] = min(maxbound[2*i], ymaxabs)  # ymax
+        minbound[2*i+1] = max(minbound[2*i+1], xminabs)  # xmin
+        maxbound[2*i+1] = min(maxbound[2*i+1], xmaxabs)  # xmax
+
+    bounds = zip(minbound, maxbound)  # [(y0min, y0max), (x0min, x0max), ...]
+
     def callback(params):
         for i in range(len(params)//2-1):
             print('Epoch %s: %s, %s' % (i, params[2*i], params[2*i+1]))
         print('SN position %s, %s' % (params[-2], params[-1]))
     callback(bounds)
+
     fallctrs, f, d = fmin_l_bfgs_b(objective_func, allctrs0,
                                    iprint=0, callback=callback, bounds=bounds)
 
@@ -402,7 +422,6 @@ def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, atms):
     print("info dict: ")
     for k, v in d.iteritems():
         print(k, " : ", v)
-
 
     # pull out fitted positions
     fallctrs = fallctrs.reshape((nepochs+1, 2))
