@@ -3,7 +3,7 @@ from __future__ import print_function
 
 import cPickle as pickle
 from argparse import ArgumentParser
-import ddtpy
+import cubefit
 
 parser = ArgumentParser(description="ddt-plot")
 parser.add_argument("result_filename",
@@ -19,10 +19,9 @@ f = open(args.result_filename, 'rb')
 result_dict = pickle.load(f)
 f.close()
 
-ddtpy.plot_timeseries(result_dict, fname='%s_timeseries.eps' 
-                      % args.figure_prefix, band=args.band)
-ddtpy.plot_wave_slices(result_dict, fname='%s_waveslice.eps' 
-                       % args.figure_prefix)
-ddtpy.plot_sn(result_dict, args.parameter_file,
-	      fname='%s_sn.eps' % args.figure_prefix)
-
+cubefit.plot_timeseries(result_dict, fname='%s_timeseries.eps' 
+                        % args.figure_prefix)
+cubefit.plot_wave_slices(result_dict, fname='%s_waveslice.eps' 
+                         % args.figure_prefix)
+cubefit.plot_sn(result_dict, args.parameter_file,
+                fname='%s_sn.eps' % args.figure_prefix)

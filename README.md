@@ -1,7 +1,7 @@
-DDTPy
-=====
+CubeFit
+=======
 
-Python implementation of the spectral data cube modeling code DDT
+Fit supernova + galaxy model on a Nearby Supernova Factory spectral data cube.
 
 Installation
 ------------
@@ -26,7 +26,7 @@ Usage
 On the command line
 
 ```
-ddt-fit conf.json /path/to/data/dir outputfile.pkl
+cubefit conf.json /path/to/data/dir outputfile.pkl
 ```
 
 Data & Model
@@ -69,7 +69,7 @@ pixel-to-pixel variation).
 Procedure
 ---------
 
-These steps are carried out in ``ddtpy.main`` (which is called from
+These steps are carried out in ``cubefit.main`` (which is called from
 the command-line script).
 
 1. **Initialization**
@@ -97,52 +97,52 @@ the command-line script).
 5. **Fit position, sky and SN position of all the non-final refs**
 
 
-API
----
+Internal API documentation
+--------------------------
 
-|              |               |
-| ------------ | ------------- |
-| `ddtpy.main` | Do everything |
+|                |                  |
+| -------------- | ---------------- |
+| `cubefit.main` | Main entry point |
 
 
 **Data structure and I/O**
 
-|                       |                                          |
-| --------------------- | ---------------------------------------- |
-| `ddtpy.DataCube`      | Container for data and weight arrays     |
-| `ddtpy.read_datacube` | Read a two-HDU FITS file into a DataCube |
+|                         |                                          |
+| ----------------------- | ---------------------------------------- |
+| `cubefit.DataCube`      | Container for data and weight arrays     |
+| `cubefit.read_datacube` | Read a two-HDU FITS file into a DataCube |
 
 
 **ADR and PSF model**
 
-|                                  |                                          |
-| -------------------------------- | ---------------------------------------- |
-| `ddtpy.paralactic_angle`         | Return paralactic angle in radians, including MLA tilt |
-| `ddtpy.gaussian_plus_moffat_psf` | Evaluate a gaussian+moffat function on a 2-d grid |
-| `ddtpy.psf_3d_from_params`       | Create a wavelength-dependent Gaussian+Moffat PSF from given parameters |
-| `ddtpy.AtmModel`                 |  Atmospheric conditions (PSF and ADR) model for a single observation |
+|                                    |                                          |
+| ---------------------------------- | ---------------------------------------- |
+| `cubefit.paralactic_angle`         | Return paralactic angle in radians, including MLA tilt |
+| `cubefit.gaussian_plus_moffat_psf` | Evaluate a gaussian+moffat function on a 2-d grid |
+| `cubefit.psf_3d_from_params`       | Create a wavelength-dependent Gaussian+Moffat PSF from given parameters |
+| `cubefit.AtmModel`                 |  Atmospheric conditions (PSF and ADR) model for a single observation |
 
 *Additionally, the ADR class from the SNfactory Toolbox package is used.*
 
 **Fitting**
 
-|                                   |                                          |
-| --------------------------------- | ---------------------------------------- |
-| `ddtpy.RegularizationPenalty`     | Callable that returns the penalty and gradient on it. |
-| `ddtpy.guess_sky`                 | Guess sky based on lower signal spaxels compatible with variance |
-| `ddtpy.fit_galaxy_single`         | Fit the galaxy model to a single epoch of data. |
-| `ddtpy.fit_galaxy_sky_multi`      | Fit the galaxy model to multiple data cubes. |
-| `ddtpy.fit_position_sky`          | Fit data position and sky for a single epoch (fixed galaxy model). |
-| `ddtpy.fit_position_sky_sn_multi` | Fit data pointing (nepochs), SN position (in model frame), SN amplitude (nepochs), and sky level (nepochs). |
+|                                     |                                          |
+| ----------------------------------- | ---------------------------------------- |
+| `cubefit.RegularizationPenalty`     | Callable that returns the penalty and gradient on it. |
+| `cubefit.guess_sky`                 | Guess sky based on lower signal spaxels compatible with variance |
+| `cubefit.fit_galaxy_single`         | Fit the galaxy model to a single epoch of data. |
+| `cubefit.fit_galaxy_sky_multi`      | Fit the galaxy model to multiple data cubes. |
+| `cubefit.fit_position_sky`          | Fit data position and sky for a single epoch (fixed galaxy model). |
+| `cubefit.fit_position_sky_sn_multi` | Fit data pointing (nepochs), SN position (in model frame), SN amplitude (nepochs), and sky level (nepochs). |
 
 
 
 **Utilities**
 
-|                             |                                          |
-| --------------------------- | ---------------------------------------- |
-| `ddtpy.fft_shift_phasor_2d` | phasor array used to shift an array (in real space) by multiplication in fourier space. |
-| `ddtpy.plot_timeseries`     | Return a figure showing data and model. |
+|                               |                                          |
+| ----------------------------- | ---------------------------------------- |
+| `cubefit.fft_shift_phasor_2d` | phasor array used to shift an array (in real space) by multiplication in fourier space. |
+| `cubefit.plot_timeseries`     | Return a figure showing data and model. |
 
 
 License

@@ -3,24 +3,22 @@ from distutils.core import setup
 
 data_files=[]
 
-description = ("Python implementation of the spectral data cube modeling "
-               "code DDT")
+description = ("Fit supernova + galaxy model on a Nearby Supernova Factory "
+               "spectral data cube.")
 
 authors = ["Seb Bongard", "Kyle Barbary", "Clare Saunders"]
 
 classifiers = ["Topic :: Scientific/Engineering :: Astronomy",
                "Intended Audience :: Science/Research"]
 
-setup(name="ddtpy", 
+setup(name="cubefit", 
       version="0.1.0-dev",
       description=description,
-      long_description=description,
-      license="None",
+      license="MIT",
       classifiers=classifiers,
-      url="https://github.com/kbarbary/ddtpy",
+      url="https://github.com/snfactory/cubefit",
       author=", ".join(authors),
       author_email="kylebarbary@gmail.com",
-      requires=['numpy', 'scipy'],
-      packages=['ddtpy'],
-      scripts=['scripts/ddt-fit','scripts/ddt-plot'],
+      packages=['cubefit'],
+      scripts=['scripts/cubefit','scripts/cubefit-plot'],
       data_files=data_files)
