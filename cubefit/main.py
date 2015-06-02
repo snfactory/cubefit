@@ -315,9 +315,33 @@ def main(filename, data_dir, output_filename):
                                           (cubes[0].ny, cubes[0].nx), atms)
                                           
     # -------------------------------------------------------------------------
-    # Redo fit of galaxy, using ALL epochs.
+    # Redo fit of galaxy, using ALL epochs, including ones with SN
+    # light.  We hold the SN "fixed" simply by subtracting it from the
+    # data and fitting the remainder.
+    #
+    # This is slightly dangerous: any errors in the original SN determination,
+    # whether due to an incorrect PSF or ADR model or errors in the galaxy
+    # model will result in residuals. The galaxy model will then try to
+    # compensate for these.
+    #
+    # We should look at the galaxy model at the position of the SN before
+    # and after this step to see if there is a bias towards the galaxy flux
+    # increasing.
 
-    # TODO: go back to DDT, check what should be fit here
+    datas = [cube.data for cube in cubes]
+    weights = [cube.weight for cube in cubes]
+    ctrs = [(yctr[i], xctr[i]) for i in range(nt)]
+
+    # subtract SN from non-ref cubes.
+    for i in nonrefs:
+        psf = atm.evaluate_point_source(snctr, datas[i].shape[1:3], ctrs[i])
+        snpsf = sn[i, :, None, None] * psf  # scaled PSF
+        datas[i] = cubes[i].data - snpsf  # do *not* use in-place op (-=) here!
+
+    galaxy, fskys = fit_galaxy_sky_multi(galaxy, datas, weights, ctrs,
+                                         atms, regpenalty)
+    for i in range(nt):
+        skys[i] = fskys[i]  # put fitted skys back in skys
 
     # -------------------------------------------------------------------------
     # Dump results dictionary to pickle.
