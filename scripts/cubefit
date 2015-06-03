@@ -1,14 +1,28 @@
 #!/usr/bin/env python
-from __future__ import print_function
+"""Fit SN + galaxy model to SNFactory data cubes."""
+
+from argparse import ArgumentParser
+import logging
 
 import cubefit
 
-from argparse import ArgumentParser
 
-parser = ArgumentParser(description="DDT: Datacube Deconvolution Thingy")
-parser.add_argument("filename", help="configuration file")
-parser.add_argument("data_dir", help="directory containing FITS data files")
-parser.add_argument("output_filename", help="Output filename")
+parser = ArgumentParser(prog="cubefit", description=__doc__)
+parser.add_argument("configfile", help="configuration filename")
+parser.add_argument("datadir", help="directory containing FITS data files")
+parser.add_argument("outfile", help="Output filename")
+parser.add_argument("--logfile", help="Write log to this file",
+                    default=None)
+parser.add_argument("--loglevel", default="info",
+                    help="one of: debug, info, warning (default is info)")
+
 args = parser.parse_args()
 
-cubefit.main(args.filename, args.data_dir, args.output_filename)
+# translate loglevel to numeric value
+numlevel = getattr(logging, args.loglevel.upper(), None)
+if not isinstance(numlevel, int):
+    print('Invalid log level: %s' % loglevel)
+    exit(1)
+
+cubefit.main(args.configfile, args.datadir, args.outfile,
+             logfname=args.logfile, loglevel=numlevel)

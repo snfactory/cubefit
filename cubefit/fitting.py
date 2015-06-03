@@ -1,6 +1,7 @@
 from __future__ import print_function, division
 
 import copy
+import logging
 
 import numpy as np
 from scipy.optimize import fmin_l_bfgs_b, fmin_bfgs, fmin
@@ -10,7 +11,37 @@ from .model import yxbounds
 __all__ = ["guess_sky", "fit_galaxy_single", "fit_galaxy_sky_multi",
            "fit_position_sky", "fit_position_sky_sn_multi"]
 
-def guess_sky(cube, clip, maxiter=10):
+
+def _check_result(warnflag, msg):
+    """Check result of fmin_l_bfgs_b()"""
+    if warnflag == 0:
+        return
+    if warnflag == 1:
+        raise RuntimeError("too many function calls or iterations "
+                           "in fmin_l_bfgs_b()")
+    if warnflag == 2:
+        raise RuntimeError("fmin_l_bfgs_b() exited with warnflag=2: %s" % msg)
+    raise RuntimeError("unknown warnflag: %s" % warnflag)
+
+
+def _check_result_fmin(warnflag):
+    """Check result of fmin()"""
+    if warnflag == 0:
+        return
+    if warnflag == 1:
+        raise RuntimeError("maximum number of function calls reached in fmin")
+    if warnflag == 2:
+        raise RuntimeError("maximum number of iterations reached in fmin")
+    raise RuntimeError("unknown warnflag: %s" % warnflag)
+
+
+def _log_result(fn, fval, niter, ncall):
+    """Write the supplementary results from optimizer to the log"""
+    logging.info("        success: %3d iterations, %3d calls, val=%8.2f",
+                 niter, ncall, fval)
+
+
+def guess_sky_clipping(cube, clip, maxiter=10):
     """Guess sky based on lower signal spaxels compatible with variance
 
     Parameters
@@ -24,8 +55,8 @@ def guess_sky(cube, clip, maxiter=10):
 
     Returns
     -------
-    sky : np.ndarray (2-d)        
-        Sky level for each epoch and wavelength. Shape is (nt, nw).
+    sky : np.ndarray (1-d)        
+        Sky level for each wavelength.
     """
 
     nspaxels = cube.ny * cube.nx
@@ -64,6 +95,48 @@ def guess_sky(cube, clip, maxiter=10):
     # convert to normal (non-masked) array. Masked wavelengths are 
     # set to zero in this process.
     return np.asarray(avg)
+
+
+def guess_sky(cube, npix=10):
+    """Guess sky based on lowest signal pixels at each wavelength.
+
+    With the small field of fiew of an IFU, we have no guarantee of
+    getting an accurate measurement of the real sky level; the galaxy
+    might extend far past the edges of the IFU.
+
+    Here we simply take a weighted average of the lowest `npix` pixels
+    at each wavelength. This estimate will be higher than the real sky
+    value (which would be lower than the lowest pixel value in the
+    absence of noise), but its about the best we can do.
+
+    Parameters
+    ----------
+    cube : DataCube
+    npix : int
+
+    Returns
+    -------
+    sky : np.ndarray (1-d)
+        Sky level at each wavelength.
+    """
+
+    sky = np.zeros(cube.nw)
+    for i in range(cube.nw):
+        mask = cube.weight[i] > 0.
+        v = cube.data[i][mask]
+        vw = cube.weight[i][mask]
+        k = min(npix, len(v))  # number of pixels to use.
+        if k <= 0:
+            # if there are no values with weight != 0, it doesn't
+            # matter what the sky is because these data are never used
+            # anywhere in the fit.
+            sky[i] = 0.
+        else:
+            # sort values, average lowest k values.
+            idx = np.argsort(v) 
+            sky[i] = np.average(v[idx][0:k], weights=vw[idx][0:k])
+
+    return sky
 
 
 def determine_sky_and_sn(galmodel, snmodel, data, weight):
@@ -164,18 +237,16 @@ def fit_galaxy_single(galaxy0, data, weight, ctr, atm, regpenalty):
         chisq_val = np.sum(wdiff * diff)
         chisq_grad = atm.gradient_helper(-2. * wdiff, dshape, ctr)
         rval, rgrad = regpenalty(gal3d)
-        print(chisq_val + rval, ' (%s, %s)' % (chisq_val, rval))
+
+        logging.debug('%s (%s, %s)', chisq_val + rval, chisq_val, rval)
+
         # Reshape gradient to 1-d when returning.
         return (chisq_val + rval), np.ravel(chisq_grad + rgrad)
 
     # run minimizer
     galparams, f, d = fmin_l_bfgs_b(objective_func, galparams0)
-
-    print("optimization finished\n"
-          "function minimum: {:f}".format(f))
-    print("info dict: ")
-    for k, v in d.iteritems():
-        print(k, " : ", v)
+    _check_result(d['warnflag'], d['task'])
+    _log_result("fmin_l_bfgs_b", f, d['nit'], d['funcalls'])
 
     return galparams.reshape(galaxy0.shape)
 
@@ -216,18 +287,16 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty):
             grad += atm.gradient_helper(-2. * wdiff, dshape, ctr)
 
         rval, rgrad = regpenalty(gal3d)
-        print(val+rval, ' (%s, %s)' % (val, rval))
+
+        logging.debug('%s (%s, %s)', val + rval, val, rval)
+
         # Reshape gradient to 1-d when returning.
         return (val + rval), np.ravel(grad + rgrad)
 
     # run minimizer
     galparams, f, d = fmin_l_bfgs_b(objective_func, galparams0)
-
-    print("optimization finished\n"
-          "function minimum: {:f}".format(f))
-    print("info dict: ")
-    for k, v in d.iteritems():
-        print(k, " : ", v)
+    _check_result(d['warnflag'], d['task'])
+    _log_result("fmin_l_bfgs_b", f, d['nit'], d['funcalls'])
 
     galaxy = galparams.reshape(galaxy0.shape)
 
@@ -292,14 +361,13 @@ def fit_position_sky(galaxy, data, weight, ctr0, atm):
         sky = np.average(resid, weights=weight, axis=(1, 2))
 
         out = weight * (resid - sky[:, None, None])**2
-        print(ctr, np.sum(out))
+        logging.debug("%s %s", ctr, np.sum(out))
         return np.sum(out)
 
-    ctr_optimize = fmin(objective_func, ctr0, full_output=1)
-    ctr = ctr_optimize[0]
-    info = ctr_optimize[4]
-    if info  in [1, 2]:
-        raise RuntimeError("fmin reached max iterations or fn calls")
+    ctr, fval, niter, ncall, warnflag = fmin(objective_func, ctr0,
+                                             full_output=1, disp=0)
+    _check_result_fmin(warnflag)
+    _log_result("fmin", fval, niter, ncall)
 
     # get last-calculated sky.
     gal = atm.evaluate_galaxy(galaxy, dshape, ctr)
@@ -426,18 +494,14 @@ def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, atms):
 
     def callback(params):
         for i in range(len(params)//2-1):
-            print('Epoch %s: %s, %s' % (i, params[2*i], params[2*i+1]))
-        print('SN position %s, %s' % (params[-2], params[-1]))
+            logging.debug('Epoch %s: %s, %s', i, params[2*i], params[2*i+1])
+        logging.debug('SN position %s, %s', params[-2], params[-1])
     callback(bounds)
 
     fallctrs, f, d = fmin_l_bfgs_b(objective_func, allctrs0,
                                    iprint=0, callback=callback, bounds=bounds)
-
-    print("optimization finished\n"
-          "function minimum: {:f}".format(f))
-    print("info dict: ")
-    for k, v in d.iteritems():
-        print(k, " : ", v)
+    _check_result(d['warnflag'], d['task'])
+    _log_result("fmin_l_bfgs_b", f, d['nit'], d['funcalls'])
 
     # pull out fitted positions
     fallctrs = fallctrs.reshape((nepochs+1, 2))

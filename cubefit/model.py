@@ -18,8 +18,6 @@ def assert_real(x):
     absfrac = np.abs(x.imag / x.real)
     mask = absfrac < 1.e-3 #1.e-4
     if not np.all(mask):
-        print(x.imag[~mask])
-        print(x.real[~mask])
         raise RuntimeError("array not real: max imag/real = {:g}"
                            .format(np.max(absfrac)))
 

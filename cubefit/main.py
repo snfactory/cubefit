@@ -5,6 +5,8 @@ import json
 import math
 import cPickle as pickle
 from copy import copy
+import logging
+from datetime import datetime
 
 import numpy as np
 
@@ -120,30 +122,48 @@ def result_dict(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms):
             'psfeval': psfeval}
 
 
-def main(filename, data_dir, output_filename):
+def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO):
     """Do everything.
 
     Parameters
     ----------
-    filename : str
+    configfname : str
         JSON-formatted config file.
-    data_dir : str
+    datadir : str
         Directory containing FITS files given in the config file.
-    output_filename : str
+    outfname : str
         File to write output to (currently in pickle form).
+    logfname : str, optional
+        If supplied, write log to given file.
+    loglevel : int, optional
+        One of logging.DEBUG, logging.INFO (default), logging.WARNING, etc.
     """
 
     output_dict = {}
-    
+
+    # Set up logging
+    if logfname is None:
+        logfmt = "\033[1m\033[34m%(levelname)s:\033[0m %(message)s"
+    else:
+        logfmt = "%(asctime)s %(levelname)s %(message)s"
+
+    logging.basicConfig(filename=logfname, format=logfmt,
+                        level=loglevel, datefmt="%Y-%m-%dT%H:%M:%S")
+
+    # record start time
+    tstart = datetime.now()
+    logging.info("started at %s", tstart.strftime("%Y-%m-%d %H:%M:%S"))
+
     # Read the config file and parse it into a nice dictionary.
-    with open(filename) as f:
+    logging.info("reading config file")
+    with open(configfname) as f:
         cfg = json.load(f)
         cfg = parse_conf(cfg)
 
     # -------------------------------------------------------------------------
     # Load data cubes from the list of FITS files.
-
-    cubes = [read_datacube(os.path.join(data_dir, fname))
+    logging.info("reading data cubes")
+    cubes = [read_datacube(os.path.join(datadir, fname))
              for fname in cfg["fnames"]]
     wave = cubes[0].wave
     nt = len(cubes)
@@ -164,6 +184,7 @@ def main(filename, data_dir, output_filename):
     # -------------------------------------------------------------------------
     # Atmospheric conditions for each observation
 
+    logging.info("setting up PSF and ADR for all epochs")
     atms = []
     for i in range(nt):
 
@@ -193,11 +214,13 @@ def main(filename, data_dir, output_filename):
     # Initialize all model parameters to be fit
 
     galaxy = np.zeros((nw, MODEL_SHAPE[0], MODEL_SHAPE[1]))
-    skys = [guess_sky(cube, 2.0) for cube in cubes]
     sn = np.zeros((nt, nw))  # SN spectrum at each epoch
     snctr = (cfg["sn_y_init"], cfg["sn_x_init"])
     xctr = np.copy(cfg["xctr_init"])
     yctr = np.copy(cfg["yctr_init"])
+
+    logging.info("guessing sky for all epochs")
+    skys = [guess_sky(cube, npix=20) for cube in cubes]
 
     # -------------------------------------------------------------------------
     # Regularization penalty parameters
@@ -219,6 +242,8 @@ def main(filename, data_dir, output_filename):
     
     data = cubes[master_ref].data - skys[master_ref][:, None, None]
     weight = cubes[master_ref].weight
+
+    logging.info("fitting galaxy to master ref [%d]", master_ref)
     galaxy = fit_galaxy_single(galaxy, data, weight,
                                (yctr[master_ref], xctr[master_ref]),
                                atms[master_ref], regpenalty)
@@ -240,6 +265,7 @@ def main(filename, data_dir, output_filename):
     # fit the position, but simply leave it as is. 
 
     exclude_from_fit = []
+    logging.info("fitting position of non-master refs %s", nonmaster_refs)
     for i in nonmaster_refs:
         cube = cubes[i]
 
@@ -276,6 +302,7 @@ def main(filename, data_dir, output_filename):
     weights = [cubes[i].weight for i in refs]
     ctrs = [(yctr[i], xctr[i]) for i in refs]
     atms_refs = [atms[i] for i in refs]
+    logging.info("fitting galaxy to all refs %s", refs)
     galaxy, fskys = fit_galaxy_sky_multi(galaxy, datas, weights, ctrs,
                                          atms_refs, regpenalty)
 
@@ -296,6 +323,8 @@ def main(filename, data_dir, output_filename):
     # all have some SN light). We simultaneously fit the position of
     # the SN itself.
 
+    logging.info("fitting position of all %d non-refs and SN position",
+                 len(nonrefs))
     datas = [cubes[i].data for i in nonrefs]
     weights = [cubes[i].weight for i in nonrefs]
     ctrs = [(yctr[i], xctr[i]) for i in nonrefs]
@@ -328,13 +357,15 @@ def main(filename, data_dir, output_filename):
     # and after this step to see if there is a bias towards the galaxy flux
     # increasing.
 
+    logging.info("fitting galaxy using all epochs")
     datas = [cube.data for cube in cubes]
     weights = [cube.weight for cube in cubes]
     ctrs = [(yctr[i], xctr[i]) for i in range(nt)]
 
     # subtract SN from non-ref cubes.
     for i in nonrefs:
-        psf = atm.evaluate_point_source(snctr, datas[i].shape[1:3], ctrs[i])
+        psf = atms[i].evaluate_point_source(snctr, datas[i].shape[1:3],
+                                            ctrs[i])
         snpsf = sn[i, :, None, None] * psf  # scaled PSF
         datas[i] = cubes[i].data - snpsf  # do *not* use in-place op (-=) here!
 
@@ -345,9 +376,14 @@ def main(filename, data_dir, output_filename):
 
     # -------------------------------------------------------------------------
     # Dump results dictionary to pickle.
-    
-    if os.path.exists(output_filename) and os.path.isfile(output_filename):
-        os.remove(output_filename)
-    output_file = open(output_filename, 'wb')
+    logging.info("writing results")
+    if os.path.exists(outfname) and os.path.isfile(outfname):
+        os.remove(outfname)
+    output_file = open(outfname, 'wb')
     pickle.dump(output_dict, output_file, protocol=2)
     output_file.close()
+
+    tfinish = datetime.now()
+    logging.info("finished at %s", tfinish.strftime("%Y-%m-%d %H:%M:%S"))
+    td = (tfinish - tstart).seconds
+    logging.info("took %dm%ds", t // 60, t % 60)
