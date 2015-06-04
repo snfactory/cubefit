@@ -162,11 +162,12 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO):
 
     # -------------------------------------------------------------------------
     # Load data cubes from the list of FITS files.
-    logging.info("reading data cubes")
+
+    nt = len(cfg["fnames"])
+    logging.info("reading %d data cubes", nt)
     cubes = [read_datacube(os.path.join(datadir, fname))
              for fname in cfg["fnames"]]
     wave = cubes[0].wave
-    nt = len(cubes)
     nw = len(wave)
     output_dict['Data'] = cubes
 
@@ -184,7 +185,7 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO):
     # -------------------------------------------------------------------------
     # Atmospheric conditions for each observation
 
-    logging.info("setting up PSF and ADR for all epochs")
+    logging.info("setting up PSF and ADR for all %d epochs", nt)
     atms = []
     for i in range(nt):
 
@@ -219,7 +220,7 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO):
     xctr = np.copy(cfg["xctr_init"])
     yctr = np.copy(cfg["yctr_init"])
 
-    logging.info("guessing sky for all epochs")
+    logging.info("guessing sky for all %d epochs", nt)
     skys = [guess_sky(cube, npix=20) for cube in cubes]
 
     # -------------------------------------------------------------------------
@@ -357,7 +358,7 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO):
     # and after this step to see if there is a bias towards the galaxy flux
     # increasing.
 
-    logging.info("fitting galaxy using all epochs")
+    logging.info("fitting galaxy using all %d epochs", nt)
     datas = [cube.data for cube in cubes]
     weights = [cube.weight for cube in cubes]
     ctrs = [(yctr[i], xctr[i]) for i in range(nt)]
@@ -385,5 +386,5 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO):
 
     tfinish = datetime.now()
     logging.info("finished at %s", tfinish.strftime("%Y-%m-%d %H:%M:%S"))
-    td = (tfinish - tstart).seconds
+    t = (tfinish - tstart).seconds
     logging.info("took %dm%ds", t // 60, t % 60)
