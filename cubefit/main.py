@@ -89,14 +89,28 @@ def parse_conf(inconf):
     else:
         yctr_init = np.zeros(nt)
 
-    # In the input file the coordinates are where we think the SN is
-    # located in the exposure (w.r.t the center of the cube). We
-    # negate them so that the positions are those of the data
-    # w.r.t. where we think the SN is. The model grid is thus defined
-    # as being centered on the initial guess for the SN position. (But
-    # the SN position is still allowed to move during the fit.)
-    outconf["xctr_init"] = -xctr_init
-    outconf["yctr_init"] = -yctr_init
+    # In the input file, we *think* the coordinates are where the center of
+    # the reference is relative to the exposure.
+
+    # First, negate the coordinates, so that they give the position of
+    # the center of each exposure relative to the center of the
+    # reference.
+    xctr_init = -xctr_init
+    yctr_init = -yctr_init
+
+    # Now, we guess that the SN is located at approximately the
+    # average center of all exposures (supposing that on average, we
+    # pointed perfectly at the SN). Determine the average center
+    # position:
+    avgxctr = np.average(xctr_init)
+    avgyctr = np.average(yctr_init)
+
+    # Finally, subtract this average position, effectively shifting
+    # the model reference frame to be centered on this location. Our
+    # guess at the SN position is then centered in this reference
+    # frame.
+    outconf["xctr_init"] = xctr_init - avgxctr
+    outconf["yctr_init"] = yctr_init - avgyctr
     outconf["sn_x_init"] = 0.
     outconf["sn_y_init"] = 0.
 
