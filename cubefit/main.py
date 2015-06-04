@@ -391,10 +391,34 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO):
     for i in range(nt):
         skys[i] = fskys[i]  # put fitted skys back in skys
 
+    if diagdir:
+        fname = os.path.join(diagdir, 'step4.pik')
+        write(galaxy, skys, sn, snctr, yctr, xctr, cubes[0].shape, atms,
+              fname)
+
+    # -------------------------------------------------------------------------
+    # Repeat step before last: fit position of data and SN in non-references
+
+    logging.info("re-fitting position of all %d non-refs and SN position",
+                 len(nonrefs))
+    datas = [cubes[i].data for i in nonrefs]
+    weights = [cubes[i].weight for i in nonrefs]
+    ctrs = [(yctr[i], xctr[i]) for i in nonrefs]
+    atms_nonrefs = [atms[i] for i in nonrefs]
+    fctrs, snctr, fskys, fsne = fit_position_sky_sn_multi(galaxy, datas,
+                                                          weights, ctrs,
+                                                          snctr, atms_nonrefs)
+
+    # put fitted results back in parameter lists.
+    for i,j in enumerate(nonrefs):
+        skys[j] = fskys[i]
+        sn[j, :] = fsne[i]
+        yctr[j], xctr[j] = fctrs[i]
+
     # -------------------------------------------------------------------------
     # Write results
 
-    logging.info("writing results")
+    logging.info("writing results to %s", outfname)
     write(galaxy, skys, sn, snctr, yctr, xctr, cubes[0].shape, atms,
           outfname)
 
