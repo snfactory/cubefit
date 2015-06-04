@@ -103,23 +103,37 @@ def parse_conf(inconf):
     return outconf
 
 
-def result_dict(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms):
-    """Package parameters into a dictionary for saving to a pickle file."""
+def write(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms, fname):
+    """Write results to a pickle"""
+
+    # This is a table with `nt` rows
+    nt = len(atms)
+    dtype = [('yctr', 'f8'),
+             ('xctr', 'f8'),
+             ('sn', 'f4', sn.shape[1]),
+             ('sky', 'f4', len(skys[0])),
+             ('galeval', 'f4', dshape),
+             ('sneval', 'f4', dshape)]
+
+    epochs = np.zeros(nt, dtype=dtype)
+    epochs['yctr'] = yctr
+    epochs['xctr'] = xctr
+    epochs['sn'] = sn
+    epochs['sky'] = skys
 
     # evaluate galaxy & PSF on data
-    galeval = []
-    psfeval = []
-    for i in range(len(atms)):
-        tg = atms[i].evaluate_galaxy(galaxy, dshape, (yctr[i], xctr[i]))
-        galeval.append(tg.copy())
-        tp = atms[i].evaluate_point_source(snctr, dshape, (yctr[i], xctr[i]))
-        psfeval.append(tp.copy())
+    for i in range(nt):
+        epochs['galeval'][i] = atms[i].evaluate_galaxy(galaxy, dshape[1:3],
+                                                       (yctr[i], xctr[i]))
+        epochs['sneval'][i] = atms[i].evaluate_point_source(snctr, dshape[1:3],
+                                                            (yctr[i], xctr[i]))
+
+    # multiply by sn amplitude
+    epochs['sneval'] *= sn[:, :, None, None]
     
-    return {'galaxy' : galaxy, 'snctr' : snctr,
-            'ctrs' : zip(copy(yctr), copy(xctr)),
-            'skys' : copy(skys), 'sn' : sn.copy(),
-            'galeval': galeval,
-            'psfeval': psfeval}
+    with open(fname, 'wb') as f:
+        results = {'galaxy': galaxy, 'snctr': snctr, 'epochs': epochs}
+        pickle.dump(results, f, protocol=2)
 
 
 def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO):
@@ -137,9 +151,9 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO):
         If supplied, write log to given file.
     loglevel : int, optional
         One of logging.DEBUG, logging.INFO (default), logging.WARNING, etc.
+    diagdir : str, optional
+        If given, write diagnostic output to this directory.
     """
-
-    output_dict = {}
 
     # Set up logging
     if logfname is None:
@@ -227,7 +241,6 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO):
     # Regularization penalty parameters
 
     # Calculate rough average galaxy spectrum from all final refs.
-    # TODO: use only spaxels that weren't masked in `guess_sky()`?
     spectra = np.zeros((len(refs), len(wave)))
     for j, i in enumerate(refs):
         spectra[j] = np.average(cubes[i].data, axis=(1, 2)) - skys[i]
@@ -249,9 +262,11 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO):
                                (yctr[master_ref], xctr[master_ref]),
                                atms[master_ref], regpenalty)
     
-    output_dict['MasterRefFit'] = result_dict(galaxy, skys, sn, snctr,
-                                              yctr, xctr,
-                                              (cubes[0].ny, cubes[0].nx), atms)
+    if diagdir:
+        fname = os.path.join(diagdir, 'step1.pik')
+        write(galaxy, skys, sn, snctr, yctr, xctr, cubes[0].shape, atms,
+              fname)
+
 
     # -------------------------------------------------------------------------
     # Fit the positions of the other final refs
@@ -311,10 +326,10 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO):
     for i,j in enumerate(refs):
         skys[j] = fskys[i]
 
-    output_dict['AllRefFit'] = result_dict(galaxy, skys, sn, snctr,
-                                           yctr, xctr,
-                                           (cubes[0].ny, cubes[0].nx), atms)
-
+    if diagdir:
+        fname = os.path.join(diagdir, 'step2.pik')
+        write(galaxy, skys, sn, snctr, yctr, xctr, cubes[0].shape, atms,
+              fname)
 
     # -------------------------------------------------------------------------
     # Fit position of data and SN in non-references
@@ -340,9 +355,10 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO):
         sn[j, :] = fsne[i]
         yctr[j], xctr[j] = fctrs[i]
 
-    output_dict['FinalFit'] = result_dict(galaxy, skys, sn, snctr,
-                                          yctr, xctr,
-                                          (cubes[0].ny, cubes[0].nx), atms)
+    if diagdir:
+        fname = os.path.join(diagdir, 'step3.pik')
+        write(galaxy, skys, sn, snctr, yctr, xctr, cubes[0].shape, atms,
+              fname)
                                           
     # -------------------------------------------------------------------------
     # Redo fit of galaxy, using ALL epochs, including ones with SN
@@ -376,13 +392,11 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO):
         skys[i] = fskys[i]  # put fitted skys back in skys
 
     # -------------------------------------------------------------------------
-    # Dump results dictionary to pickle.
+    # Write results
+
     logging.info("writing results")
-    if os.path.exists(outfname) and os.path.isfile(outfname):
-        os.remove(outfname)
-    output_file = open(outfname, 'wb')
-    pickle.dump(output_dict, output_file, protocol=2)
-    output_file.close()
+    write(galaxy, skys, sn, snctr, yctr, xctr, cubes[0].shape, atms,
+          outfname)
 
     tfinish = datetime.now()
     logging.info("finished at %s", tfinish.strftime("%Y-%m-%d %H:%M:%S"))
