@@ -310,9 +310,6 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty):
     return galaxy, skys
 
 
-# TODO: should we change this to use a general-purpose optimizer rather 
-# than leastsq? Leastsq seems like a strange choice for this problem
-# from what I can tell.
 def fit_position_sky(galaxy, data, weight, ctr0, atm):
     """Fit data position and sky for a single epoch (fixed galaxy model).
 
@@ -332,7 +329,7 @@ def fit_position_sky(galaxy, data, weight, ctr0, atm):
         Fitted sky.
     """
 
-    BOUND = 2. # +/- position bound in spaxels
+    BOUND = 3. # +/- position bound in spaxels
     minbound = np.array(ctr0) - BOUND
     maxbound = np.array(ctr0) + BOUND
 
@@ -345,11 +342,6 @@ def fit_position_sky(galaxy, data, weight, ctr0, atm):
     minbound[1] = max(minbound[1], xminabs)  # xmin
     maxbound[1] = min(maxbound[1], xmaxabs)  # xmax
 
-    # Define a function that returns the sqrt(weight) * (data-model)
-    # for the given epoch i_t, given the data position.
-    # scipy.optimize.leastsq will minimize the sum of the squares of this
-    # function's return value, so we're minimizing
-    # sum(weight * residual^2), which seems reasonable.
     def objective_func(ctr):
         if not (minbound[0] < ctr[0] < maxbound[0] and 
                 minbound[1] < ctr[1] < maxbound[1]):

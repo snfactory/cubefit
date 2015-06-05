@@ -23,10 +23,9 @@ __all__ = ["main"]
 MODEL_SHAPE = (32, 32)
 SNIFS_LATITUDE = np.deg2rad(19.8228)
 WAVE_REF_DEFAULT = 5000.
-MAXITER_FIT_POSITION = 100  # Max iterations in fit_position
-MAXMOVE_FIT_POSITION = 3.0  # maxmimum movement allowed in fit_position
 MIN_NMAD = 2.5  # Minimum Number of Median Absolute Deviations above
                 # the minimum spaxel value in fit_position
+SCALE_FACTOR = 10**17
 
 def parse_conf(inconf):
     """Parse the raw input configuration dictionary. Return a new dictionary.
@@ -117,8 +116,15 @@ def parse_conf(inconf):
     return outconf
 
 
-def write(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms, fname):
-    """Write results to a pickle"""
+def package_epoch_results(galaxy, skys, sn, snctr, yctr, xctr, dshape,
+                          atms):
+    """Package all by-epoch results into a single numpy structured array,
+    amenable to writing to either a pickle or FITS file.
+
+    Note that this format assumes that the data for all epochs has the same
+    spatial shape. A different format would have to be used if this were not
+    the case.
+    """
 
     # This is a table with `nt` rows
     nt = len(atms)
@@ -144,14 +150,29 @@ def write(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms, fname):
 
     # multiply by sn amplitude
     epochs['sneval'] *= sn[:, :, None, None]
+
+    return epochs
+
+
+def write_results_pik(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms,
+                      fname):
+    """Write results to a pickle."""
+
+    # descale (do NOT use-place ops here!)
+    galaxy = galaxy / SCALE_FACTOR
+    skys = skys / SCALE_FACTOR
+    sn = sn / SCALE_FACTOR
+    epochs = package_epoch_results(galaxy, skys, sn, snctr, yctr, xctr,
+                                   dshape, atms)
     
     with open(fname, 'wb') as f:
         results = {'galaxy': galaxy, 'snctr': snctr, 'epochs': epochs}
         pickle.dump(results, f, protocol=2)
 
 
-def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO):
-    """Do everything.
+def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO,
+         diagdir=None):
+    """Run cubefit.
 
     Parameters
     ----------
@@ -195,16 +216,21 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO):
     logging.info("reading %d data cubes", nt)
     cubes = [read_datacube(os.path.join(datadir, fname))
              for fname in cfg["fnames"]]
+
+    # scale cubes so that optimizer works better. Results
+    # are descaled when written out.
+    for cube in cubes:
+        cube.data *= SCALE_FACTOR
+        cube.weight /= SCALE_FACTOR**2
+
     wave = cubes[0].wave
     nw = len(wave)
-    output_dict['Data'] = cubes
 
     # assign some local variables for convenience
     refs = cfg["refs"]
     master_ref = cfg["master_ref"]
     nonmaster_refs = refs[refs != master_ref]
     nonrefs = [i for i in range(nt) if i not in refs]
-    output_dict['Refs'] = refs
 
     # Ensure that all cubes have the same wavelengths.
     if not all(np.all(cubes[i].wave == wave) for i in range(1, nt)):
@@ -249,7 +275,7 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO):
     yctr = np.copy(cfg["yctr_init"])
 
     logging.info("guessing sky for all %d epochs", nt)
-    skys = [guess_sky(cube, npix=20) for cube in cubes]
+    skys = np.array([guess_sky(cube, npix=20) for cube in cubes])
 
     # -------------------------------------------------------------------------
     # Regularization penalty parameters
@@ -278,8 +304,8 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO):
     
     if diagdir:
         fname = os.path.join(diagdir, 'step1.pik')
-        write(galaxy, skys, sn, snctr, yctr, xctr, cubes[0].shape, atms,
-              fname)
+        write_results_pik(galaxy, skys, sn, snctr, yctr, xctr,
+                          cubes[0].data.shape, atms, fname)
 
 
     # -------------------------------------------------------------------------
@@ -294,7 +320,6 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO):
     # If there are less than 20 "significant" spaxels, we do not attempt to
     # fit the position, but simply leave it as is. 
 
-    exclude_from_fit = []
     logging.info("fitting position of non-master refs %s", nonmaster_refs)
     for i in nonmaster_refs:
         cube = cubes[i]
@@ -309,21 +334,13 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO):
         mask = gal2d > np.min(gal2d) + MIN_NMAD * mad
         if mask.sum() < 20:
             continue
+
         weight = cube.weight * mask[None, :, :]
 
-        fctr, skys[i] = fit_position_sky(galaxy, cube.data, weight,
-                                         (yctr[i], xctr[i]), atms[i])
-
-        # Check if the position moved too much from initial position.
-        # If it didn't move too much, update the model.
-        # If it did, cut it from the fitting for the next step.
-        dist = math.sqrt((fctr[0] - yctr[i])**2 + (fctr[1] - xctr[i])**2)
-        if dist < MAXMOVE_FIT_POSITION:
-            yctr[i] = fctr[0]
-            xctr[i] = fctr[1]
-        else:
-            exclude_from_fit.append(i)
-
+        fctr, fsky = fit_position_sky(galaxy, cube.data, weight,
+                                      (yctr[i], xctr[i]), atms[i])
+        yctr[i], xctr[i] = fctr
+        skys[i] = fsky
 
     # -------------------------------------------------------------------------
     # Redo model fit, this time including all final refs.
@@ -342,8 +359,8 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO):
 
     if diagdir:
         fname = os.path.join(diagdir, 'step2.pik')
-        write(galaxy, skys, sn, snctr, yctr, xctr, cubes[0].shape, atms,
-              fname)
+        write_results_pik(galaxy, skys, sn, snctr, yctr, xctr,
+                          cubes[0].data.shape, atms, fname)
 
     # -------------------------------------------------------------------------
     # Fit position of data and SN in non-references
@@ -371,8 +388,8 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO):
 
     if diagdir:
         fname = os.path.join(diagdir, 'step3.pik')
-        write(galaxy, skys, sn, snctr, yctr, xctr, cubes[0].shape, atms,
-              fname)
+        write_results_pik(galaxy, skys, sn, snctr, yctr, xctr,
+                          cubes[0].data.shape, atms, fname)
                                           
     # -------------------------------------------------------------------------
     # Redo fit of galaxy, using ALL epochs, including ones with SN
@@ -407,8 +424,8 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO):
 
     if diagdir:
         fname = os.path.join(diagdir, 'step4.pik')
-        write(galaxy, skys, sn, snctr, yctr, xctr, cubes[0].shape, atms,
-              fname)
+        write_results_pik(galaxy, skys, sn, snctr, yctr, xctr,
+                          cubes[0].data.shape, atms, fname)
 
     # -------------------------------------------------------------------------
     # Repeat step before last: fit position of data and SN in non-references
@@ -433,8 +450,8 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO):
     # Write results
 
     logging.info("writing results to %s", outfname)
-    write(galaxy, skys, sn, snctr, yctr, xctr, cubes[0].shape, atms,
-          outfname)
+    write_results_pik(galaxy, skys, sn, snctr, yctr, xctr,
+                      cubes[0].data.shape, atms, outfname)
 
     tfinish = datetime.now()
     logging.info("finished at %s", tfinish.strftime("%Y-%m-%d %H:%M:%S"))

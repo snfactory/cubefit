@@ -1,27 +1,60 @@
 #!/usr/bin/env python
+"""Plot results and diagnostics from cubefit"""
+
 from __future__ import print_function
 
 import cPickle as pickle
 from argparse import ArgumentParser
+from os.path import join
+import json
+from collections import OrderedDict
+import numpy as np
+
 import cubefit
 
-parser = ArgumentParser(description="ddt-plot")
-parser.add_argument("result_filename",
-                    help="output from ddt-fit (.pkl file)")
-parser.add_argument("figure_prefix", help="output prefix")
-parser.add_argument("parameter_file", help="ddt input json file")
+
+def read_results_pik(fname):
+    with open(fname, 'rb') as f:
+        return pickle.load(f)
+
+# arguments are the same as cubefit except an output 
+parser = ArgumentParser(prog="cubefit-plot", description=__doc__)
+parser.add_argument("configfile", help="configuration filename")
+parser.add_argument("datadir", help="directory containing FITS data files")
+parser.add_argument("resultfile", help="Result filename from cubefit"
+                    " (pickle format)")
+parser.add_argument("outprefix", help="output prefix")
 parser.add_argument('-b', '--band', help='timeseries band', default='B',
                     dest='band')
+parser.add_argument("--diagdir", default=None,
+                    help="If given, read intermediate diagnostic "
+                    "results from this directory and include in plot(s)")
 
 args = parser.parse_args()
 
-f = open(args.result_filename, 'rb')
-result_dict = pickle.load(f)
-f.close()
+# Read in data
+with open(args.configfile) as f:
+    cfg = json.load(f)
+cubes = [cubefit.read_datacube(join(args.datadir, fname))
+         for fname in cfg["IN_CUBE"]]
 
-cubefit.plot_timeseries(result_dict, fname='%s_timeseries.eps' 
-                        % args.figure_prefix)
-cubefit.plot_wave_slices(result_dict, fname='%s_waveslice.eps' 
-                         % args.figure_prefix)
-cubefit.plot_sn(result_dict, args.parameter_file,
-                fname='%s_sn.eps' % args.figure_prefix)
+# Read in results, optionally with diagnostics.
+results = OrderedDict()
+if args.diagdir is not None:
+    for name in ["step1", "step2", "step3", "step4"]:
+        results[name] = read_results_pik(join(args.diagdir, name+".pik"))
+results['final'] = read_results_pik(args.resultfile)
+
+cubefit.plot_timeseries(cubes, results,
+                        fname=(args.outprefix + '_timeseries.eps'))
+
+# plot wave slices, just for final refs.
+isref = np.array(cfg["PARAM_IS_FINAL_REF"], dtype=np.bool)
+refcubes = [cubes[i] for i in range(len(cubes)) if isref[i]]
+refgaleval = results['final']['epochs']['galeval'][isref]
+cubefit.plot_wave_slices(refcubes, refgaleval,
+                         fname=(args.outprefix + '_waveslice.eps'))
+
+# The IDR stuff should be decoupled in this function
+#cubefit.plot_sn(results['final']['epochs']['sn'], cfg,
+#                fname=(args.outprefix + %s_sn.eps'))
