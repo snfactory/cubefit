@@ -1,0 +1,251 @@
+\documentclass[12pt]{article}
+\usepackage{amsmath}
+\usepackage{txfonts}
+
+%- Abbreviations.
+\newcommand{\psf}{\mathbf{H}}
+\newcommand{\hhat}{\mathbf{\hat h}}
+\newcommand{\x}{\mathbf{x}}
+\newcommand{\xhat}{\mathbf{\hat x}}
+\newcommand{\y}{\mathbf{y}}
+\newcommand{\rvect}{\mathbf{r}}
+\newcommand{\W}{\mathbf{W}}
+\newcommand{\A}{\mathbf{A}}
+\newcommand{\avect}{\mathbf{a}}
+\newcommand{\F}{\mathbf{F}}
+
+
+
+\newcommand{\ddx}{\frac{\partial}{\partial \mathbf{x}}}
+\newcommand{\ddxi}{\frac{\partial}{\partial \mathbf{x}_{i}}}
+
+\newcommand{\Nsn}{\textbf{XXX}}
+\newcommand{\Nspec}{\textbf{YYY}}
+
+
+\newcommand{\rem}[1]{\textbf{[\textsl{#1}]}}
+\newcommand{\szf}[1]{\textbf{\textsl{SZF: #1}}}
+
+% -----------------------------------------------------------------------------
+% Document
+
+\begin{document}
+
+\title{CubeFit $\chi^2$ gradient calculation}
+\author{S.~Bongard, Kyle Barbary}
+\maketitle
+\begin{abstract}
+In CubeFit, one of the fitting steps is to fit the galaxy model to the
+data while holding other parameters (such as positions) fixed. The
+galaxy model has on order $\sim$1 million parameters. The ability to
+analytically calculate the gradient (a vector of length ~$\sim$ 1
+million) on the fit $\chi^2$ is essential in order to do the fit
+efficiently. This note explains the derivation of the analytic
+gradient.
+\end{abstract}
+
+\section{Matrix representation of the discrete Fourier transform}
+
+The discrete Fourier transform of a 1-d array $x_n$ is
+
+\begin{equation}
+X_k = \sum_{n=0}^{N-1} x_n e^{-i 2 \pi k n / N}
+\end{equation}
+
+We can write this in matrix form,
+
+\begin{equation}
+\mathbf{X} = \left( \begin{array}{cccc}
+   e^{-i 2\pi 0 \cdot 0 / N} & e^{-i 2\pi 0\cdot 1 / N} & e^{-i 2\pi 0 \cdot 2 / N} & \cdots \\
+   e^{-i 2\pi 1 \cdot 0 / N} & e^{-i 2\pi 1 \cdot1 / N} & e^{-i 2\pi 1 \cdot 2 / N} & \cdots \\
+   e^{-i 2\pi 2 \cdot 0 / N} & e^{-i 2\pi 2 \cdot 1 / N} & e^{-i 2\pi 2 \cdot 2 / N} & \cdots \\
+   \vdots & \vdots & \vdots & \ddots
+   \end{array} \right)
+   \left( \begin{array}{c} x_0 \\ x_1 \\ x_2 \\ \vdots \end{array} \right)
+\end{equation}
+
+For a shorthand, we will call the square matrix $\mathbf{F}$
+
+\begin{equation}
+\mathbf{X} = \mathbf{F} \mathbf{x}
+\end{equation}
+
+Similarly, the inverse transform can be written
+
+\begin{equation}
+x_n = \frac{1}{N} \sum_{k=0}^{N-1} X_k e^{i 2 \pi k n / N}
+\end{equation}
+
+or
+
+\begin{equation}
+   \mathbf{x} = \frac{1}{N} \left( \begin{array}{cccc}
+   e^{i 2\pi 0 \cdot 0 / N} & e^{i 2\pi 1 \cdot 0 / N} & e^{i 2\pi 2 \cdot 0 / N} & \cdots \\
+   e^{i 2\pi 0 \cdot 1 / N} & e^{i 2\pi 1 \cdot 1 / N} & e^{i 2\pi 2 \cdot 1 / N} & \cdots \\
+   e^{i 2\pi 0 \cdot 2 / N} & e^{i 2\pi 1 \cdot 2 / N} & e^{i 2\pi 2 \cdot 2 / N} & \cdots \\
+   \vdots & \vdots & \vdots & \ddots
+   \end{array} \right)
+   \left( \begin{array}{c} X_0 \\ X_1 \\ X_2 \\ \vdots \end{array} \right)
+\end{equation}
+
+or as shorthand,
+
+\begin{equation}
+\mathbf{x} = \mathbf{F}^{-1} \mathbf{X}
+\end{equation}
+
+Now, note that the matrix $\mathbf{F}$ has the properties
+
+\begin{equation}
+\mathbf{F}^{-1} = \frac{1}{N} \bar{\mathbf{F}}
+\end{equation}
+
+where $\bar{\mathbf{F}}$ is the element-wise complex
+conjugate of $\mathbf{F}$.
+
+
+\section{Matricial form}
+
+\begin{equation}
+  \label{eq:1}
+  \ddx \x^{T}\psf\x = (\psf + \psf^{T}) \x
+\end{equation}
+
+\begin{eqnarray*}
+  \label{eq:2}
+  \ddxi \x^{T}\psf\x & = & \ddxi \left( \sum_{j} x_{j} \sum_{l} H_{j,l} x_{l}  \right) \\
+                     & = & \sum_{l} H_{i,l} x_{l} + \sum{j} H_{j,i} x_{j} \\
+                     & = & \left( \psf \x + \psf^{T} \x␇ \right)_{i}
+\end{eqnarray*}
+
+
+By writing explicitly $\partial (\psf \x)_{j} / \partial x_{i}
+= \partial/\partial x_{i} \left( \sum_{l} H_{j,l} x_{l}\right)$ and its transpose
+it is easy to show the two following formulae. It is just important to make sure
+to write the product in the exact same way depending on if $\x$ is on the left
+or on the right of $\psf$: $\left( \psf \x \right)_{j} =  \sum_{l} H_{l,j} x_{l}$
+and $\left( \x^{T} \psf \right)_{j} =  \sum_{l} x_{l} H_{j,l}$
+
+\begin{equation}
+  \label{eq:3}
+  \ddx \left( \x^{T} \psf \right) = \ddx \left( \x^{T} \psf \right)^{T} = \psf^{T}
+\end{equation}
+
+\begin{equation}
+  \label{eq:4}
+  \ddx \left( \psf \x \right) =  \ddx \left( \psf \x \right)^{T} = \psf
+\end{equation}
+
+
+
+From now on, we assume that $\W = \W^{T}$.
+
+\begin{eqnarray*}
+  \label{eq:5}
+  \ddx \chi^{2} & = & \ddx \left( (\psf \x - \y)^{T} \W (\psf \x - y) \right)\\
+                & = & \ddx \left( (\psf \x)^{T} \W \psf \x \right)  
+                    - \ddx \left( (\psf \x)^{T} \W \y \right)
+                    - \ddx \left( \y^{T} \W \psf \x \right) \\
+                & = & \ddx \left( \x^{T} \psf^{T} \W \psf \x \right)
+                    - \ddx \left( \x^{T} \psf^{T} \W \y \right)
+                    - \ddx \left( \y^{T} \W \psf \x \right) \\
+                & = & \ddx \left( \x^{T} \psf^{T} \W \psf \x \right)
+                    - \ddx \left( \x^{T} \psf^{T} \W \y \right)
+                    - \ddx \left( (\psf^{T} \W \y)^{T} \x \right) \\
+\end{eqnarray*}
+
+We note that $(\psf^{T} \W \y)^{T}$ and $\psf^{T} \W \y$ are vectors. The two
+last terms of the equation are thus of the form $\frac{\partial \x^{T}
+  \mathbf{a}}{\partial \x} = \frac{\partial \mathbf{a}^{T} \x}{\partial \x} =
+\mathbf{a} $, with $\mathbf{a} = \psf^{T} \W \y$ . And thus finally we have:
+
+\begin{eqnarray*}
+  \label{eq:6}
+  \ddx \chi^{2} & = & \left( \psf^{T} \W \psf + (\psf^{T} \W \psf)^{T} \right) 
+                       - 2 \psf^{T} \W \y\\
+                & = & 2 \psf^{T} \W \psf \x - 2 \psf^{T} \W \y \\
+                & = & 2 \psf^{T} \W \left( \psf \x - \y \right) \\
+\end{eqnarray*}
+
+
+\section{Fourier transform form}
+
+The discrete Fourier transform of a vector $\x$ is:
+
+\begin{equation}
+  \label{eq:7}
+  F(\x)_{k} = \sum_{j}^{N} x_{j} e^{- \frac{2\pi k j}{N}} = (\F \x)_{k}
+\end{equation}
+
+And the inverse discrete Fourier transform of vector $\xhat$ is
+\begin{equation}
+  \label{eq:8}
+  F(\xhat)_{j} = \frac{1}{N} \sum_{k}^{N} \hat x_{k} e^{ \frac{2\pi j k}{N}} =
+  (\F^{-1} \xhat)_{j}
+\end{equation}
+
+We chose to use the $1/N$ factor in the inverse transform because it makes the
+normalization easier to carry accros calculations.
+
+Since we can switch $j$ and $k$ in the exponentials above, we see that the
+discrete direct and inverse Fourier transform in matricial form are related by
+the formulae:
+\begin{eqnarray*}
+  \label{eq:9}
+  \F^{-1} & = &\frac{1}{N} \F^{*T} \\
+  \F^{-1*T} & = &\frac{1}{N} \F \\
+\end{eqnarray*}
+where $^{*}$ denotes the complex conjugation.
+
+
+Let us now introduce the $diag()$ operator, which transforms a vector into a
+diagonal matrix, the diagonal being the vector it operates upon: if $\A =
+diag(\avect)$, then $\A_{i,j} = \delta_{i,j} a_{i}$. The vector obtained by an
+element to element multiplication between $\x$ and $\avect$ can thus be writen
+$diag(\avect) \x$.
+
+In matrix form, the Fourier transform of the PSF convolution of vector $\x$ thus
+writes as the element to element product of $\hhat = \F(\psf)$ and $\xhat =
+\F(\x)$. 
+
+The operator \emph{convolution by the PSF} thus writes in matricial form:
+\begin{equation}
+  \label{eq:11}
+  \psf = \F^{-1} diag(\hhat) \F
+\end{equation}
+
+From the equation of the matricial derivative of the $\chi^{2}$ derived in the
+previous section, we also need to now how to write $\psf^{T} = \F^{T}
+diag(\hhat)^{T} \F^{-1T}$ in a form that has the Fourier transforms in the same
+order. 
+
+Since $\psf$ is a Real operator, we have $\psf = \psf^{*}$, and thus $\psf^{T} =
+\psf^{*T}$.
+
+Therefore, using the relations between direct and indirect Fourier transposes
+derived above and the fact that the transpose of a diagonal matrix is the matrix
+itself, we find:
+\begin{eqnarray*}
+  \label{eq:12}
+  \psf^{T} & = & \F^{T} diag(\hhat)^{T} \F^{-1T}\\
+           & = & (\F^{T} diag(\hhat)^{T} \F^{-1T})^{*}\\
+           & = & \F^{T*} diag(\hhat)^{T*} \F^{-1T*}\\
+           & = & N\F^{-1} diag(\hhat)^{*} \frac{1}{N}\F\\
+           & = & \F^{-1} diag(\hhat)^{*} \F\\
+\end{eqnarray*}
+
+If we now write the residual $\rvect = \psf \x - \y$, we finally find that the
+derivative of the $\chi^{2}$ writes:
+\begin{equation}
+  \label{eq:13}
+  \ddx \chi^{2} = \F^{-1} diag(\hhat)^{*} \F(\W \mathbf{\rvect}) 
+\end{equation}
+
+
+
+
+
+
+
+\end{document}
+
