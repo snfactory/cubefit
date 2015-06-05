@@ -18,6 +18,9 @@ parser.add_argument("--loglevel", default="info",
 parser.add_argument("--diagdir", default=None,
                     help="If given, write intermediate diagnostic results to "
                     "this directory")
+parser.add_argument("--refitgal", default=False, action="store_true",
+                    help="Add an iteration where galaxy model is fit using "
+                    "all epochs and then data/SN positions are refit")
 
 args = parser.parse_args()
 
@@ -28,4 +31,5 @@ if not isinstance(numlevel, int):
     exit(1)
 
 cubefit.main(args.configfile, args.datadir, args.outfile,
-             logfname=args.logfile, loglevel=numlevel, diagdir=args.diagdir)
+             logfname=args.logfile, loglevel=numlevel, diagdir=args.diagdir,
+             refitgal=args.refitgal)

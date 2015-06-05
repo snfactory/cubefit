@@ -171,7 +171,7 @@ def write_results_pik(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms,
 
 
 def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO,
-         diagdir=None):
+         diagdir=None, refitgal=False):
     """Run cubefit.
 
     Parameters
@@ -382,69 +382,74 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO,
 
     # put fitted results back in parameter lists.
     for i,j in enumerate(nonrefs):
-        skys[j] = fskys[i]
+        skys[j, :] = fskys[i]
         sn[j, :] = fsne[i]
         yctr[j], xctr[j] = fctrs[i]
 
-    if diagdir:
-        fname = os.path.join(diagdir, 'step3.pik')
-        write_results_pik(galaxy, skys, sn, snctr, yctr, xctr,
-                          cubes[0].data.shape, atms, fname)
-                                          
     # -------------------------------------------------------------------------
-    # Redo fit of galaxy, using ALL epochs, including ones with SN
-    # light.  We hold the SN "fixed" simply by subtracting it from the
-    # data and fitting the remainder.
-    #
-    # This is slightly dangerous: any errors in the original SN determination,
-    # whether due to an incorrect PSF or ADR model or errors in the galaxy
-    # model will result in residuals. The galaxy model will then try to
-    # compensate for these.
-    #
-    # We should look at the galaxy model at the position of the SN before
-    # and after this step to see if there is a bias towards the galaxy flux
-    # increasing.
+    # optional step(s)
 
-    logging.info("fitting galaxy using all %d epochs", nt)
-    datas = [cube.data for cube in cubes]
-    weights = [cube.weight for cube in cubes]
-    ctrs = [(yctr[i], xctr[i]) for i in range(nt)]
+    if refitgal:
 
-    # subtract SN from non-ref cubes.
-    for i in nonrefs:
-        psf = atms[i].evaluate_point_source(snctr, datas[i].shape[1:3],
-                                            ctrs[i])
-        snpsf = sn[i, :, None, None] * psf  # scaled PSF
-        datas[i] = cubes[i].data - snpsf  # do *not* use in-place op (-=) here!
+        if diagdir:
+            fname = os.path.join(diagdir, 'step3.pik')
+            write_results_pik(galaxy, skys, sn, snctr, yctr, xctr,
+                              cubes[0].data.shape, atms, fname)
 
-    galaxy, fskys = fit_galaxy_sky_multi(galaxy, datas, weights, ctrs,
-                                         atms, regpenalty)
-    for i in range(nt):
-        skys[i] = fskys[i]  # put fitted skys back in skys
+        # ---------------------------------------------------------------------
+        # Redo fit of galaxy, using ALL epochs, including ones with SN
+        # light.  We hold the SN "fixed" simply by subtracting it from the
+        # data and fitting the remainder.
+        #
+        # This is slightly dangerous: any errors in the original SN
+        # determination, whether due to an incorrect PSF or ADR model
+        # or errors in the galaxy model will result in residuals. The
+        # galaxy model will then try to compensate for these.
+        #
+        # We should look at the galaxy model at the position of the SN
+        # before and after this step to see if there is a bias towards
+        # the galaxy flux increasing.
 
-    if diagdir:
-        fname = os.path.join(diagdir, 'step4.pik')
-        write_results_pik(galaxy, skys, sn, snctr, yctr, xctr,
-                          cubes[0].data.shape, atms, fname)
+        logging.info("fitting galaxy using all %d epochs", nt)
+        datas = [cube.data for cube in cubes]
+        weights = [cube.weight for cube in cubes]
+        ctrs = [(yctr[i], xctr[i]) for i in range(nt)]
 
-    # -------------------------------------------------------------------------
-    # Repeat step before last: fit position of data and SN in non-references
+        # subtract SN from non-ref cubes.
+        for i in nonrefs:
+            psf = atms[i].evaluate_point_source(snctr, datas[i].shape[1:3],
+                                                ctrs[i])
+            snpsf = sn[i, :, None, None] * psf  # scaled PSF
+            datas[i] = cubes[i].data - snpsf  # do *not* use in-place op (-=)!
 
-    logging.info("re-fitting position of all %d non-refs and SN position",
-                 len(nonrefs))
-    datas = [cubes[i].data for i in nonrefs]
-    weights = [cubes[i].weight for i in nonrefs]
-    ctrs = [(yctr[i], xctr[i]) for i in nonrefs]
-    atms_nonrefs = [atms[i] for i in nonrefs]
-    fctrs, snctr, fskys, fsne = fit_position_sky_sn_multi(galaxy, datas,
-                                                          weights, ctrs,
-                                                          snctr, atms_nonrefs)
+        galaxy, fskys = fit_galaxy_sky_multi(galaxy, datas, weights, ctrs,
+                                             atms, regpenalty)
+        for i in range(nt):
+            skys[i] = fskys[i]  # put fitted skys back in skys
 
-    # put fitted results back in parameter lists.
-    for i,j in enumerate(nonrefs):
-        skys[j] = fskys[i]
-        sn[j, :] = fsne[i]
-        yctr[j], xctr[j] = fctrs[i]
+        if diagdir:
+            fname = os.path.join(diagdir, 'step4.pik')
+            write_results_pik(galaxy, skys, sn, snctr, yctr, xctr,
+                              cubes[0].data.shape, atms, fname)
+
+        # ---------------------------------------------------------------------
+        # Repeat step before last: fit position of data and SN in
+        # non-references
+
+        logging.info("re-fitting position of all %d non-refs and SN position",
+                     len(nonrefs))
+        datas = [cubes[i].data for i in nonrefs]
+        weights = [cubes[i].weight for i in nonrefs]
+        ctrs = [(yctr[i], xctr[i]) for i in nonrefs]
+        atms_nonrefs = [atms[i] for i in nonrefs]
+        fctrs, snctr, fskys, fsne = fit_position_sky_sn_multi(
+            galaxy, datas, weights, ctrs, snctr, atms_nonrefs)
+
+        # put fitted results back in parameter lists.
+        for i,j in enumerate(nonrefs):
+            skys[j] = fskys[i]
+            sn[j, :] = fsne[i]
+            yctr[j], xctr[j] = fctrs[i]
 
     # -------------------------------------------------------------------------
     # Write results
