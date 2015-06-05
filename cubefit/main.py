@@ -171,7 +171,7 @@ def write_results_pik(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms,
 
 
 def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO,
-         diagdir=None, refitgal=False):
+         diagdir=None, refitgal=False, fit_params={}):
     """Run cubefit.
 
     Parameters
@@ -209,6 +209,10 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO,
         cfg = json.load(f)
         cfg = parse_conf(cfg)
 
+    # Change any parameters that have been chosen at command line.
+    for key in fit_params.keys():
+        if fit_params[key] is not None:
+            cfg[key] = fit_params[key]
     # -------------------------------------------------------------------------
     # Load data cubes from the list of FITS files.
 
@@ -229,6 +233,9 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO,
     # assign some local variables for convenience
     refs = cfg["refs"]
     master_ref = cfg["master_ref"]
+    if master_ref not in refs:
+        raise ValueError("master ref choice must be one of the final refs (" +
+                         " ".join(refs.astype(str)) + ")")
     nonmaster_refs = refs[refs != master_ref]
     nonrefs = [i for i in range(nt) if i not in refs]
 
