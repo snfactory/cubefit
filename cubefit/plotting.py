@@ -40,34 +40,58 @@ def plot_timeseries(cubes, results, band='B', fname=None):
     cube_shape = cubes[0].data.shape
     wave = cubes[0].wave
 
-    # one column for each data epoch, plus 2 extras for model
-    ncol = nt + 2
-    # one row for the data, two for each step in the fit (model and residual)
-    nrow = 1 + 2 * len(results)
+    ncol = nt + 2  # one column for each data epoch, plus 2 extras for model
+    nrow = 1 + 2 * len(results)  # one row for the data, two for each
+                                 # step in the fit (model and residual)
     figsize = (STAMP_SIZE * ncol, STAMP_SIZE * nrow)
     fig = plt.figure(figsize=figsize)
 
     # upper and lower wavelength limits
     wmin, wmax = BAND_LIMITS[band]
     mask = (wave > wmin) & (wave < wmax)
-    vmin, vmax = np.zeros(nt), np.zeros(nt)
-    z_mask = []
+
+    # plot data for each epoch, keeping track of vmin/vmax for each.
+    datavmin = np.zeros(nt)
+    datavmax = np.zeros(nt)
     for i_t, cube in enumerate(cubes):
-        data_image = np.average(cube.data[mask, :, :], axis=0)
-        z_mask.append(data_image != 0)
-        vmax[i_t] = 1.1*np.max(data_image)
-        vmin[i_t] = -0.2*np.max(data_image)
+        dataim = np.average(cube.data[mask, :, :], axis=0)
+        datavmax[i_t] = 1.1*np.max(dataim)
+        datavmin[i_t] = -0.2*np.max(dataim)
         ax = plt.subplot2grid((nrow, ncol), (0, i_t + 2))
-        ax.imshow(data_image, #vmin=vmin[i_t], vmax=vmax[i_t],
-                  cmap=COLORMAP, vmin = vmin[i_t], vmax = vmax[i_t],
+        ax.imshow(dataim, cmap=COLORMAP, vmin=datavmin[i_t], vmax=datavmax[i_t],
                   interpolation='nearest', origin='lower')
         ax.xaxis.set_major_locator(NullLocator())
         ax.yaxis.set_major_locator(NullLocator())
         if i_t == 0:
             ax.set_ylabel('Data')
 
+    # evaluate all scenes and residuals first, so we can set vmin/vmax uniformly
+    scenes = []
+    residuals = []
+    for result in results.values():
+        epochs = result['epochs']
+        scenerow = []
+        residualrow = []
+        for i_t in range(nt):
+            galeval = epochs['galeval'][i_t]
+            sneval = epochs['sneval'][i_t]
+            sky = epochs['sky'][i_t, :, None, None]
+            scene = sky + galeval + sneval
+            residual = cubes[i_t].data - scene
+            scenerow.append(np.average(scene[mask, :, :], axis=0))
+            residualrow.append(np.average(residual[mask, :, :], axis=0))
+        scenes.append(scenerow)
+        residuals.append(residualrow)
 
-    for f, (key, result)  in enumerate(results.iteritems()):
+    # Set residual vmin/vmax based on *last* row.
+    residvmin = np.zeros(nt)
+    residvmax = np.zeros(nt)
+    for i_t, residualim in enumerate(residuals[-1]):
+        std = np.std(residualim)
+        residvmin[i_t] = -1.5 * std
+        residvmax[i_t] = 1.5 * std
+
+    for f, (key, result) in enumerate(results.iteritems()):
 
         galaxy = result['galaxy']
         epochs = result['epochs']
@@ -82,41 +106,26 @@ def plot_timeseries(cubes, results, band='B', fname=None):
         
         # evaluated model and residuals
         for i_t in range(nt):
-            galeval = epochs['galeval'][i_t]
-            sneval = epochs['sneval'][i_t]
-            sky = epochs['sky'][i_t, :, None, None]
-            prediction = sky + galeval + sneval
-            residual = cubes[i_t].data - prediction
-            prediction_image = np.average(prediction[mask, :, :], axis=0)
-            residual_image = np.average(residual[mask, :, :], axis=0)
-            if np.min(residual_image[z_mask[i_t]]) < vmin[i_t]:
-                print('Vmin too big',
-                      np.sum(residual_image[z_mask[i_t]] < vmin[i_t]))
-            if np.min(prediction_image[z_mask[i_t]]) < vmin[i_t]:
-                print('Vmin too big for pred',
-                      np.min(prediction_image[z_mask[i_t]]), vmin[i_t])
-            if np.max(prediction_image[z_mask[i_t]]) > vmax[i_t]:
-                print('Vmax too small for pred',
-                      np.max(prediction_image[z_mask[i_t]]), vmax[i_t])
             ax1 = plt.subplot2grid((nrow, ncol), (1+2*f,i_t+2))
-            ax1.imshow(prediction_image, cmap=COLORMAP, interpolation='nearest',
-                      origin='lower', vmin=vmin[i_t], vmax=vmax[i_t])
+            ax1.imshow(scenes[f][i_t], cmap=COLORMAP, interpolation='nearest',
+                       origin='lower', vmin=datavmin[i_t], vmax=datavmax[i_t])
+
             ax2 = plt.subplot2grid((nrow, ncol), (1+2*f+1,i_t+2))
-            ax2.imshow(residual_image, cmap=COLORMAP, interpolation='nearest',
-                      origin='lower', vmin=vmin[i_t], vmax=vmax[i_t])
+            ax2.imshow(residuals[f][i_t], cmap=COLORMAP, interpolation='nearest',
+                       origin='lower', vmin=residvmin[i_t], vmax=residvmax[i_t])
+
             ax1.xaxis.set_major_locator(NullLocator())
             ax1.yaxis.set_major_locator(NullLocator())
             ax2.xaxis.set_major_locator(NullLocator())
             ax2.yaxis.set_major_locator(NullLocator())
+
             if i_t == 0:
                 ax1.set_ylabel('Models', fontsize=8)
                 ax2.set_ylabel('Residuals', fontsize=8)
                 ax1.yaxis.set_label_coords(-0.02, 0.5)
                 ax2.yaxis.set_label_coords(-0.02, 0.5)
 
-
     fig.subplots_adjust(left=0.02, right=0.999, bottom=0.02, top=0.98,
-                        #hspace=0.01,
                         wspace=0.01)
 
     if fname is None:
