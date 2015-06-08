@@ -3,9 +3,9 @@
 
 from __future__ import print_function
 
-import cPickle as pickle
+import glob
 from argparse import ArgumentParser
-from os.path import join
+from os.path import join, basename
 import json
 from collections import OrderedDict
 import numpy as np
@@ -13,16 +13,11 @@ import numpy as np
 import cubefit
 
 
-def read_results_pik(fname):
-    with open(fname, 'rb') as f:
-        return pickle.load(f)
-
 # arguments are the same as cubefit except an output 
 parser = ArgumentParser(prog="cubefit-plot", description=__doc__)
 parser.add_argument("configfile", help="configuration filename")
 parser.add_argument("datadir", help="directory containing FITS data files")
-parser.add_argument("resultfile", help="Result filename from cubefit"
-                    " (pickle format)")
+parser.add_argument("resultfile", help="Result filename from cubefit")
 parser.add_argument("outprefix", help="output prefix")
 parser.add_argument('-b', '--band', help='timeseries band', default='B',
                     dest='band')
@@ -35,15 +30,16 @@ args = parser.parse_args()
 # Read in data
 with open(args.configfile) as f:
     cfg = json.load(f)
-cubes = [cubefit.read_datacube(join(args.datadir, fname))
+cubes = [cubefit.read_datacube(join(args.datadir, fname), scale=False)
          for fname in cfg["IN_CUBE"]]
 
 # Read in results, optionally with diagnostics.
 results = OrderedDict()
 if args.diagdir is not None:
-    for name in ["step1", "step2", "step3", "step4"]:
-        results[name] = read_results_pik(join(args.diagdir, name+".pik"))
-results['final'] = read_results_pik(args.resultfile)
+    for fname in glob.glob(join(args.diagdir, "step*.fits")):
+        name = basename(fname).split(".")[0]
+        results[name] = cubefit.read_results(fname)
+results["final"] = cubefit.read_results(args.resultfile)
 
 cubefit.plot_timeseries(cubes, results,
                         fname=(args.outprefix + '_timeseries.eps'))

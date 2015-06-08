@@ -1,25 +1,77 @@
-"""General numeric utilities."""
+"""General utilities."""
 
 import numpy as np
 from numpy import fft
 
-__all__ = ["fft_shift_phasor_2d"]
 
-def stringify(obj):
-    """Create a string representation.
+def yxoffset(shape1, shape2, ctr):
+    """y, x offset between two 2-d arrays (their lower-left corners)
+    with shape1 and shape2, where the array centers are offset by ctr.
+    
+    Examples
+    --------
+    >>> yxoffset((32, 32), (15, 15), (0., 0.))
+    (8.5, 8.5)
+    >>> yxoffset((32, 32), (15, 15), (1., 0.))
+    (9.5, 8.5)
+    >>> yxoffset((32, 32), (15, 15), (0., 1.))
+    (8.5, 9.5)
 
-    For now this just lists all the members of the object and for arrays,
-    their shapes.
+    Raises
+    ------
+    ValueError : If the arrays don't completely overlap.
     """
 
-    lines = ["Members:"]
-    for name, val in obj.__dict__.iteritems():
-        if isinstance(val, np.ndarray):
-            info = "{0:s} array".format(val.shape)
-        else:
-            info = repr(val)
-        lines.append("  {0:s} : {1}".format(name, info))
-    return "\n".join(lines)
+    # min and max coordinates of first array
+    ymin1 = -(shape1[0] - 1) / 2.
+    ymax1 = (shape1[0] - 1) / 2.
+    xmin1 = -(shape1[1] - 1) / 2.
+    xmax1 = (shape1[1] - 1) / 2.
+
+    # min and max coordinates requested (inclusive)
+    ymin2 = ctr[0] - (shape2[0] - 1) / 2.
+    ymax2 = ctr[0] + (shape2[0] - 1) / 2.
+    xmin2 = ctr[1] - (shape2[1] - 1) / 2.
+    xmax2 = ctr[1] + (shape2[1] - 1) / 2.
+
+    if (xmin2 < xmin1 or xmax2 > xmax1 or
+        ymin2 < ymin1 or ymax2 > ymax1):
+        raise ValueError("second array not within first array")
+
+    return ymin2 - ymin1, xmin2 - xmin1
+
+def yxbounds(shape1, shape2):
+    """Bounds on the relative position of two arrays such that they overlap.
+
+    Given the shapes of two arrays (second array smaller) return the range of
+    allowed center offsets such that the second array is wholly contained in
+    the first.
+
+    Parameters
+    ----------
+    shape1 : tuple
+        Shape of larger array.
+    shape2 : tuple
+        Shape of smaller array.
+
+    Returns
+    -------
+    ybounds : tuple
+         Length 2 tuple giving ymin, ymax.
+    xbounds : tuple
+         Length 2 tuple giving xmin, xmax.
+
+    Examples
+    --------
+    >>> yxbounds((32, 32), (15, 15))
+    (-8.5, 8.5), (-8.5, 8.5)
+
+    """
+
+    yd = (shape1[0] - shape2[0]) / 2.
+    xd = (shape1[1] - shape2[1]) / 2.
+
+    return (-yd, yd), (-xd, xd)
 
 
 def fft_shift_phasor(n, d):
@@ -81,6 +133,7 @@ def fft_shift_phasor(n, d):
         result[n/2] = np.real(result[n/2])
 
     return result
+
 
 def fft_shift_phasor_2d(shape, offset):
     """Return phasor array used to shift an array (in real space) by

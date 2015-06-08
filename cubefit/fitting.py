@@ -6,7 +6,7 @@ import logging
 import numpy as np
 from scipy.optimize import fmin_l_bfgs_b, fmin_bfgs, fmin
 
-from .model import yxbounds
+from .utils import yxbounds
 
 __all__ = ["guess_sky", "fit_galaxy_single", "fit_galaxy_sky_multi",
            "fit_position_sky", "fit_position_sky_sn_multi"]

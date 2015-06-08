@@ -1,97 +1,44 @@
-from __future__ import print_function
+"""Core structures."""
 
 import numpy as np
 import pyfftw
 from numpy.fft import fft2, ifft2
 
-from .utils import fft_shift_phasor_2d
+from .utils import fft_shift_phasor_2d, yxoffset
 
-__all__ = ["AtmModel", "RegularizationPenalty"]
+__all__ = ["DataCube", "AtmModel", "RegularizationPenalty"]
 
-# -----------------------------------------------------------------------------
-# Helper functions
 
-# TODO: move these asserts to tests
-def assert_real(x):
-    if np.all((x.imag == 0.) & (x.real == 0.)):
-        return
-    absfrac = np.abs(x.imag / x.real)
-    mask = absfrac < 1.e-3 #1.e-4
-    if not np.all(mask):
-        raise RuntimeError("array not real: max imag/real = {:g}"
-                           .format(np.max(absfrac)))
+class DataCube(object):
+    """A container for data and weight arrays.
 
-def yxoffset(shape1, shape2, ctr):
-    """y, x offset between two 2-d arrays (their lower-left corners)
-    with shape1 and shape2, where the array centers are offset by ctr.
-    
-    Examples
-    --------
-    >>> yxoffset((32, 32), (15, 15), (0., 0.))
-    (8.5, 8.5)
-    >>> yxoffset((32, 32), (15, 15), (1., 0.))
-    (9.5, 8.5)
-    >>> yxoffset((32, 32), (15, 15), (0., 1.))
-    (8.5, 9.5)
-
-    Raises
-    ------
-    ValueError : If the arrays don't completely overlap.
-    """
-
-    # min and max coordinates of first array
-    ymin1 = -(shape1[0] - 1) / 2.
-    ymax1 = (shape1[0] - 1) / 2.
-    xmin1 = -(shape1[1] - 1) / 2.
-    xmax1 = (shape1[1] - 1) / 2.
-
-    # min and max coordinates requested (inclusive)
-    ymin2 = ctr[0] - (shape2[0] - 1) / 2.
-    ymax2 = ctr[0] + (shape2[0] - 1) / 2.
-    xmin2 = ctr[1] - (shape2[1] - 1) / 2.
-    xmax2 = ctr[1] + (shape2[1] - 1) / 2.
-
-    if (xmin2 < xmin1 or xmax2 > xmax1 or
-        ymin2 < ymin1 or ymax2 > ymax1):
-        raise ValueError("second array not within first array")
-
-    return ymin2 - ymin1, xmin2 - xmin1
-
-def yxbounds(shape1, shape2):
-    """Bounds on the relative position of two arrays such that they overlap.
-
-    Given the shapes of two arrays (second array smaller) return the range of
-    allowed center offsets such that the second array is wholly contained in
-    the first.
-
-    Parameters
+    Attributes
     ----------
-    shape1 : tuple
-        Shape of larger array.
-    shape2 : tuple
-        Shape of smaller array.
-
-    Returns
-    -------
-    ybounds : tuple
-         Length 2 tuple giving ymin, ymax.
-    xbounds : tuple
-         Length 2 tuple giving xmin, xmax.
-
-    Examples
-    --------
-    >>> yxbounds((32, 32), (15, 15))
-    (-8.5, 8.5), (-8.5, 8.5)
-
+    data : ndarray (3-d)
+    weight : ndarray (3-d)
+    wave : ndarray (1-d)
+    nw : int
+        length of wave, data.shape[0], weight.shape[0]
+    ny : int
+        data.shape[1], weight.shape[1]
+    nx : int
+        data.shape[2], weight.shape[2]
     """
+    
+    def __init__(self, data, weight, wave, wavewcs=None):
+        if data.shape != weight.shape:
+            raise ValueError("shape of weight and data must match")
+        if len(wave) != data.shape[0]:
+            raise ValueError("length of wave must match data axis=1")
+        if wavewcs is None:
+            wavewcs = {}
 
-    yd = (shape1[0] - shape2[0]) / 2.
-    xd = (shape1[1] - shape2[1]) / 2.
+        self.data = data
+        self.weight = weight
+        self.wave = wave
+        self.nw, self.ny, self.nx = data.shape
+        self.wavewcs = wavewcs
 
-    return (-yd, yd), (-xd, xd)
-
-
-# -----------------------------------------------------------------------------
 
 class AtmModel(object):
     """Container for "Atmospheric conditions" - PSF and ADR for a single

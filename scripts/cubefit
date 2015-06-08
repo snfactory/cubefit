@@ -10,7 +10,7 @@ import cubefit
 parser = ArgumentParser(prog="cubefit", description=__doc__)
 parser.add_argument("configfile", help="configuration filename")
 parser.add_argument("datadir", help="directory containing FITS data files")
-parser.add_argument("outfile", help="Output filename (pickle format)")
+parser.add_argument("outfile", help="Output filename (FITS format)")
 parser.add_argument("--logfile", help="Write log to this file",
                     default=None)
 parser.add_argument("--loglevel", default="info",

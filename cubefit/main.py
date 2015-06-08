@@ -11,8 +11,8 @@ from datetime import datetime
 import numpy as np
 
 from .psf import psf_3d_from_params
-from .model import AtmModel, RegularizationPenalty
-from .data import read_datacube
+from .core import AtmModel, RegularizationPenalty
+from .io import read_datacube, write_results
 from .adr import paralactic_angle
 from .fitting import (guess_sky, fit_galaxy_single, fit_galaxy_sky_multi,
                       fit_position_sky, fit_position_sky_sn_multi)
@@ -25,7 +25,6 @@ SNIFS_LATITUDE = np.deg2rad(19.8228)
 WAVE_REF_DEFAULT = 5000.
 MIN_NMAD = 2.5  # Minimum Number of Median Absolute Deviations above
                 # the minimum spaxel value in fit_position
-SCALE_FACTOR = 10**17
 
 def parse_conf(inconf):
     """Parse the raw input configuration dictionary. Return a new dictionary.
@@ -116,60 +115,6 @@ def parse_conf(inconf):
     return outconf
 
 
-def package_epoch_results(galaxy, skys, sn, snctr, yctr, xctr, dshape,
-                          atms):
-    """Package all by-epoch results into a single numpy structured array,
-    amenable to writing to either a pickle or FITS file.
-
-    Note that this format assumes that the data for all epochs has the same
-    spatial shape. A different format would have to be used if this were not
-    the case.
-    """
-
-    # This is a table with `nt` rows
-    nt = len(atms)
-    dtype = [('yctr', 'f8'),
-             ('xctr', 'f8'),
-             ('sn', 'f4', sn.shape[1]),
-             ('sky', 'f4', len(skys[0])),
-             ('galeval', 'f4', dshape),
-             ('sneval', 'f4', dshape)]
-
-    epochs = np.zeros(nt, dtype=dtype)
-    epochs['yctr'] = yctr
-    epochs['xctr'] = xctr
-    epochs['sn'] = sn
-    epochs['sky'] = skys
-
-    # evaluate galaxy & PSF on data
-    for i in range(nt):
-        epochs['galeval'][i] = atms[i].evaluate_galaxy(galaxy, dshape[1:3],
-                                                       (yctr[i], xctr[i]))
-        epochs['sneval'][i] = atms[i].evaluate_point_source(snctr, dshape[1:3],
-                                                            (yctr[i], xctr[i]))
-
-    # multiply by sn amplitude
-    epochs['sneval'] *= sn[:, :, None, None]
-
-    return epochs
-
-
-def write_results_pik(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms,
-                      fname):
-    """Write results to a pickle."""
-
-    # descale (do NOT use-place ops here!)
-    galaxy = galaxy / SCALE_FACTOR
-    skys = skys / SCALE_FACTOR
-    sn = sn / SCALE_FACTOR
-    epochs = package_epoch_results(galaxy, skys, sn, snctr, yctr, xctr,
-                                   dshape, atms)
-    
-    with open(fname, 'wb') as f:
-        results = {'galaxy': galaxy, 'snctr': snctr, 'epochs': epochs}
-        pickle.dump(results, f, protocol=2)
-
-
 def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO,
          diagdir=None, refitgal=False, fit_params={}):
     """Run cubefit.
@@ -217,17 +162,12 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO,
     # Load data cubes from the list of FITS files.
 
     nt = len(cfg["fnames"])
+
     logging.info("reading %d data cubes", nt)
     cubes = [read_datacube(os.path.join(datadir, fname))
              for fname in cfg["fnames"]]
-
-    # scale cubes so that optimizer works better. Results
-    # are descaled when written out.
-    for cube in cubes:
-        cube.data *= SCALE_FACTOR
-        cube.weight /= SCALE_FACTOR**2
-
     wave = cubes[0].wave
+    wavewcs = cubes[0].wavewcs
     nw = len(wave)
 
     # assign some local variables for convenience
@@ -310,9 +250,9 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO,
                                atms[master_ref], regpenalty)
     
     if diagdir:
-        fname = os.path.join(diagdir, 'step1.pik')
-        write_results_pik(galaxy, skys, sn, snctr, yctr, xctr,
-                          cubes[0].data.shape, atms, fname)
+        fname = os.path.join(diagdir, 'step1.fits')
+        write_results(galaxy, skys, sn, snctr, yctr, xctr,
+                      cubes[0].data.shape, atms, wavewcs, fname)
 
 
     # -------------------------------------------------------------------------
@@ -365,9 +305,9 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO,
         skys[j] = fskys[i]
 
     if diagdir:
-        fname = os.path.join(diagdir, 'step2.pik')
-        write_results_pik(galaxy, skys, sn, snctr, yctr, xctr,
-                          cubes[0].data.shape, atms, fname)
+        fname = os.path.join(diagdir, 'step2.fits')
+        write_results(galaxy, skys, sn, snctr, yctr, xctr,
+                      cubes[0].data.shape, atms, wavewcs, fname)
 
     # -------------------------------------------------------------------------
     # Fit position of data and SN in non-references
@@ -399,9 +339,9 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO,
     if refitgal:
 
         if diagdir:
-            fname = os.path.join(diagdir, 'step3.pik')
-            write_results_pik(galaxy, skys, sn, snctr, yctr, xctr,
-                              cubes[0].data.shape, atms, fname)
+            fname = os.path.join(diagdir, 'step3.fits')
+            write_results(galaxy, skys, sn, snctr, yctr, xctr,
+                          cubes[0].data.shape, atms, wavewcs, fname)
 
         # ---------------------------------------------------------------------
         # Redo fit of galaxy, using ALL epochs, including ones with SN
@@ -435,9 +375,9 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO,
             skys[i] = fskys[i]  # put fitted skys back in skys
 
         if diagdir:
-            fname = os.path.join(diagdir, 'step4.pik')
-            write_results_pik(galaxy, skys, sn, snctr, yctr, xctr,
-                              cubes[0].data.shape, atms, fname)
+            fname = os.path.join(diagdir, 'step4.fits')
+            write_results(galaxy, skys, sn, snctr, yctr, xctr,
+                          cubes[0].data.shape, atms, wavewcs, fname)
 
         # ---------------------------------------------------------------------
         # Repeat step before last: fit position of data and SN in
@@ -462,8 +402,8 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO,
     # Write results
 
     logging.info("writing results to %s", outfname)
-    write_results_pik(galaxy, skys, sn, snctr, yctr, xctr,
-                      cubes[0].data.shape, atms, outfname)
+    write_results(galaxy, skys, sn, snctr, yctr, xctr,
+                  cubes[0].data.shape, atms, wavewcs, outfname)
 
     tfinish = datetime.now()
     logging.info("finished at %s", tfinish.strftime("%Y-%m-%d %H:%M:%S"))

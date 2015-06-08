@@ -4,7 +4,17 @@ import numpy as np
 from numpy.fft import fft2, ifft2
 from numpy.testing import assert_allclose
 
-import ddtpy
+import cubefit
+
+
+def assert_real(x):
+    if np.all((x.imag == 0.) & (x.real == 0.)):
+        return
+    absfrac = np.abs(x.imag / x.real)
+    mask = absfrac < 1.e-3 #1.e-4
+    if not np.all(mask):
+        raise RuntimeError("array not real: max imag/real = {:g}"
+                           .format(np.max(absfrac)))
 
 
 def convolve_fft(x, kernel):
