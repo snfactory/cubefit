@@ -34,7 +34,7 @@ def parse_conf(inconf):
 
     outconf["fnames"] = inconf["IN_CUBE"]
     nt = len(outconf["fnames"])
-    
+
     # check apodizer flag because the code doesn't support it
     if inconf.get("FLAG_APODIZER", 0) >= 2:
         raise RuntimeError("FLAG_APODIZER >= 2 not implemented")

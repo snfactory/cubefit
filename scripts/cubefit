@@ -22,7 +22,8 @@ parser.add_argument("--refitgal", default=False, action="store_true",
                     help="Add an iteration where galaxy model is fit using "
                     "all epochs and then data/SN positions are refit")
 parser.add_argument("--mu_wave", default=None, type=float,
-                    help="Override the wavelength regularization hyperparameter")
+                    help="Override the wavelength regularization "
+                    "hyperparameter")
 parser.add_argument("--mu_xy", default=None, type=float,
                     help="Override the spatial regularization hyperparameter")
 parser.add_argument("--masterref", default=None, type=int,
