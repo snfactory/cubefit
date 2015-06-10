@@ -3,6 +3,7 @@ CubeFit
 
 Fit supernova + galaxy model on a Nearby Supernova Factory spectral data cube.
 
+
 Installation
 ------------
 
@@ -18,15 +19,117 @@ Installation
 
 **Running Tests:** Requires the `pytest` package (available via pip or
 conda).  Execute `py.test` in the root of the source code repository
-or `test` directory.
+or `test` directory. *NOTE: Tests are not currently up-to-date*
+
 
 Usage
 -----
 
-On the command line
-
+```sh
+cubefit conf.json /path/to/data/dir outputfile.fits
+cubefit --help  # see options
 ```
-cubefit conf.json /path/to/data/dir outputfile.pkl
+
+
+Input format
+------------
+
+CubeFit currently expects to find the following keys in the input JSON file:
+
+| Parameter                  | Type   | Description                           |
+| -------------------------- | ------ | ------------------------------------- |
+| `"IN_CUBE"`                | *list* | file names
+| `"PARAM_AIRMASS"`          | *list* | airmass for each epoch
+| `"PARAM_P"`                | *list* | pressure in mmHg for each epoch
+| `"PARAM_T"`                | *list* | temperature in degrees Celcius for each epoch
+| `"PARAM_IS_FINAL_REF"`     | *list* | Integers indicating whether epoch is final ref (0 or 1)
+| `"PARAM_FINAL_REF"`        |        | index of "master" final ref (1-based indexing)
+| `"PARAM_TARGET_XP"`        | *list* |
+| `"PARAM_TARGET_YP"`        | *list* |
+| `"PARAM_PSF_TYPE"`         |        | must be `"GS-PSF"`
+| `"PARAM_PSF_ES"`           | *list of lists* | PSF parameters for each epoch
+| `"PARAM_SPAXEL_SIZE"`      |        | instrument spaxel size in arcseconds
+| `"PARAM_LAMBDA_REF"`       |        | reference wavelength in Angstroms
+| `"PARAM_HA"`               |        | position of the target (RA) in degrees
+| `"PARAM_DEC"`              |        | position of the target (DEC) in degrees
+| `"PARAM_MLA_TILT"`         |        | MLA tilt in radians
+| `"MU_GALAXY_XY_PRIOR"`     |        | spatial hyperparameter
+| `"MU_GALAXY_LAMBDA_PRIOR"` |        | wavelength hyperparameter
+
+The above parameter names and conventions are chosen to comply with the existing
+DDT input files. If we are creating a new script that produces these config
+files, it would be nice to choose some new names without the baggage of DDT
+conventions. Here are the preferred names for the future. *Note that these do
+not currently work!*
+
+| Parameter            | Type   | Description                           |
+| -------------------- | ------ | ------------------------------------- |
+| `"FILENAMES"`        | *list* | file names
+| `"AIRMASS"`          | *list* | airmass for each epoch
+| `"P"`                | *list* | pressure in mmHg for each epoch
+| `"T"`                | *list* | temperature in degrees Celcius for each epoch
+| `"IS_FINAL_REF"`     | *list* | Integers indicating whether epoch is final ref (0 or 1)
+| `"MASTER_FINAL_REF"` |        | index of "master" final ref (1-based indexing)
+| `"X"`                | *list* | x position of MLA center relative to SN
+| `"Y"`                | *list* | y position of MLA center relative to SN
+| `"PSF_PARAMS"`       | *list of lists* | PSF parameters for each epoch
+| `"SPAXEL_SIZE"`      |        | instrument spaxel size in arcseconds
+| `"WAVE_REF"`         |        | reference wavelength in Angstroms
+| `"RA"`               |        | position of the target (RA) in degrees
+| `"DEC"`              |        | position of the target (DEC) in degrees
+| `"TILT"`             |        | MLA tilt in radians
+| `"MU_XY"`            |        | spatial hyperparameter
+| `"MU_WAVE"`          |        | wavelength hyperparameter
+
+
+Output format
+-------------
+
+CubeFit outputs a FITS file with two extensions.
+
+- **HDU 1:** (image) Full galaxy model. E.g., a 32 x 32 x 779 array.
+
+- **HDU 2:** (binary table) Per-epoch results. Columns:
+  - `yctr` Fitted y position of data in model frame
+  - `xctr` fitted x position of data in model frame
+  - `sn` (1-d array) fitted SN spectrum in this epoch
+  - `sky` (1-d array) fitted sky spectrum in this epoch
+  - `galeval` (3-d array) Galaxy model evaluated on this epoch
+    (e.g., 15 x 15 x 779)
+  - `sneval` (3-d array) SN model evaluated on this epoch (e.g., 15 x 15 x 779)
+
+
+- The **HDU 1 header** contains the wavelength solution in the "CRPIX3",
+  "CRVAL3", "CDELT3" keywords. These are simply propagated from input
+  data cubes.
+
+- The **HDU 2 header** contains the fitted SN position in the model frame in the
+  "SNX" and "SNY" kewords.
+
+Here is an example demonstrating how to reproduce the full model of the scene
+for the first epoch:
+
+```python
+>>> import fitsio
+>>> f = fitsio.FITS("PTF09fox_B.fits")
+>>> f[1]
+
+  file: PTF09fox_B.fits
+  extension: 1
+  type: BINARY_TBL
+  extname: epochs
+  rows: 17
+  column info:
+    yctr                f8  
+    xctr                f8  
+    sn                  f4  array[779]
+    sky                 f4  array[779]
+    galeval             f4  array[15,15,779]
+    sneval              f4  array[15,15,779]
+
+>>> epochs = f[1].read()
+>>> i = 0
+>>> scene = epochs["sky"][i, :, None, None] + epochs["galeval"][i] + epochs["sneval"][i]
 ```
 
 Data & Model

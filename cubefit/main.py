@@ -40,7 +40,7 @@ def parse_conf(inconf):
         raise RuntimeError("FLAG_APODIZER >= 2 not implemented")
 
     outconf["spaxel_size"] = inconf["PARAM_SPAXEL_SIZE"]
-    outconf["wave_ref"] = inconf.get("PARAM_LAMBDA_REF", WAVE_REF_DEFAULT)  
+    outconf["wave_ref"] = inconf.get("PARAM_LAMBDA_REF", WAVE_REF_DEFAULT)
 
     outconf["mu_xy"] = inconf["MU_GALAXY_XY_PRIOR"]
     outconf["mu_wave"] = inconf["MU_GALAXY_LAMBDA_PRIOR"]
@@ -55,13 +55,10 @@ def parse_conf(inconf):
     # indicies of all final refs
     outconf["refs"] = refs
 
-    outconf["n_iter_galaxy_prior"] = inconf.get("N_ITER_GALAXY_PRIOR", None)
-
     # atmospheric conditions at each observation time.
     outconf["airmass"] = np.array(inconf["PARAM_AIRMASS"])
     outconf["p"] = np.asarray(inconf.get("PARAM_P", 615.*np.ones(nt)))
     outconf["t"] = np.asarray(inconf.get("PARAM_T", 2.*np.ones(nt)))
-    outconf["h"] = np.asarray(inconf.get("PARAM_H", np.zeros(nt)))
 
     # Position of the instrument (note that config file is in degrees)
     outconf["ha"] = np.deg2rad(np.array(inconf["PARAM_HA"]))
@@ -158,6 +155,7 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO,
     for key in fit_params.keys():
         if fit_params[key] is not None:
             cfg[key] = fit_params[key]
+
     # -------------------------------------------------------------------------
     # Load data cubes from the list of FITS files.
 
@@ -207,7 +205,7 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO,
                   airmass=cfg["airmass"][i], theta=pa)
         adr_refract = adr.refract(0, 0, wave, unit=cfg["spaxel_size"])
 
-        # make adr_refract[0, :] correspond to y and adr_refract[1, :] => x 
+        # make adr_refract[0, :] correspond to y and adr_refract[1, :] => x
         adr_refract = np.flipud(adr_refract)
 
         atms.append(AtmModel(psf, adr_refract, fftw_threads=1))
@@ -240,7 +238,7 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO,
 
     # -------------------------------------------------------------------------
     # Fit just the galaxy model to just the master ref.
-    
+
     data = cubes[master_ref].data - skys[master_ref][:, None, None]
     weight = cubes[master_ref].weight
 
@@ -248,7 +246,7 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO,
     galaxy = fit_galaxy_single(galaxy, data, weight,
                                (yctr[master_ref], xctr[master_ref]),
                                atms[master_ref], regpenalty)
-    
+
     if diagdir:
         fname = os.path.join(diagdir, 'step1.fits')
         write_results(galaxy, skys, sn, snctr, yctr, xctr,
@@ -265,7 +263,7 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO,
     # restore the original weight after we're done.
     #
     # If there are less than 20 "significant" spaxels, we do not attempt to
-    # fit the position, but simply leave it as is. 
+    # fit the position, but simply leave it as is.
 
     logging.info("fitting position of non-master refs %s", nonmaster_refs)
     for i in nonmaster_refs:
