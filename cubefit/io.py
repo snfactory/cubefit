@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 import fitsio
 
@@ -5,7 +7,7 @@ from .core import DataCube
 
 __all__ = ["read_datacube", "write_results", "read_results"]
 
-SCALE_FACTOR = 10**17
+SCALE_FACTOR = 1.e17
 
 
 def wcs_to_wave(hdr):
@@ -22,24 +24,20 @@ def read_datacube(filename, scale=True):
 
     Returns
     -------
-
-    data : 3-d numpy array
-    weight : 3-d numpy array
-    wave : 1-d numpy array
-        Wavelength coordinates along spectral (3rd) axis.
+    cube : DataCube
+        Object holding data, weight and wavelength arrays.
     """
 
     with fitsio.FITS(filename, "r") as f:
         hdr = f[0].read_header()
         data = f[0].read()
-        variance = f[1].read() 
+        variance = f[1].read()
 
     wave = wcs_to_wave(hdr)
     weight = 1. / variance
 
     # Zero-weight array elements that are NaN
-    # TODO: why are there nans in here?
-    mask = np.isnan(data)
+    mask = np.isnan(data) | np.isnan(weight)
     data[mask] = 0.0
     weight[mask] = 0.0
 
@@ -109,7 +107,7 @@ def write_results(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms, wavewcs,
 
     # Create epochs table.
     epochs = epoch_results(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms)
-    
+
     with fitsio.FITS(fname, "rw") as f:
         f.write(galaxy, extname="galaxy", header=wavewcs)
         f.write(epochs, extname="epochs",

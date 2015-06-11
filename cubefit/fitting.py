@@ -55,7 +55,7 @@ def guess_sky_clipping(cube, clip, maxiter=10):
 
     Returns
     -------
-    sky : np.ndarray (1-d)        
+    sky : np.ndarray (1-d)
         Sky level for each wavelength.
     """
 
@@ -73,7 +73,7 @@ def guess_sky_clipping(cube, clip, maxiter=10):
         oldmask = mask
 
         # weighted average spectrum (masked array).
-        # We use a masked array because some of the wavelengths 
+        # We use a masked array because some of the wavelengths
         # may have all-zero weights for every pixel.
         # The masked array gets propagated so that `mask` is a
         # masked array of booleans!
@@ -92,7 +92,7 @@ def guess_sky_clipping(cube, clip, maxiter=10):
         weight[mask] = 0.0
         var[mask] = 0.0
 
-    # convert to normal (non-masked) array. Masked wavelengths are 
+    # convert to normal (non-masked) array. Masked wavelengths are
     # set to zero in this process.
     return np.asarray(avg)
 
@@ -133,7 +133,7 @@ def guess_sky(cube, npix=10):
             sky[i] = 0.
         else:
             # sort values, average lowest k values.
-            idx = np.argsort(v) 
+            idx = np.argsort(v)
             sky[i] = np.average(v[idx][0:k], weights=vw[idx][0:k])
 
     return sky
@@ -179,7 +179,7 @@ def determine_sky_and_sn(galmodel, snmodel, data, weight):
                          "weight")
     denom[mask] = 1.0
 
-    # w2d, w2dy w2dz are used to calculate the variance using 
+    # w2d, w2dy w2dz are used to calculate the variance using
     # var(alpha x) = alpha^2 var(x)*/
     tmp = weight * data
     wd = tmp.sum(axis=(1, 2))
@@ -192,7 +192,7 @@ def determine_sky_and_sn(galmodel, snmodel, data, weight):
     wgal2 = (tmp * galmodel).sum(axis=(1, 2))
 
     b_sky = (wd * A11 + wdsn * A12) / denom
-    c_sky = (wgal * A11 + wgalsn * A12) / denom        
+    c_sky = (wgal * A11 + wgalsn * A12) / denom
     b_sn = (wd * A21 + wdsn * A22) / denom
     c_sn = (wgal * A21 + wgalsn * A22) / denom
 
@@ -232,7 +232,7 @@ def fit_galaxy_single(galaxy0, data, weight, ctr, atm, regpenalty):
         gal3d = galparams.reshape(galaxy0.shape)
         m = atm.evaluate_galaxy(gal3d, dshape, ctr)
         diff = data - m
-        
+
         wdiff = weight * diff
         chisq_val = np.sum(wdiff * diff)
         chisq_grad = atm.gradient_helper(-2. * wdiff, dshape, ctr)
@@ -279,16 +279,21 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty):
             m = atm.evaluate_galaxy(gal3d, dshape, ctr)
             diff = data - m
 
-            # determine sky (linear problem) and subtract it off.
+            # determine sky, given the difference between the data and
+            # galaxy model.
             sky = np.average(diff, weights=weight, axis=(1, 2))
             diff -= sky[:, None, None]
+
             wdiff = weight * diff
             val += np.sum(wdiff * diff)
             grad += atm.gradient_helper(-2. * wdiff, dshape, ctr)
 
+            # TODO: there is an additional contribution to the gradient
+            #       that comes from changing the sky!
+
         rval, rgrad = regpenalty(gal3d)
 
-        logging.debug('%s (%s, %s)', val + rval, val, rval)
+        logging.debug('%s (%s + %s)', itercount, val + rval, val, rval)
 
         # Reshape gradient to 1-d when returning.
         return (val + rval), np.ravel(grad + rgrad)
@@ -343,7 +348,7 @@ def fit_position_sky(galaxy, data, weight, ctr0, atm):
     maxbound[1] = min(maxbound[1], xmaxabs)  # xmax
 
     def objective_func(ctr):
-        if not (minbound[0] < ctr[0] < maxbound[0] and 
+        if not (minbound[0] < ctr[0] < maxbound[0] and
                 minbound[1] < ctr[1] < maxbound[1]):
             return np.inf
         gal = atm.evaluate_galaxy(galaxy, dshape, ctr)
@@ -352,9 +357,11 @@ def fit_position_sky(galaxy, data, weight, ctr0, atm):
         resid = data - gal
         sky = np.average(resid, weights=weight, axis=(1, 2))
 
-        out = weight * (resid - sky[:, None, None])**2
-        logging.debug("%s %s", ctr, np.sum(out))
-        return np.sum(out)
+        out = np.sum(weight * (resid - sky[:, None, None])**2)
+
+        logging.debug("(%f, %f) %f", ctr[0], ctr[1], out)
+
+        return out
 
     ctr, fval, niter, ncall, warnflag = fmin(objective_func, ctr0,
                                              full_output=1, disp=0)
@@ -412,10 +419,10 @@ def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, atms):
 
     def objective_func(allctrs):
         """Function to minimize. `allctrs` is a 1-d ndarray:
-        
+
         [yctr[0], xctr[0], yctr[1], xctr[1], ..., snyctr, snxctr]
 
-        where the indicies are 
+        where the indicies are
         """
 
         allctrs = allctrs.reshape((nepochs+1, 2))

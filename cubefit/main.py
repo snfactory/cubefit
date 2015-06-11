@@ -1,6 +1,6 @@
 from __future__ import print_function, division
 
-import os.path
+import os
 import json
 import math
 import cPickle as pickle
@@ -136,6 +136,8 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO,
     if logfname is None:
         logfmt = "\033[1m\033[34m%(levelname)s:\033[0m %(message)s"
     else:
+        if os.path.exists(logfname):
+            os.remove(logfname)
         logfmt = "%(asctime)s %(levelname)s %(message)s"
 
     logging.basicConfig(filename=logfname, format=logfmt,
