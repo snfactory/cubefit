@@ -251,4 +251,4 @@ Internal API documentation
 License
 -------
 
-MIT
+CubeFit is released under the MIT license. See LICENSE.md.

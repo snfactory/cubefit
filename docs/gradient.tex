@@ -4,6 +4,7 @@
 
 %- Abbreviations.
 \newcommand{\psf}{\mathbf{H}}
+\newcommand{\G}{\mathbf{G}}
 \newcommand{\hhat}{\mathbf{\hat h}}
 \newcommand{\x}{\mathbf{x}}
 \newcommand{\xhat}{\mathbf{\hat x}}
@@ -11,9 +12,8 @@
 \newcommand{\rvect}{\mathbf{r}}
 \newcommand{\W}{\mathbf{W}}
 \newcommand{\A}{\mathbf{A}}
-\newcommand{\avect}{\mathbf{a}}
+\newcommand{\avec}{\mathbf{a}}
 \newcommand{\F}{\mathbf{F}}
-
 
 
 \newcommand{\ddx}{\frac{\partial}{\partial \mathbf{x}}}
@@ -32,17 +32,83 @@
 \begin{document}
 
 \title{CubeFit $\chi^2$ gradient calculation}
-\author{S.~Bongard, Kyle Barbary}
+\author{S.~Bongard, Kyle~Barbary, Clare~Saunders}
 \maketitle
 \begin{abstract}
 In CubeFit, one of the fitting steps is to fit the galaxy model to the
 data while holding other parameters (such as positions) fixed. The
-galaxy model has on order $\sim$1 million parameters. The ability to
+galaxy model has on order $\sim$ 1 million parameters. The ability to
 analytically calculate the gradient (a vector of length ~$\sim$ 1
-million) on the fit $\chi^2$ is essential in order to do the fit
-efficiently. This note explains the derivation of the analytic
-gradient.
+million) on the fit $\chi^2$ is essential in order to carry out the fit
+efficiently. This note explains the derivation of the gradient.
 \end{abstract}
+
+
+\section{$\chi^2$ of Galaxy Fit}
+
+The $\chi^2$ in the galaxy fit is given by
+
+\begin{equation}
+\chi^2 = (\y - \G\x)\W(\y - \G\x)
+\end{equation}
+
+where $\y$ is the data, $\x$ is the model parameters, and $\G$ is the operator
+that translates the model into the data frame. $\G$ includes the effect of PSF
+convolution, shift operation and cropping. (Note that we are supposing that
+we can represent all these operations as a matrix $\G$, but we haven't shown
+this.) Remember that this is all in real space at this point. Carrying on,
+
+\begin{eqnarray*}
+  \label{eq:5}
+  \ddx \chi^{2} & = & \ddx \left( (\y - \G\x)^{T} \W (\y - \G\x) \right)\\
+                & = & \ddx \left( (\G \x)^{T} \W \y \right)
+                    + \ddx \left( \y^{T} \W \G \x \right)
+                    - \ddx \left( (\G \x)^{T} \W \G \x \right) \\
+                & = & \ddx \left( \x^{T} \G^{T} \W \y \right)
+                    + \ddx \left( (\G^{T} \W \y)^{T} \x \right)
+                    - \ddx \left( \x^{T} \G^{T} \W \G \x \right) \\
+\end{eqnarray*}
+
+where in the last line we have used the property that
+$(\mathbf{A}\mathbf{B})^T = \mathbf{B}^T\mathbf{A}^T$ and assumed that
+$\W = \W^T$ (the weight matrix is symmetric).
+
+We note that $(\G^{T} \W \y)^{T}$ and $\G^{T} \W \y$ are vectors ($\y$ is a
+vector). The first two terms of the equation are thus of the form $\ddx \x^T \avec$
+and $\ddx \avec^T \x$. These are both simply equal to $\avec$ as $\x^T \avec$ and
+$\avec^T \x$ are dot products between the constant vector $\avec$ and $\x$, so the
+partial derivative with respect to $\x$ is just $\avec$. Making this substitution,
+we have
+
+\begin{equation}
+\ddx \chi^{2} = 2 \G^T \W \y - \ddx \left( \x^{T} \G^{T} \W \G \x \right)
+\end{equation}
+
+The second term has the form $\ddx \x^T\A\x$, with
+$\A = \G^T \W \G$. It helps to write this out:
+
+\begin{eqnarray*}
+  \ddxi \x^{T}\A\x & = & \ddxi \left( \sum_{j} x_{j} \sum_l A_{j,l} x_{l}  \right) \\
+                   & = & \sum_l A_{i,l} x_{l} + \sum_j A_{j,i} x_{j} \\
+                   & = & \left( \A \x + \A^{T} \x␇ \right)_{i}
+\end{eqnarray*}
+
+so
+
+\begin{equation}
+  \ddx \x^T\A\x = (\A + \A^T) \x .
+\end{equation}
+
+Substituting this in (with $\A = \G^T \W \G$), we finally get:
+
+\begin{eqnarray*}
+\ddx \chi^{2} & = & 2 \G^T \W \y - \left( \G^T \W \G \x + (\G^T \W \G)^T \x \right) \\
+              & = & 2 \G^T \W \y - 2 \G^T \W \G \x \\
+              & = & 2 \G^T \W ( \y - \G \x ) \\
+\end{eqnarray*}
+
+But what is the matrix $\G$? For that we need to digress about Fourier transforms
+as matricies...
 
 \section{Matrix representation of the discrete Fourier transform}
 
@@ -94,7 +160,7 @@ or as shorthand,
 \mathbf{x} = \mathbf{F}^{-1} \mathbf{X}
 \end{equation}
 
-Now, note that the matrix $\mathbf{F}$ has the properties
+Now, note that the matrix $\mathbf{F}$ has the property
 
 \begin{equation}
 \mathbf{F}^{-1} = \frac{1}{N} \bar{\mathbf{F}}
@@ -103,69 +169,14 @@ Now, note that the matrix $\mathbf{F}$ has the properties
 where $\bar{\mathbf{F}}$ is the element-wise complex
 conjugate of $\mathbf{F}$.
 
+\section{Convolution in Fourier space}
 
-\section{Matricial form}
-
-\begin{equation}
-  \label{eq:1}
-  \ddx \x^{T}\psf\x = (\psf + \psf^{T}) \x
-\end{equation}
-
-\begin{eqnarray*}
-  \label{eq:2}
-  \ddxi \x^{T}\psf\x & = & \ddxi \left( \sum_{j} x_{j} \sum_{l} H_{j,l} x_{l}  \right) \\
-                     & = & \sum_{l} H_{i,l} x_{l} + \sum{j} H_{j,i} x_{j} \\
-                     & = & \left( \psf \x + \psf^{T} \x␇ \right)_{i}
-\end{eqnarray*}
+Convolution in real space is equivalent to element-wise multiplication (the
+Hadamard product, denoted by $\circ$) in Fourier space. Thus, if $\avec$
+represents the PSF in real space, the convolution of the galaxy in Fourier
+space is $(\F\A) \circ \F\x$
 
 
-By writing explicitly $\partial (\psf \x)_{j} / \partial x_{i}
-= \partial/\partial x_{i} \left( \sum_{l} H_{j,l} x_{l}\right)$ and its transpose
-it is easy to show the two following formulae. It is just important to make sure
-to write the product in the exact same way depending on if $\x$ is on the left
-or on the right of $\psf$: $\left( \psf \x \right)_{j} =  \sum_{l} H_{l,j} x_{l}$
-and $\left( \x^{T} \psf \right)_{j} =  \sum_{l} x_{l} H_{j,l}$
-
-\begin{equation}
-  \label{eq:3}
-  \ddx \left( \x^{T} \psf \right) = \ddx \left( \x^{T} \psf \right)^{T} = \psf^{T}
-\end{equation}
-
-\begin{equation}
-  \label{eq:4}
-  \ddx \left( \psf \x \right) =  \ddx \left( \psf \x \right)^{T} = \psf
-\end{equation}
-
-
-
-From now on, we assume that $\W = \W^{T}$.
-
-\begin{eqnarray*}
-  \label{eq:5}
-  \ddx \chi^{2} & = & \ddx \left( (\psf \x - \y)^{T} \W (\psf \x - y) \right)\\
-                & = & \ddx \left( (\psf \x)^{T} \W \psf \x \right)  
-                    - \ddx \left( (\psf \x)^{T} \W \y \right)
-                    - \ddx \left( \y^{T} \W \psf \x \right) \\
-                & = & \ddx \left( \x^{T} \psf^{T} \W \psf \x \right)
-                    - \ddx \left( \x^{T} \psf^{T} \W \y \right)
-                    - \ddx \left( \y^{T} \W \psf \x \right) \\
-                & = & \ddx \left( \x^{T} \psf^{T} \W \psf \x \right)
-                    - \ddx \left( \x^{T} \psf^{T} \W \y \right)
-                    - \ddx \left( (\psf^{T} \W \y)^{T} \x \right) \\
-\end{eqnarray*}
-
-We note that $(\psf^{T} \W \y)^{T}$ and $\psf^{T} \W \y$ are vectors. The two
-last terms of the equation are thus of the form $\frac{\partial \x^{T}
-  \mathbf{a}}{\partial \x} = \frac{\partial \mathbf{a}^{T} \x}{\partial \x} =
-\mathbf{a} $, with $\mathbf{a} = \psf^{T} \W \y$ . And thus finally we have:
-
-\begin{eqnarray*}
-  \label{eq:6}
-  \ddx \chi^{2} & = & \left( \psf^{T} \W \psf + (\psf^{T} \W \psf)^{T} \right) 
-                       - 2 \psf^{T} \W \y\\
-                & = & 2 \psf^{T} \W \psf \x - 2 \psf^{T} \W \y \\
-                & = & 2 \psf^{T} \W \left( \psf \x - \y \right) \\
-\end{eqnarray*}
 
 
 \section{Fourier transform form}
@@ -200,13 +211,13 @@ where $^{*}$ denotes the complex conjugation.
 
 Let us now introduce the $diag()$ operator, which transforms a vector into a
 diagonal matrix, the diagonal being the vector it operates upon: if $\A =
-diag(\avect)$, then $\A_{i,j} = \delta_{i,j} a_{i}$. The vector obtained by an
-element to element multiplication between $\x$ and $\avect$ can thus be writen
-$diag(\avect) \x$.
+diag(\avec)$, then $\A_{i,j} = \delta_{i,j} a_{i}$. The vector obtained by an
+element to element multiplication between $\x$ and $\avec$ can thus be writen
+$diag(\avec) \x$.
 
 In matrix form, the Fourier transform of the PSF convolution of vector $\x$ thus
 writes as the element to element product of $\hhat = \F(\psf)$ and $\xhat =
-\F(\x)$. 
+\F(\x)$.
 
 The operator \emph{convolution by the PSF} thus writes in matricial form:
 \begin{equation}
@@ -217,7 +228,7 @@ The operator \emph{convolution by the PSF} thus writes in matricial form:
 From the equation of the matricial derivative of the $\chi^{2}$ derived in the
 previous section, we also need to now how to write $\psf^{T} = \F^{T}
 diag(\hhat)^{T} \F^{-1T}$ in a form that has the Fourier transforms in the same
-order. 
+order.
 
 Since $\psf$ is a Real operator, we have $\psf = \psf^{*}$, and thus $\psf^{T} =
 \psf^{*T}$.
@@ -238,14 +249,33 @@ If we now write the residual $\rvect = \psf \x - \y$, we finally find that the
 derivative of the $\chi^{2}$ writes:
 \begin{equation}
   \label{eq:13}
-  \ddx \chi^{2} = \F^{-1} diag(\hhat)^{*} \F(\W \mathbf{\rvect}) 
+  \ddx \chi^{2} = \F^{-1} diag(\hhat)^{*} \F(\W \mathbf{\rvect})
+\end{equation}
+
+
+
+% older stuff
+\section{Appendix: Random extra note}
+
+By writing explicitly $\partial (\G \x)_{j} / \partial x_{i}
+= \partial/\partial x_{i} \left( \sum_{l} H_{j,l} x_{l}\right)$ and its transpose
+it is easy to show the two following formulae. It is just important to make sure
+to write the product in the exact same way depending on if $\x$ is on the left
+or on the right of $\G$: $\left( \G \x \right)_{j} =  \sum_{l} H_{l,j} x_{l}$
+and $\left( \x^{T} \G \right)_{j} =  \sum_{l} x_{l} H_{j,l}$
+
+\begin{equation}
+  \label{eq:3}
+  \ddx \left( \x^{T} \G \right) = \ddx \left( \x^{T} \G \right)^{T} = \G^{T}
+\end{equation}
+
+\begin{equation}
+  \label{eq:4}
+  \ddx \left( \G \x \right) =  \ddx \left( \G \x \right)^{T} = \G
 \end{equation}
 
 
 
 
 
-
-
 \end{document}
-
