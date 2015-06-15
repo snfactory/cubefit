@@ -1,3 +1,5 @@
+#!/usr/bin/env py.test
+
 from __future__ import print_function
 
 import numpy as np
@@ -6,6 +8,8 @@ from numpy.testing import assert_allclose
 
 import cubefit
 
+# -----------------------------------------------------------------------------
+# Helper functions
 
 def assert_real(x):
     if np.all((x.imag == 0.) & (x.real == 0.)):
@@ -24,7 +28,7 @@ def convolve_fft(x, kernel):
     xctr, yctr = (nx-1)/2., (ny-1)/2.
     
     # Phasor that will shift kernel to be centered at (0., 0.)
-    fshift = ddtpy.fft_shift_phasor_2d(kernel.shape, (-xctr, -yctr))
+    fshift = cubefit.fft_shift_phasor_2d(kernel.shape, (-xctr, -yctr))
     
     return ifft2(fft2(kernel) * fft2(x) * fshift).real
 
@@ -37,6 +41,25 @@ def chisq(galaxy, data, weight, ctr, atm):
     chisq_grad = atm.gradient_helper(-2. * wdiff, data.shape[1:3], ctr)
 
     return chisq_val, chisq_grad
+
+
+# -----------------------------------------------------------------------------
+
+def test_determine_sky_and_sn():
+    truesky = 3. * np.ones((10,))
+    truesn = 2. * np.ones((10,))
+
+    gal = np.ones((10, 5, 5))  # fake galaxy, after convolution with PSF
+    psf = np.zeros((10, 5, 5))  
+    psf[:, 3, 3] = 1.  # psf is a single pixel
+
+    data = gal + truesky[:, None, None] + truesn[:, None, None] * psf
+    weight = np.ones_like(data)
+    
+    sky, sn = cubefit.fitting.determine_sky_and_sn(gal, psf, data, weight)
+
+    assert_allclose(sky, truesky)
+    assert_allclose(sn, truesn)
 
 
 class TestFitting:
@@ -52,10 +75,10 @@ class TestFitting:
         wave = np.linspace(4000., 6000., nw)
 
         # Create arbitrary (non-zero!) data.
-        self.truegal = ddtpy.gaussian_plus_moffat_psf((32, 32), 13.5, 13.5,
-                                                      4.5, 6.0, 0.5)
-        psf = ddtpy.gaussian_plus_moffat_psf((32, 32), 15.5, 15.5,
-                                             ellipticity, alpha, 0.)
+        self.truegal = cubefit.gaussian_plus_moffat_psf((32, 32), 13.5, 13.5,
+                                                        4.5, 6.0, 0.5)
+        psf = cubefit.gaussian_plus_moffat_psf((32, 32), 15.5, 15.5,
+                                               ellipticity, alpha, 0.)
 
         # convolve the true galaxy model with the psf, take a 15x15 subslice
         data_2d = convolve_fft(self.truegal, psf)
@@ -75,16 +98,33 @@ class TestFitting:
 
         # make a fake AtmModel
         adr_refract = np.zeros((2, nw))
-        self.atm = ddtpy.AtmModel(psf, adr_refract)
+        self.atm = cubefit.AtmModel(psf, adr_refract)
         self.psf = psf
 
         # model
         self.galaxy = np.zeros_like(self.truegal)
 
-
     def test_gradient(self):
         """Test that gradient functions (used in galaxy fitting) return values
-        'close' to what you get with a finite differences method."""
+        'close' to what you get with a finite differences method.
+
+        This is a sanity check to see if the gradient function is returning
+        the naive result for individual elements. The likelihood is given
+        by
+
+        L = sum_i w_i * (d_i - m_i)^2
+
+        where i represents pixels, d is the data, and m is the model
+        *sampled onto the data frame*. We want to know the derivative with
+        respect to model parameters x_j.
+
+        dL/dx_j = sum_i -2 w_i (d_i - m_i) dm_i/dx_j
+
+        dm_i/dx_j is the change in the resampled model due to changing model
+        parameter j. Changing model parameter j is adjusting a single pixel
+        in the model. The result in the data frame is a PSF at the position
+        corresponding to model pixel j.
+        """
         
         EPS = 1.e-10
 
@@ -111,29 +151,3 @@ class TestFitting:
 
         psf = self.atm.evaluate_point_source((0., 0.), (15, 15), (0., 0.))
         
-        from matplotlib import pyplot as plt
-
-        plt.imshow(psf[0], origin='lower', cmap='Greys', interpolation='nearest')
-        plt.savefig("testpsf.png")
-
-
-"""Test the likelihood gradient. 
-
-This is a sanity check to see if the gradient function is returning
-the naive result for individual elements. The likelihood is given
-by
-
-L = sum_i w_i * (d_i - m_i)^2
-
-where i represents pixels, d is the data, and m is the model
-*sampled onto the data frame*. We want to know the derivative
-with respect to model parameters x_j.
-
-dL/dx_j = sum_i -2 w_i (d_i - m_i) dm_i/dx_j
-
-dm_i/dx_j is the change in the resampled model due to changing model
-parameter j. Changing model parameter j is adjusting a single pixel
-in the model. The result in the data frame is a PSF at the position
-corresponding to model pixel j.
-
-"""

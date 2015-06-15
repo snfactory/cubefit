@@ -17,9 +17,8 @@ Installation
 
 **Install command:** `./setup.py install`
 
-**Running Tests:** Requires the `pytest` package (available via pip or
-conda).  Execute `py.test` in the root of the source code repository
-or `test` directory. *NOTE: Tests are not currently up-to-date*
+**Running Tests:** Run `./test.py`. Requires the `pytest` package
+(available via pip or conda).
 
 
 Usage
