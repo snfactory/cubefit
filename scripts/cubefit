@@ -8,9 +8,11 @@ import cubefit
 
 
 parser = ArgumentParser(prog="cubefit", description=__doc__)
-parser.add_argument("configfile", help="configuration filename")
-parser.add_argument("datadir", help="directory containing FITS data files")
-parser.add_argument("outfile", help="Output filename (FITS format)")
+parser.add_argument("configfile", help="configuration file name (JSON format)")
+parser.add_argument("outfile", help="Output file name (FITS format)")
+parser.add_argument("--dataprefix", default="",
+                    help="path prepended to data file names; default is "
+                    "empty string")
 parser.add_argument("--logfile", help="Write log to this file",
                     default=None)
 parser.add_argument("--loglevel", default="info",
@@ -35,9 +37,11 @@ numlevel = getattr(logging, args.loglevel.upper(), None)
 if not isinstance(numlevel, int):
     print('Invalid log level: %s' % loglevel)
     exit(1)
-fit_parameters = {'mu_wave' : args.mu_wave, 'mu_xy' : args.mu_xy,
-                  'master_ref' : args.masterref}
 
-cubefit.main(args.configfile, args.datadir, args.outfile,
+# collect override parameters into a dictionary.
+fit_params = {'mu_wave' : args.mu_wave, 'mu_xy' : args.mu_xy,
+              'master_ref' : args.masterref}
+
+cubefit.main(args.configfile, args.outfile, dataprefix=args.dataprefix,
              logfname=args.logfile, loglevel=numlevel, diagdir=args.diagdir,
-             refitgal=args.refitgal, fit_params=fit_parameters)
+             refitgal=args.refitgal, fit_params=fit_params)

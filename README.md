@@ -25,7 +25,7 @@ Usage
 -----
 
 ```sh
-cubefit conf.json /path/to/data/dir outputfile.fits
+cubefit config.json output.fits
 cubefit --help  # see options
 ```
 
@@ -131,7 +131,7 @@ for the first epoch:
 >>> scene = epochs["sky"][i, :, None, None] + epochs["galeval"][i] + epochs["sneval"][i]
 ```
 
-Data & Model
+What it does
 ------------
 
 **The data**

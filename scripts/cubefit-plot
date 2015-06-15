@@ -16,9 +16,11 @@ import cubefit
 # arguments are the same as cubefit except an output 
 parser = ArgumentParser(prog="cubefit-plot", description=__doc__)
 parser.add_argument("configfile", help="configuration filename")
-parser.add_argument("datadir", help="directory containing FITS data files")
 parser.add_argument("resultfile", help="Result filename from cubefit")
 parser.add_argument("outprefix", help="output prefix")
+parser.add_argument("--dataprefix", default="",
+                    help="path prepended to data file names; default is "
+                    "empty string")
 parser.add_argument('-b', '--band', help='timeseries band', default='B',
                     dest='band')
 parser.add_argument("--diagdir", default=None,
@@ -30,7 +32,7 @@ args = parser.parse_args()
 # Read in data
 with open(args.configfile) as f:
     cfg = json.load(f)
-cubes = [cubefit.read_datacube(join(args.datadir, fname), scale=False)
+cubes = [cubefit.read_datacube(join(args.dataprefix, fname), scale=False)
          for fname in cfg["IN_CUBE"]]
 
 # Read in results, optionally with diagnostics.

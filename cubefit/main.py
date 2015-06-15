@@ -112,24 +112,32 @@ def parse_conf(inconf):
     return outconf
 
 
-def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO,
-         diagdir=None, refitgal=False, fit_params={}):
+def main(configfname, outfname, dataprefix="", logfname=None,
+         loglevel=logging.INFO, diagdir=None, refitgal=False,
+         fit_params=None):
     """Run cubefit.
 
     Parameters
     ----------
     configfname : str
-        JSON-formatted config file.
-    datadir : str
-        Directory containing FITS files given in the config file.
+        Configuration file name (JSON format).
     outfname : str
-        File to write output to (currently in pickle form).
-    logfname : str, optional
-        If supplied, write log to given file.
-    loglevel : int, optional
+        Output file name (FITS format).
+
+    Optional Parameters
+    -------------------
+    dataprefix : str
+        Path appended to data file names.
+    logfname : str
+        If supplied, write log to given file (otherwise print to stdout).
+    loglevel : int
         One of logging.DEBUG, logging.INFO (default), logging.WARNING, etc.
-    diagdir : str, optional
+    diagdir : str
         If given, write diagnostic output to this directory.
+    refitgal : bool
+        If true, run additional steps in algorithm.
+    fit_params : dict
+        Dictionary overriding parameters (after config file is parsed).
     """
 
     # Set up logging
@@ -154,9 +162,14 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO,
         cfg = parse_conf(cfg)
 
     # Change any parameters that have been chosen at command line.
-    for key in fit_params.keys():
-        if fit_params[key] is not None:
-            cfg[key] = fit_params[key]
+    # There is a check to ensure that we only try to set parameters that are
+    # already in the config file.
+    if fit_params is not None:
+        for key, val in fit_params.iteritems():
+            if key not in cfg:
+                raise RuntimeError("key not in configuration: " + repr(key))
+            if val is not None:
+                cfg[key] = val
 
     # -------------------------------------------------------------------------
     # Load data cubes from the list of FITS files.
@@ -164,7 +177,7 @@ def main(configfname, datadir, outfname, logfname=None, loglevel=logging.INFO,
     nt = len(cfg["fnames"])
 
     logging.info("reading %d data cubes", nt)
-    cubes = [read_datacube(os.path.join(datadir, fname))
+    cubes = [read_datacube(os.path.join(dataprefix, fname))
              for fname in cfg["fnames"]]
     wave = cubes[0].wave
     wavewcs = cubes[0].wavewcs
