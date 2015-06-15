@@ -1,4 +1,4 @@
-"""Core structures."""
+"""Core data structures."""
 
 import numpy as np
 import pyfftw

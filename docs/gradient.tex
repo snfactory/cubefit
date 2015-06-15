@@ -234,9 +234,14 @@ derivative of $\chi^{2}$ is:
 In another step in CubeFit, we fit the galaxy model to multiple epochs
 of data simultaneously, while adjusting the sky for each epoch on each
 iteration.  On each iteration, the sky is calculated by taking the
-weighted average of the residual ($\y - \G \x$) at each wavelength.
-Fortunately, this weighted average can be represented by a
-matrix multiply. For example,
+weighted average of the residual ($\y - \G \x$) at each wavelength and
+subtracting that to form the new residual. We need to take this into
+account in the $\chi^2$ gradient: qualitatively, increasing any given
+model pixel will result in a lower sky estimate, and the sky estimate
+feeds back into the $\chi^2$. The actual $\chi^2$ we're using involves
+the residual $\y - \G\x - \mathrm{avg}(\y - \G\x)$. where avg() is a
+weighted average over wavelength. Fortunately, this weighted average
+can be represented by a matrix multiply. For example,
 
 \begin{equation}
   \left( \begin{array}{cccc}

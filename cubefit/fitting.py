@@ -286,14 +286,16 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty):
 
             wdiff = weight * diff
             val += np.sum(wdiff * diff)
-            grad += atm.gradient_helper(-2. * wdiff, dshape, ctr)
 
-            # TODO: there is an additional contribution to the gradient
-            #       that comes from changing the sky!
+            # See note in docs/gradient.tex for the (non-trivial) derivation
+            # of this gradient!
+            tmp = -2. * weight * (np.sum(wdiff, axis=(1, 2)) /
+                                  np.sum(weight, axis=(1, 2)))[:, None, None]
+            grad += atm.gradient_helper(tmp, dshape, ctr)
 
         rval, rgrad = regpenalty(gal3d)
 
-        logging.debug('%s (%s + %s)', itercount, val + rval, val, rval)
+        logging.debug('%s (%s + %s)', val + rval, val, rval)
 
         # Reshape gradient to 1-d when returning.
         return (val + rval), np.ravel(grad + rgrad)
