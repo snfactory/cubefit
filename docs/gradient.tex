@@ -5,6 +5,8 @@
 %- Abbreviations.
 \newcommand{\psf}{\mathbf{H}}
 \newcommand{\G}{\mathbf{G}}
+\newcommand{\p}{\mathbf{p}}
+\newcommand{\phat}{\mathbf{\hat p}}
 \newcommand{\hhat}{\mathbf{\hat h}}
 \newcommand{\x}{\mathbf{x}}
 \newcommand{\xhat}{\mathbf{\hat x}}
@@ -14,7 +16,8 @@
 \newcommand{\A}{\mathbf{A}}
 \newcommand{\avec}{\mathbf{a}}
 \newcommand{\F}{\mathbf{F}}
-
+\newcommand{\V}{\mathbf{V}}
+\newcommand{\diag}{\mathrm{diag}}
 
 \newcommand{\ddx}{\frac{\partial}{\partial \mathbf{x}}}
 \newcommand{\ddxi}{\frac{\partial}{\partial \mathbf{x}_{i}}}
@@ -37,26 +40,28 @@
 \begin{abstract}
 In CubeFit, one of the fitting steps is to fit the galaxy model to the
 data while holding other parameters (such as positions) fixed. The
-galaxy model has on order $\sim$ 1 million parameters. The ability to
-analytically calculate the gradient (a vector of length ~$\sim$ 1
+galaxy model has on the order of one million parameters. The ability to
+analytically calculate the gradient (a vector of length $\sim$ 1
 million) on the fit $\chi^2$ is essential in order to carry out the fit
-efficiently. This note explains the derivation of the gradient.
+efficiently. This note explains the derivation of the gradient function.
 \end{abstract}
 
 
-\section{$\chi^2$ of Galaxy Fit}
+\section{The Gradient}
 
 The $\chi^2$ in the galaxy fit is given by
 
 \begin{equation}
-\chi^2 = (\y - \G\x)\W(\y - \G\x)
+\chi^2 = (\y - \G\x)^T \W (\y - \G\x)
 \end{equation}
 
-where $\y$ is the data, $\x$ is the model parameters, and $\G$ is the operator
-that translates the model into the data frame. $\G$ includes the effect of PSF
-convolution, shift operation and cropping. (Note that we are supposing that
-we can represent all these operations as a matrix $\G$, but we haven't shown
-this.) Remember that this is all in real space at this point. Carrying on,
+\noindent where $\y$ is the data, $\x$ is the model parameters, $\W$ is the
+weight matrix (inverse covariance matrix; diagonal in our case) and $\G$ is
+the operator that translates the model into the data frame. $\G$ includes
+the effect of PSF convolution, shift operation and cropping. Note that we
+are supposing that we can represent all these operations as a matrix $\G$,
+but we haven't shown this. Remember also that this is all in real space.
+Carrying on,
 
 \begin{eqnarray*}
   \label{eq:5}
@@ -69,22 +74,23 @@ this.) Remember that this is all in real space at this point. Carrying on,
                     - \ddx \left( \x^{T} \G^{T} \W \G \x \right) \\
 \end{eqnarray*}
 
-where in the last line we have used the property that
-$(\mathbf{A}\mathbf{B})^T = \mathbf{B}^T\mathbf{A}^T$ and assumed that
+\noindent where in the second line we have simply separated terms, dropping the
+constant term $\y^T \W \y$, and in the third line we have used the property
+that $(\mathbf{A}\mathbf{B})^T = \mathbf{B}^T\mathbf{A}^T$ and assumed that
 $\W = \W^T$ (the weight matrix is symmetric).
 
 We note that $(\G^{T} \W \y)^{T}$ and $\G^{T} \W \y$ are vectors ($\y$ is a
-vector). The first two terms of the equation are thus of the form $\ddx \x^T \avec$
-and $\ddx \avec^T \x$. These are both simply equal to $\avec$ as $\x^T \avec$ and
-$\avec^T \x$ are dot products between the constant vector $\avec$ and $\x$, so the
-partial derivative with respect to $\x$ is just $\avec$. Making this substitution,
-we have
+vector). The first two terms of the equation are thus of the form
+$\ddx \x^T \avec$ and $\ddx \avec^T \x$. These are both simply equal to
+$\avec$ as $\x^T \avec$ and $\avec^T \x$ are dot products between the
+constant vector $\avec$ and $\x$, so the partial derivative with respect to
+$\x$ is just $\avec$. Making this substitution, we have
 
 \begin{equation}
 \ddx \chi^{2} = 2 \G^T \W \y - \ddx \left( \x^{T} \G^{T} \W \G \x \right)
 \end{equation}
 
-The second term has the form $\ddx \x^T\A\x$, with
+\noindent The second term has the form $\ddx \x^T\A\x$, with
 $\A = \G^T \W \G$. It helps to write this out:
 
 \begin{eqnarray*}
@@ -110,18 +116,18 @@ Substituting this in (with $\A = \G^T \W \G$), we finally get:
 But what is the matrix $\G$? For that we need to digress about Fourier transforms
 as matricies...
 
-\section{Matrix representation of the discrete Fourier transform}
+\section{Discrete Fourier Transform: Matrix Form}
 
-The discrete Fourier transform of a 1-d array $x_n$ is
+The discrete Fourier transform of a vector $x_n$ is
 
 \begin{equation}
-X_k = \sum_{n=0}^{N-1} x_n e^{-i 2 \pi k n / N}
+\hat{x}_k = \sum_{n=0}^{N-1} x_n e^{-i 2 \pi k n / N}
 \end{equation}
 
-We can write this in matrix form,
+\noindent We can write this in matrix form,
 
 \begin{equation}
-\mathbf{X} = \left( \begin{array}{cccc}
+\xhat = \left( \begin{array}{cccc}
    e^{-i 2\pi 0 \cdot 0 / N} & e^{-i 2\pi 0\cdot 1 / N} & e^{-i 2\pi 0 \cdot 2 / N} & \cdots \\
    e^{-i 2\pi 1 \cdot 0 / N} & e^{-i 2\pi 1 \cdot1 / N} & e^{-i 2\pi 1 \cdot 2 / N} & \cdots \\
    e^{-i 2\pi 2 \cdot 0 / N} & e^{-i 2\pi 2 \cdot 1 / N} & e^{-i 2\pi 2 \cdot 2 / N} & \cdots \\
@@ -130,19 +136,19 @@ We can write this in matrix form,
    \left( \begin{array}{c} x_0 \\ x_1 \\ x_2 \\ \vdots \end{array} \right)
 \end{equation}
 
-For a shorthand, we will call the square matrix $\mathbf{F}$
+\noindent For a shorthand, we will call the square matrix $\mathbf{F}$
 
 \begin{equation}
-\mathbf{X} = \mathbf{F} \mathbf{x}
+\xhat = \F \x
 \end{equation}
 
 Similarly, the inverse transform can be written
 
 \begin{equation}
-x_n = \frac{1}{N} \sum_{k=0}^{N-1} X_k e^{i 2 \pi k n / N}
+x_n = \frac{1}{N} \sum_{k=0}^{N-1} \hat{x}_k e^{i 2 \pi k n / N}
 \end{equation}
 
-or
+\noindent or
 
 \begin{equation}
    \mathbf{x} = \frac{1}{N} \left( \begin{array}{cccc}
@@ -151,131 +157,153 @@ or
    e^{i 2\pi 0 \cdot 2 / N} & e^{i 2\pi 1 \cdot 2 / N} & e^{i 2\pi 2 \cdot 2 / N} & \cdots \\
    \vdots & \vdots & \vdots & \ddots
    \end{array} \right)
-   \left( \begin{array}{c} X_0 \\ X_1 \\ X_2 \\ \vdots \end{array} \right)
+   \left( \begin{array}{c} \hat{x}_0 \\ \hat{x}_1 \\ \hat{x}_2 \\ \vdots \end{array} \right)
 \end{equation}
 
-or as shorthand,
+\noindent or as shorthand,
 
 \begin{equation}
-\mathbf{x} = \mathbf{F}^{-1} \mathbf{X}
+\x = \F^{-1} \xhat
 \end{equation}
 
-Now, note that the matrix $\mathbf{F}$ has the property
+\noindent Now, note that the matrix $\F$ has the property
 
 \begin{equation}
-\mathbf{F}^{-1} = \frac{1}{N} \bar{\mathbf{F}}
+\F^{-1} = \frac{1}{N} \bar{\F}
 \end{equation}
 
-where $\bar{\mathbf{F}}$ is the element-wise complex
-conjugate of $\mathbf{F}$.
-
-\section{Convolution in Fourier space}
-
-Convolution in real space is equivalent to element-wise multiplication (the
-Hadamard product, denoted by $\circ$) in Fourier space. Thus, if $\avec$
-represents the PSF in real space, the convolution of the galaxy in Fourier
-space is $(\F\A) \circ \F\x$
+\noindent where $\bar{\F}$ is the element-wise complex conjugate of $\F$.
 
 
+\section{The $\G$ matrix }
 
+The $\G$ matrix represents the operations applied to the model to put
+it "in the data frame". These are (1) convolve model by PSF (2) shift
+model to align with data (3) crop model indicies that extend past the
+data (model is spatially larger than data). Convolution in real space
+is equivalent to element-wise multiplication (the Hadamard product) in
+Fourier space (and this is indeed how the convolution is implemented
+in CubeFit). While element-wise multiplication can be written
+$\mathbf{a} \circ \mathbf{b}$, we will find it useful to write it as
+$\diag(\mathbf{a}) \mathbf{b}$, where diag() is an operator
+that translates a vector into a square diagonal matrix with the same
+entries.
 
-\section{Fourier transform form}
+Convolution of the galaxy model $\x$ by a real-space PSF $\p$ can thus be
+written as
+\begin{equation}
+\F^{-1} \diag(\F \p) \F \x
+\end{equation}
 
-The discrete Fourier transform of a vector $\x$ is:
+Similarly, spatial shifts are implemented as element-wise multiplication in
+Fourier space. the key point being that we can
+subsume this shift vector (or rather the Fourier transform of it) into
+$\F \p = \phat$. Therefore, we can write $\G$ as
 
 \begin{equation}
-  \label{eq:7}
-  F(\x)_{k} = \sum_{j}^{N} x_{j} e^{- \frac{2\pi k j}{N}} = (\F \x)_{k}
+\G = \F^{-1} \diag(\phat) \F
 \end{equation}
 
-And the inverse discrete Fourier transform of vector $\xhat$ is
-\begin{equation}
-  \label{eq:8}
-  F(\xhat)_{j} = \frac{1}{N} \sum_{k}^{N} \hat x_{k} e^{ \frac{2\pi j k}{N}} =
-  (\F^{-1} \xhat)_{j}
-\end{equation}
+We are now interested in calculating $\G^T$ as it appears in the
+equation for $\ddx \chi^{2}$. Simply taking the transpose, we get
+$\G^{T} = \F^T \diag(\phat)^{T} \F^{-1T}$, but we would like
+to rewrite this in a form that has the Fourier transforms in the same
+order as in $\G$. Since $\G$ is a real operator, we have $\G =
+\bar{\G}$, and thus $\G^T = \bar{\G}^T$. We will use this along with
+the relation between the forward and reverse Fourier transform derived
+above ($\F^{-1} = \frac{1}{N} \bar{F}$), and the fact that the
+transpose of a diagonal matrix is the matrix itself. We find:
 
-We chose to use the $1/N$ factor in the inverse transform because it makes the
-normalization easier to carry accros calculations.
-
-Since we can switch $j$ and $k$ in the exponentials above, we see that the
-discrete direct and inverse Fourier transform in matricial form are related by
-the formulae:
 \begin{eqnarray*}
-  \label{eq:9}
-  \F^{-1} & = &\frac{1}{N} \F^{*T} \\
-  \F^{-1*T} & = &\frac{1}{N} \F \\
-\end{eqnarray*}
-where $^{*}$ denotes the complex conjugation.
-
-
-Let us now introduce the $diag()$ operator, which transforms a vector into a
-diagonal matrix, the diagonal being the vector it operates upon: if $\A =
-diag(\avec)$, then $\A_{i,j} = \delta_{i,j} a_{i}$. The vector obtained by an
-element to element multiplication between $\x$ and $\avec$ can thus be writen
-$diag(\avec) \x$.
-
-In matrix form, the Fourier transform of the PSF convolution of vector $\x$ thus
-writes as the element to element product of $\hhat = \F(\psf)$ and $\xhat =
-\F(\x)$.
-
-The operator \emph{convolution by the PSF} thus writes in matricial form:
-\begin{equation}
-  \label{eq:11}
-  \psf = \F^{-1} diag(\hhat) \F
-\end{equation}
-
-From the equation of the matricial derivative of the $\chi^{2}$ derived in the
-previous section, we also need to now how to write $\psf^{T} = \F^{T}
-diag(\hhat)^{T} \F^{-1T}$ in a form that has the Fourier transforms in the same
-order.
-
-Since $\psf$ is a Real operator, we have $\psf = \psf^{*}$, and thus $\psf^{T} =
-\psf^{*T}$.
-
-Therefore, using the relations between direct and indirect Fourier transposes
-derived above and the fact that the transpose of a diagonal matrix is the matrix
-itself, we find:
-\begin{eqnarray*}
-  \label{eq:12}
-  \psf^{T} & = & \F^{T} diag(\hhat)^{T} \F^{-1T}\\
-           & = & (\F^{T} diag(\hhat)^{T} \F^{-1T})^{*}\\
-           & = & \F^{T*} diag(\hhat)^{T*} \F^{-1T*}\\
-           & = & N\F^{-1} diag(\hhat)^{*} \frac{1}{N}\F\\
-           & = & \F^{-1} diag(\hhat)^{*} \F\\
+  \G^{T} & = & \F^{T} \diag(\phat)^{T} \F^{-1T}\\
+        & = & \overline{\F^{T} \diag(\phat)^{T} \F^{-1T}} \\
+        & = & \bar{\F}^T \overline{\diag(\phat)^T} \bar{\F}^{-1T} \\
+        & = & N\F^{-1} \overline{\diag(\phat)} \frac{1}{N}\F \\
+        & = & \F^{-1} \overline{\diag(\phat)} \F\\
 \end{eqnarray*}
 
-If we now write the residual $\rvect = \psf \x - \y$, we finally find that the
-derivative of the $\chi^{2}$ writes:
+If we now write the residual $\rvect = \y - \G\x$, we finally find that the
+derivative of $\chi^{2}$ is:
 \begin{equation}
-  \label{eq:13}
-  \ddx \chi^{2} = \F^{-1} diag(\hhat)^{*} \F(\W \mathbf{\rvect})
+  \ddx \chi^{2} = \F^{-1} \overline{\diag(\phat)} \F(\W \rvect)
 \end{equation}
 
 
+\section{Fitting galaxy and sky simultaneously}
 
-% older stuff
-\section{Appendix: Random extra note}
-
-By writing explicitly $\partial (\G \x)_{j} / \partial x_{i}
-= \partial/\partial x_{i} \left( \sum_{l} H_{j,l} x_{l}\right)$ and its transpose
-it is easy to show the two following formulae. It is just important to make sure
-to write the product in the exact same way depending on if $\x$ is on the left
-or on the right of $\G$: $\left( \G \x \right)_{j} =  \sum_{l} H_{l,j} x_{l}$
-and $\left( \x^{T} \G \right)_{j} =  \sum_{l} x_{l} H_{j,l}$
+In another step in CubeFit, we fit the galaxy model to multiple epochs
+of data simultaneously, while adjusting the sky for each epoch on each
+iteration.  On each iteration, the sky is calculated by taking the
+weighted average of the residual ($\y - \G \x$) at each wavelength.
+Fortunately, this weighted average can be represented by a
+matrix multiply. For example,
 
 \begin{equation}
-  \label{eq:3}
-  \ddx \left( \x^{T} \G \right) = \ddx \left( \x^{T} \G \right)^{T} = \G^{T}
+  \left( \begin{array}{cccc}
+   \frac{w_0}{w_0 + w_1} & \frac{w_1}{w_0 + w_1} & 0 & 0 \\
+   \frac{w_0}{w_0 + w_1} & \frac{w_1}{w_0 + w_1} & 0 & 0 \\
+   0   & 0   & \frac{w_2}{w_2 + w_3} & \frac{w_3}{w_2 + w_3} \\
+   0   & 0   & \frac{w_2}{w_2 + w_3} & \frac{w_3}{w_2 + w_3} \\
+   \end{array} \right)
+   \left( \begin{array}{c} x_0 \\ x_1 \\ x_2 \\ x_3 \end{array} \right)
 \end{equation}
+
+\noindent yields a vector whose first two entries are the weighted
+average across the first two entries of $\x$ and whose last two
+entries are the weighted average across the last two entries of
+$\x$. Call this matrix $\V$. The weighted average of the residual is then
+$\V (\y - \G\x)$ and the $\chi^2$ for each epoch is
+
+\begin{eqnarray*}
+\chi^2 &=& (\y - \G\x - \V(\y - \G\x))^T \W (\y - \G\x - \V(\y - \G\x)) \\
+       &=& ((I - \V)(\y - \G\x))^T \W ((I - \V)(\y - \G\x)) \\
+       &=& (\y - \G\x)^T (I - \V)^T \W (I - \V) (\y - \G\x)
+\end{eqnarray*}
+
+\noindent where in the third line we have used the equality
+$(\mathbf{A}\mathbf{B})^T = \mathbf{B}^T \mathbf{A}^T$. This is the
+same as the original $\chi^2$ equation, but with $\W$ replaced by $(I
+- \V)^T \W (I - \V)$. This is a constant, so our original result for the
+$\chi^2$ gradient holds under this replacement:
+
+\begin{eqnarray*}
+\W \rvect &\to& (I - \V)^T \W (I - \V) \rvect \\
+          &\to& (I - \V)^T \W \mathbf{r'} \\
+          &\to& \W \mathbf{r'} - \V^T \W \mathbf{r'}
+\end{eqnarray*}
+
+\noindent where $\mathbf{r'} = (I - \V)(\y - \G\x)$ is the residual after
+subtracting the ``sky.''
+
+Practically, how do we calculate $\V^T \W \mathbf{r'}$? In other words, if
+$\V \x$ is equivalent to a weighted average by wavelength, what is $\V^T \x$?
+In our minimal example from above, it would be
 
 \begin{equation}
-  \label{eq:4}
-  \ddx \left( \G \x \right) =  \ddx \left( \G \x \right)^{T} = \G
+  \V^T \x
+  = \left( \begin{array}{cccc}
+    \frac{w_0}{w_0 + w_1} & \frac{w_0}{w_0 + w_1} & 0 & 0 \\
+    \frac{w_1}{w_0 + w_1} & \frac{w_1}{w_0 + w_1} & 0 & 0 \\
+    0   & 0   & \frac{w_2}{w_2 + w_3} & \frac{w_2}{w_2 + w_3} \\
+    0   & 0   & \frac{w_3}{w_2 + w_3} & \frac{w_3}{w_2 + w_3} \\
+    \end{array} \right)
+    \left( \begin{array}{c} x_0 \\ x_1 \\ x_2 \\ x_3 \end{array} \right)
+  = \left( \begin{array}{c}
+    \frac{w_0}{w_0 + w_1} (x_0 + x_1) \\
+    \frac{w_1}{w_0 + w_1} (x_0 + x_1) \\
+    \frac{w_2}{w_2 + w_3} (x_2 + x_3) \\
+    \frac{w_3}{w_2 + w_3} (x_2 + x_3)
+    \end{array} \right)
 \end{equation}
 
+\noindent Looking at the result, we can see this is equivalent to, for
+each wavelength, taking the ratio of the sum of $\x$ and the sum of $\W$
+and multiplying the result by $\W$. In Python (where we are representing $\W$
+and $\x$ with 3-d arrays)
 
-
-
+\begin{verbatim}
+tmp = np.sum(w * rprime, axis=(1, 2)) / np.sum(w, axis=(1, 2))
+result = w * tmp[:, None, None]
+\end{verbatim}
 
 \end{document}
