@@ -42,9 +42,6 @@ def parse_conf(inconf):
     outconf["spaxel_size"] = inconf["PARAM_SPAXEL_SIZE"]
     outconf["wave_ref"] = inconf.get("PARAM_LAMBDA_REF", WAVE_REF_DEFAULT)
 
-    outconf["mu_xy"] = inconf["MU_GALAXY_XY_PRIOR"]
-    outconf["mu_wave"] = inconf["MU_GALAXY_LAMBDA_PRIOR"]
-
     # index of master final ref. Subtract 1 for Python indexing.
     outconf["master_ref"] = inconf["PARAM_FINAL_REF"] - 1
 
@@ -114,7 +111,7 @@ def parse_conf(inconf):
 
 def main(configfname, outfname, dataprefix="", logfname=None,
          loglevel=logging.INFO, diagdir=None, refitgal=False,
-         fit_params=None):
+         mu_wave=0.07, mu_xy=0.001, **kwargs):
     """Run cubefit.
 
     Parameters
@@ -136,8 +133,11 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         If given, write diagnostic output to this directory.
     refitgal : bool
         If true, run additional steps in algorithm.
-    fit_params : dict
-        Dictionary overriding parameters (after config file is parsed).
+    mu_wave, mu_xy : float
+        Hyperparameters in wavelength and spatial directions.
+
+    Additional keyword arugments override parameters in config file
+    (after config file is parsed).
     """
 
     # Set up logging
@@ -164,12 +164,11 @@ def main(configfname, outfname, dataprefix="", logfname=None,
     # Change any parameters that have been chosen at command line.
     # There is a check to ensure that we only try to set parameters that are
     # already in the config file.
-    if fit_params is not None:
-        for key, val in fit_params.iteritems():
-            if key not in cfg:
-                raise RuntimeError("key not in configuration: " + repr(key))
-            if val is not None:
-                cfg[key] = val
+    for key, val in kwargs.iteritems():
+        if key not in cfg:
+            raise RuntimeError("key not in configuration: " + repr(key))
+        if val is not None:
+            cfg[key] = val
 
     # -------------------------------------------------------------------------
     # Load data cubes from the list of FITS files.
@@ -248,8 +247,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
 
     galprior = np.zeros((nw, MODEL_SHAPE[0], MODEL_SHAPE[1]))
 
-    regpenalty = RegularizationPenalty(galprior, mean_gal_spec, cfg["mu_xy"],
-                                       cfg["mu_wave"])
+    regpenalty = RegularizationPenalty(galprior, mean_gal_spec, mu_xy, mu_wave)
 
     # -------------------------------------------------------------------------
     # Fit just the galaxy model to just the master ref.

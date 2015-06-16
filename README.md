@@ -52,8 +52,6 @@ CubeFit currently expects to find the following keys in the input JSON file:
 | `"PARAM_HA"`               |        | position of the target (RA) in degrees
 | `"PARAM_DEC"`              |        | position of the target (DEC) in degrees
 | `"PARAM_MLA_TILT"`         |        | MLA tilt in radians
-| `"MU_GALAXY_XY_PRIOR"`     |        | spatial hyperparameter
-| `"MU_GALAXY_LAMBDA_PRIOR"` |        | wavelength hyperparameter
 
 The above parameter names and conventions are chosen to comply with the existing
 DDT input files. If we are creating a new script that produces these config
@@ -77,8 +75,6 @@ not currently work!*
 | `"RA"`               |        | position of the target (RA) in degrees
 | `"DEC"`              |        | position of the target (DEC) in degrees
 | `"TILT"`             |        | MLA tilt in radians
-| `"MU_XY"`            |        | spatial hyperparameter
-| `"MU_WAVE"`          |        | wavelength hyperparameter
 
 
 Output format

@@ -23,12 +23,12 @@ parser.add_argument("--diagdir", default=None,
 parser.add_argument("--refitgal", default=False, action="store_true",
                     help="Add an iteration where galaxy model is fit using "
                     "all epochs and then data/SN positions are refit")
-parser.add_argument("--mu_wave", default=None, type=float,
+parser.add_argument("--mu_wave", default=0.07, type=float,
                     help="Override the wavelength regularization "
                     "hyperparameter")
-parser.add_argument("--mu_xy", default=None, type=float,
+parser.add_argument("--mu_xy", default=0.001, type=float,
                     help="Override the spatial regularization hyperparameter")
-parser.add_argument("--masterref", default=None, type=int,
+parser.add_argument("--master_ref", default=None, type=int,
                     help="Choose index of exposure used as master ref")
 args = parser.parse_args()
 
@@ -38,10 +38,7 @@ if not isinstance(numlevel, int):
     print('Invalid log level: %s' % loglevel)
     exit(1)
 
-# collect override parameters into a dictionary.
-fit_params = {'mu_wave' : args.mu_wave, 'mu_xy' : args.mu_xy,
-              'master_ref' : args.masterref}
-
 cubefit.main(args.configfile, args.outfile, dataprefix=args.dataprefix,
              logfname=args.logfile, loglevel=numlevel, diagdir=args.diagdir,
-             refitgal=args.refitgal, fit_params=fit_params)
+             refitgal=args.refitgal, mu_wave=args.mu_wave, mu_xy=args.mu_xy,
+             master_ref=args.master_ref)
