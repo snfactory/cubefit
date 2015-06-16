@@ -54,7 +54,7 @@ CubeFit currently expects to find the following keys in the input JSON file:
 | `"PARAM_MLA_TILT"`         |        | MLA tilt in radians
 
 *NOTE: We're currently unsure of what the `XP` and `YP` parameters are
-in the current DDT input files. We *think* they give the location of
+in the current DDT input files. We think they give the location of
 the center of the master final ref relative to the center of each
 exposure in spaxels. That is, these parameters are always 0 for the
 master final ref. For an exposure offset by 1 spaxel in each direction
@@ -70,18 +70,18 @@ not currently work!*
 | -------------------- | ------ | ------------------------------------- |
 | `"FILENAMES"`        | *list* | file names
 | `"AIRMASS"`          | *list* | airmass for each epoch
-| `"P"`                | *list* | pressure in mmHg for each epoch
-| `"T"`                | *list* | temperature in degrees Celcius for each epoch
-| `"IS_FINAL_REF"`     | *list* | Integers indicating whether epoch is final ref (0 or 1)
+| `"PRESSURE"`         | *list* | pressure in mmHg for each epoch
+| `"TEMPERATURE"`      | *list* | temperature in degrees Celcius for each epoch
+| `"IS_FINAL_REF"`     | *list* | Boolean (true/false) indicating whether epoch is final ref
 | `"MASTER_FINAL_REF"` |        | index of "master" final ref (1-based indexing)
-| `"X"`                | *list* | x position of MLA center relative to SN
-| `"Y"`                | *list* | y position of MLA center relative to SN
+| `"XCTR"`             | *list* | x position of MLA center relative to SN
+| `"YCTR"`             | *list* | y position of MLA center relative to SN
 | `"PSF_PARAMS"`       | *list of lists* | PSF parameters for each epoch
 | `"SPAXEL_SIZE"`      |        | instrument spaxel size in arcseconds
 | `"WAVE_REF"`         |        | reference wavelength in Angstroms
 | `"RA"`               |        | position of the target (RA) in degrees
 | `"DEC"`              |        | position of the target (DEC) in degrees
-| `"TILT"`             |        | MLA tilt in radians
+| `"MLA_TILT"`         |        | MLA tilt in radians (?)
 
 *NOTE: the meaning of `X` and `Y` parameters is different than in the previous
 table!*

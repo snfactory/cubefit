@@ -111,7 +111,7 @@ def parse_conf(inconf):
 
 def main(configfname, outfname, dataprefix="", logfname=None,
          loglevel=logging.INFO, diagdir=None, refitgal=False,
-         mu_wave=0.07, mu_xy=0.001, **kwargs):
+         mu_wave=5.e-4, mu_xy=1.e-5, **kwargs):
     """Run cubefit.
 
     Parameters
