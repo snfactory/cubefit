@@ -205,6 +205,18 @@ def determine_sky_and_sn(galmodel, snmodel, data, weight):
     return sky, sn
 
 
+def chisq_galaxy_single(galaxy, data, weight, ctr, atm):
+    """Chi^2 and gradient (not including regularization term) for a single
+    epoch."""
+
+    scene = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
+    r = data - scene
+    wr = weight * r
+    val = np.sum(wr * r)
+    grad = atm.gradient_helper(-2. * wr, data.shape[1:3], ctr)
+
+    return val, grad
+
 
 def fit_galaxy_single(galaxy0, data, weight, ctr, atm, regpenalty):
     """Fit the galaxy model to a single epoch of data.
@@ -220,35 +232,53 @@ def fit_galaxy_single(galaxy0, data, weight, ctr, atm, regpenalty):
         Length 2 tuple giving y, x position of data in model coordinates.
     """
 
-    # parameters for fitter need to be 1-d
-    galparams0 = np.ravel(galaxy0)
-    dshape = data.shape[1:3]
-
     # Define objective function to minimize.
     # Returns chi^2 (including regularization term) and its gradient.
-    def objective_func(galparams):
+    def objective(galparams):
 
         # galparams is 1-d (raveled version of galaxy); reshape to 3-d.
-        gal3d = galparams.reshape(galaxy0.shape)
-        m = atm.evaluate_galaxy(gal3d, dshape, ctr)
-        diff = data - m
+        galaxy = galparams.reshape(galaxy0.shape)
+        cval, cgrad = chisq_galaxy_single(galaxy, data, weight, ctr, atm)
+        rval, rgrad = regpenalty(galaxy)
+        totval = cval + rval
+        logging.debug('%s (%s + %s)', totval, cval, rval)
 
-        wdiff = weight * diff
-        chisq_val = np.sum(wdiff * diff)
-        chisq_grad = atm.gradient_helper(-2. * wdiff, dshape, ctr)
-        rval, rgrad = regpenalty(gal3d)
-
-        logging.debug('%s (%s, %s)', chisq_val + rval, chisq_val, rval)
-
-        # Reshape gradient to 1-d when returning.
-        return (chisq_val + rval), np.ravel(chisq_grad + rgrad)
+        # ravel gradient to 1-d when returning.
+        return totval, np.ravel(cgrad + rgrad)
 
     # run minimizer
-    galparams, f, d = fmin_l_bfgs_b(objective_func, galparams0)
+    galparams0 = np.ravel(galaxy0)  # fit parameters must be 1-d
+    galparams, f, d = fmin_l_bfgs_b(objective, galparams0)
     _check_result(d['warnflag'], d['task'])
     _log_result("fmin_l_bfgs_b", f, d['nit'], d['funcalls'])
 
     return galparams.reshape(galaxy0.shape)
+
+
+def chisq_galaxy_sky_multi(galaxy, datas, weights, ctrs, atms):
+    """Chi^2 and gradient (not including regularization term) for 
+    multiple epochs, allowing sky to float."""
+
+    val = 0.
+    grad = np.zeros_like(galaxy)
+    for data, weight, ctr, atm in zip(datas, weights, ctrs, atms):
+        scene = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
+        r = data - scene
+
+        # subtract off sky (weighted avg of residuals)
+        sky = np.average(r, weights=weight, axis=(1, 2))
+        r -= sky[:, None, None]
+
+        wr = weight * r
+        val += np.sum(wr * r)
+
+        # See note in docs/gradient.tex for the (non-trivial) derivation
+        # of this gradient!
+        tmp = -2. * weight * (np.sum(wr, axis=(1, 2)) /
+                              np.sum(weight, axis=(1, 2)))[:, None, None]
+        grad += atm.gradient_helper(tmp, data.shape[1:3], ctr)
+
+    return val, grad
 
 
 def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty):
@@ -257,61 +287,39 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty):
     Parameters
     ----------
     galaxy0 : ndarray (3-d)
-
+        Initial galaxy model.
     datas : list of ndarray
         Sky-subtracted data for each epoch to fit.
     """
 
-    # parameters for fitter need to be 1-d
-    galparams0 = np.ravel(galaxy0)
-    dshape = datas[0].shape[1:3]
-
-    # Define objective function to minimize. This adjusts SN and Sky
-    # and returns the regularized chi squared and its gradient.
-    def objective_func(galparams):
+    # Define objective function to minimize.
+    # Returns chi^2 (including regularization term) and its gradient.
+    def objective(galparams):
 
         # galparams is 1-d (raveled version of galaxy); reshape to 3-d.
-        gal3d = galparams.reshape(galaxy0.shape)
+        galaxy = galparams.reshape(galaxy0.shape)
+        cval, cgrad = chisq_galaxy_sky_multi(galaxy, datas, weights, ctrs,
+                                             atms)
+        rval, rgrad = regpenalty(galaxy)
+        totval = cval + rval
+        logging.debug('%s (%s + %s)', totval, cval, rval)
 
-        val = 0.
-        grad = np.zeros_like(gal3d)
-        for data, weight, ctr, atm in zip(datas, weights, ctrs, atms):
-            m = atm.evaluate_galaxy(gal3d, dshape, ctr)
-            diff = data - m
-
-            # determine sky, given the difference between the data and
-            # galaxy model.
-            sky = np.average(diff, weights=weight, axis=(1, 2))
-            diff -= sky[:, None, None]
-
-            wdiff = weight * diff
-            val += np.sum(wdiff * diff)
-
-            # See note in docs/gradient.tex for the (non-trivial) derivation
-            # of this gradient!
-            tmp = -2. * weight * (np.sum(wdiff, axis=(1, 2)) /
-                                  np.sum(weight, axis=(1, 2)))[:, None, None]
-            grad += atm.gradient_helper(tmp, dshape, ctr)
-
-        rval, rgrad = regpenalty(gal3d)
-
-        logging.debug('%s (%s + %s)', val + rval, val, rval)
-
-        # Reshape gradient to 1-d when returning.
-        return (val + rval), np.ravel(grad + rgrad)
+        # ravel gradient to 1-d when returning.
+        return totval, np.ravel(cgrad + rgrad)
 
     # run minimizer
-    galparams, f, d = fmin_l_bfgs_b(objective_func, galparams0)
+    galparams0 = np.ravel(galaxy0)  # fit parameters must be 1-d
+    galparams, f, d = fmin_l_bfgs_b(objective, galparams0)
     _check_result(d['warnflag'], d['task'])
     _log_result("fmin_l_bfgs_b", f, d['nit'], d['funcalls'])
 
     galaxy = galparams.reshape(galaxy0.shape)
 
-    # get last-calculated skys
+    # get last-calculated skys, given galaxy.
     skys = []
     for data, weight, ctr, atm in zip(datas, weights, ctrs, atms):
-        gal = atm.evaluate_galaxy(galaxy, dshape, ctr)
-        sky = np.average(data - gal, weights=weight, axis=(1, 2))
+        scene = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
+        sky = np.average(data - scene, weights=weight, axis=(1, 2))
         skys.append(sky)
 
     return galaxy, skys
