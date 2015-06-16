@@ -218,6 +218,32 @@ def chisq_galaxy_single(galaxy, data, weight, ctr, atm):
     return val, grad
 
 
+def chisq_galaxy_sky_multi(galaxy, datas, weights, ctrs, atms):
+    """Chi^2 and gradient (not including regularization term) for 
+    multiple epochs, allowing sky to float."""
+
+    val = 0.
+    grad = np.zeros_like(galaxy)
+    for data, weight, ctr, atm in zip(datas, weights, ctrs, atms):
+        scene = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
+        r = data - scene
+
+        # subtract off sky (weighted avg of residuals)
+        sky = np.average(r, weights=weight, axis=(1, 2))
+        r -= sky[:, None, None]
+
+        wr = weight * r
+        val += np.sum(wr * r)
+
+        # See note in docs/gradient.tex for the (non-trivial) derivation
+        # of this gradient!
+        tmp = -2. * weight * (np.sum(wr, axis=(1, 2)) /
+                              np.sum(weight, axis=(1, 2)))[:, None, None]
+        grad += atm.gradient_helper(tmp, data.shape[1:3], ctr)
+
+    return val, grad
+
+
 def fit_galaxy_single(galaxy0, data, weight, ctr, atm, regpenalty):
     """Fit the galaxy model to a single epoch of data.
 
@@ -253,32 +279,6 @@ def fit_galaxy_single(galaxy0, data, weight, ctr, atm, regpenalty):
     _log_result("fmin_l_bfgs_b", f, d['nit'], d['funcalls'])
 
     return galparams.reshape(galaxy0.shape)
-
-
-def chisq_galaxy_sky_multi(galaxy, datas, weights, ctrs, atms):
-    """Chi^2 and gradient (not including regularization term) for 
-    multiple epochs, allowing sky to float."""
-
-    val = 0.
-    grad = np.zeros_like(galaxy)
-    for data, weight, ctr, atm in zip(datas, weights, ctrs, atms):
-        scene = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
-        r = data - scene
-
-        # subtract off sky (weighted avg of residuals)
-        sky = np.average(r, weights=weight, axis=(1, 2))
-        r -= sky[:, None, None]
-
-        wr = weight * r
-        val += np.sum(wr * r)
-
-        # See note in docs/gradient.tex for the (non-trivial) derivation
-        # of this gradient!
-        tmp = -2. * weight * (np.sum(wr, axis=(1, 2)) /
-                              np.sum(weight, axis=(1, 2)))[:, None, None]
-        grad += atm.gradient_helper(tmp, data.shape[1:3], ctr)
-
-    return val, grad
 
 
 def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty):

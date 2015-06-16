@@ -7,6 +7,9 @@ from numpy.fft import fft2, ifft2
 from numpy.testing import assert_allclose
 
 import cubefit
+from cubefit.fitting import (determine_sky_and_sn,
+                             chisq_galaxy_single,
+                             chisq_galaxy_sky_multi)
 
 # -----------------------------------------------------------------------------
 # Helper functions
@@ -21,7 +24,7 @@ def assert_real(x):
                            .format(np.max(absfrac)))
 
 
-def convolve_fft(x, kernel):
+def fftconvolve(x, kernel):
     """convolve 2-d array x with a kernel *centered* in array."""
     
     ny, nx = kernel.shape
@@ -31,17 +34,6 @@ def convolve_fft(x, kernel):
     fshift = cubefit.fft_shift_phasor_2d(kernel.shape, (-xctr, -yctr))
     
     return ifft2(fft2(kernel) * fft2(x) * fshift).real
-
-
-def chisq(galaxy, data, weight, ctr, atm):
-    m = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
-    diff = data - m
-    wdiff = weight * diff
-    chisq_val = np.sum(wdiff * diff)
-    chisq_grad = atm.gradient_helper(-2. * wdiff, data.shape[1:3], ctr)
-
-    return chisq_val, chisq_grad
-
 
 # -----------------------------------------------------------------------------
 
@@ -61,89 +53,164 @@ def test_determine_sky_and_sn():
     assert_allclose(sky, truesky)
     assert_allclose(sn, truesn)
 
-
 class TestFitting:
     def setup_class(self):
         """Create some dummy data and an AtmModel."""
 
         # some settings
-        nt = 1
-        nw = 1
-        ellipticity = 1.5
-        alpha = 2.0
+        MODEL_SHAPE = (32, 32)
+        nt = 3
+        nw = 3
+        ny = 15
+        nx = 15
+        yoff, xoff = (8, 8)  # offset between model and data
 
-        wave = np.linspace(4000., 6000., nw)
+        # True data yctr, xctr given offset
+        trueyctr = yoff + (ny-1)/2. - (MODEL_SHAPE[0]-1)/2.
+        truexctr = xoff + (nx-1)/2. - (MODEL_SHAPE[1]-1)/2.
 
-        # Create arbitrary (non-zero!) data.
-        self.truegal = cubefit.gaussian_plus_moffat_psf((32, 32), 13.5, 13.5,
-                                                        4.5, 6.0, 0.5)
-        psf = cubefit.gaussian_plus_moffat_psf((32, 32), 15.5, 15.5,
-                                               ellipticity, alpha, 0.)
+        # Create a "true" underlying galaxy. This can be anything, but it
+        # should not be all zeros or flat. The fourth and fifth parameters
+        # are ellipticity and alpha.
+        truegal_2d = cubefit.gaussian_plus_moffat_psf(MODEL_SHAPE, 13.5, 13.5,
+                                                      4.5, 6.0, 0.5)
+        truegal = np.tile(truegal_2d, (nw, 1, 1))
 
-        # convolve the true galaxy model with the psf, take a 15x15 subslice
-        data_2d = convolve_fft(self.truegal, psf)
-        data = np.empty((nw, 15, 15))
-        xoff = 8
-        yoff = 8
-        data[0, :, :] = data_2d[yoff:yoff+15, xoff:xoff+15]
+        # Create a PSF. The fourth and fifth parameters are ellipticity and
+        # alpha.
+        psf_2d = cubefit.gaussian_plus_moffat_psf(MODEL_SHAPE, 15.5, 15.5,
+                                                  1.5, 2.0, 0.)
+        psf = np.tile(psf_2d, (nw, 1, 1))
 
-        self.data = data
-        self.weight = np.ones_like(data)
-        self.xctr_true = 15.5 - (xoff + 7.)
-        self.yctr_true = 15.5 - (yoff + 7.)
+        # create the data by convolving the true galaxy model with the psf
+        # and taking a slice.
+        data = np.empty((nw, ny, nx), dtype=np.float32)
+        for i in range(nw):
+            data_2d = fftconvolve(truegal[i], psf[i])
+            data[i, :, :] = data_2d[yoff:yoff+ny, xoff:xoff+nx]
 
-        # add a wavelength dimension (length 1.... nw must be 1!)
-        self.truegal = self.truegal[None, :, :]
-        psf = psf[None, :, :]
+        # cube
+        self.cube = cubefit.DataCube(data, np.ones_like(data), np.ones(nw))
 
         # make a fake AtmModel
         adr_refract = np.zeros((2, nw))
         self.atm = cubefit.AtmModel(psf, adr_refract)
-        self.psf = psf
 
-        # model
-        self.galaxy = np.zeros_like(self.truegal)
+        # initialize galaxy model
+        self.galaxy = np.zeros((nw, MODEL_SHAPE[0], MODEL_SHAPE[1]))
 
-    def test_gradient(self):
-        """Test that gradient functions (used in galaxy fitting) return values
-        'close' to what you get with a finite differences method.
+        # True data yctr, xctr given offset
+        self.truegal = truegal
+        self.trueyctr = yoff + (ny-1)/2. - (MODEL_SHAPE[0]-1)/2.
+        self.truexctr = xoff + (nx-1)/2. - (MODEL_SHAPE[1]-1)/2.
 
-        This is a sanity check to see if the gradient function is returning
-        the naive result for individual elements. The likelihood is given
-        by
-
-        L = sum_i w_i * (d_i - m_i)^2
-
-        where i represents pixels, d is the data, and m is the model
-        *sampled onto the data frame*. We want to know the derivative with
-        respect to model parameters x_j.
-
-        dL/dx_j = sum_i -2 w_i (d_i - m_i) dm_i/dx_j
-
-        dm_i/dx_j is the change in the resampled model due to changing model
-        parameter j. Changing model parameter j is adjusting a single pixel
-        in the model. The result in the data frame is a PSF at the position
-        corresponding to model pixel j.
+    def test_chisq_galaxy_single_gradient(self):
+        """Test that gradient function (used in galaxy fitting) returns value
+        close to what you get with a finite differences method.
         """
-        
-        EPS = 1.e-10
 
-        # analytic gradient
-        chisq_val, chisq_grad = chisq(self.galaxy, self.data, self.weight,
-                                      (0., 0.), self.atm)
+        EPS = 1.e-7
 
-        # finite differences gradient
-        fd_chisq_grad = np.zeros_like(self.galaxy)
-        for j in range(32):
-            for i in range(32):
-                self.galaxy[0,j,i] += EPS
-                new_chisq_val, _ = chisq(self.galaxy, self.data, self.weight,
-                                      (0., 0.), self.atm)
-                self.galaxy[0,j,i] = 0.
+        data = self.cube.data
+        weight = self.cube.weight
+        atm = self.atm
+        ctr = (0., 0.)
 
-                fd_chisq_grad[0,j,i] = (new_chisq_val - chisq_val) / EPS
+        # analytic gradient is `grad`
+        val, grad = chisq_galaxy_single(self.galaxy, data, weight, ctr, atm)
 
-        assert_allclose(chisq_grad, fd_chisq_grad, rtol=0.02)
+        # save data - model residuals for finite differences chi^2 gradient.
+        # need to carry out subtraction in float64 to avoid round-off errors.
+        scene = atm.evaluate_galaxy(self.galaxy, data.shape[1:3], ctr)
+        r0 = data.astype(np.float64) - scene
+
+        # finite differences gradient: alter each element by EPS one
+        # at a time and recalculate chisq.
+        fdgrad = np.zeros_like(self.galaxy)
+        nk, nj, ni = self.galaxy.shape
+        for k in range(nk):
+            for j in range(nj):
+                for i in range(ni):
+                    self.galaxy[k, j, i] += EPS
+                    scene = atm.evaluate_galaxy(self.galaxy, data.shape[1:3],
+                                                ctr)
+                    self.galaxy[k, j, i] -= EPS # reset model value.
+
+                    # NOTE: rather than calculating
+                    # chisq1 - chisq0 = sum(w * r1^2) - sum(w * r0^2)
+                    # we calculate
+                    # sum(w * (r1^2 - r0^2))
+                    # which is the same quantity but avoids summing large
+                    # numbers.
+                    r1 = data.astype(np.float64) - scene
+                    chisq_diff = np.sum(weight * (r1**2 - r0**2))
+                    fdgrad[k, j, i] = chisq_diff / EPS
+
+        assert_allclose(grad, fdgrad, rtol=0.001, atol=0.)
+
+    def test_chisq_galaxy_sky_multi_gradient(self):
+        """Test that gradient function (used in galaxy fitting) returns value
+        close to what you get with a finite differences method.
+        """
+
+        EPS = 1.e-8
+
+        datas = [self.cube.data]
+        weights = [self.cube.weight]
+        atms = [self.atm]
+        ctrs = [(0., 0.)]
+
+        # analytic gradient is `grad`
+        _, grad = chisq_galaxy_sky_multi(self.galaxy, datas, weights, ctrs,
+                                         atms)
+
+        # NOTE: Following is specific to only having one cube!
+        data = datas[0]
+        weight = weights[0]
+        atm = atms[0]
+        ctr = ctrs[0]
+
+        # save data - model residuals for finite differences chi^2 gradient.
+        # need to carry out subtraction in float64 to avoid round-off errors.
+        scene = atm.evaluate_galaxy(self.galaxy, data.shape[1:3], ctr)
+        r0 = data.astype(np.float64) - scene
+        sky = np.average(r0, weights=weight, axis=(1, 2))
+        r0 -= sky[:, None, None]
+
+        # finite differences gradient: alter each element by EPS one
+        # at a time and recalculate chisq.
+        fdgrad = np.zeros_like(self.galaxy)
+        nk, nj, ni = self.galaxy.shape
+        for k in range(nk):
+            for j in range(nj):
+                for i in range(ni):
+                    self.galaxy[k, j, i] += EPS
+                    scene = atm.evaluate_galaxy(self.galaxy, data.shape[1:3],
+                                                ctr)
+                    self.galaxy[k, j, i] -= EPS # reset model value.
+
+                    # NOTE: rather than calculating
+                    # chisq1 - chisq0 = sum(w * r1^2) - sum(w * r0^2)
+                    # we calculate
+                    # sum(w * (r1^2 - r0^2))
+                    # which is the same quantity but avoids summing large
+                    # numbers.
+                    r1 = data.astype(np.float64) - scene
+                    sky = np.average(r1, weights=weight, axis=(1, 2))
+                    r1 -= sky[:, None, None]
+                    chisq_diff = np.sum(weight * (r1**2 - r0**2))
+                    fdgrad[k, j, i] = chisq_diff / EPS
+
+        # debug
+        import matplotlib.pyplot as plt
+        for im, fname in [(grad[0], "grad.png"), (fdgrad[0], "fdgrad.png")]:
+            plt.imshow(im, origin="lower", interpolation="nearest",
+                       cmap="bone")
+            plt.colorbar()
+            plt.savefig(fname)
+            plt.clf()
+
+        assert_allclose(grad, fdgrad, rtol=0.001, atol=0.)
 
     def test_point_source(self):
         """Test that evaluate_point_source returns the expected point source.
