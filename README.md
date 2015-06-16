@@ -43,8 +43,8 @@ CubeFit currently expects to find the following keys in the input JSON file:
 | `"PARAM_T"`                | *list* | temperature in degrees Celcius for each epoch
 | `"PARAM_IS_FINAL_REF"`     | *list* | Integers indicating whether epoch is final ref (0 or 1)
 | `"PARAM_FINAL_REF"`        |        | index of "master" final ref (1-based indexing)
-| `"PARAM_TARGET_XP"`        | *list* |
-| `"PARAM_TARGET_YP"`        | *list* |
+| `"PARAM_TARGET_XP"`        | *list* | *See NOTE below*
+| `"PARAM_TARGET_YP"`        | *list* | *See NOTE below*
 | `"PARAM_PSF_TYPE"`         |        | must be `"GS-PSF"`
 | `"PARAM_PSF_ES"`           | *list of lists* | PSF parameters for each epoch
 | `"PARAM_SPAXEL_SIZE"`      |        | instrument spaxel size in arcseconds
@@ -52,6 +52,13 @@ CubeFit currently expects to find the following keys in the input JSON file:
 | `"PARAM_HA"`               |        | position of the target (RA) in degrees
 | `"PARAM_DEC"`              |        | position of the target (DEC) in degrees
 | `"PARAM_MLA_TILT"`         |        | MLA tilt in radians
+
+*NOTE: We're currently unsure of what the `XP` and `YP` parameters are in the
+current DDT input files. We *think* they give the location of the center of the
+master final ref relative to the center of each exposure. That is, these
+parameters are always 0 for the master final ref. For an exposure offset by 1
+spaxel in each direction to the upper right (northwest) the parameters would be
+each be -1.*
 
 The above parameter names and conventions are chosen to comply with the existing
 DDT input files. If we are creating a new script that produces these config
@@ -76,6 +83,8 @@ not currently work!*
 | `"DEC"`              |        | position of the target (DEC) in degrees
 | `"TILT"`             |        | MLA tilt in radians
 
+*NOTE: the meaning of `X` and `Y` parameters is different than in the previous
+table!*
 
 Output format
 -------------
