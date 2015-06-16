@@ -53,12 +53,12 @@ CubeFit currently expects to find the following keys in the input JSON file:
 | `"PARAM_DEC"`              |        | position of the target (DEC) in degrees
 | `"PARAM_MLA_TILT"`         |        | MLA tilt in radians
 
-*NOTE: We're currently unsure of what the `XP` and `YP` parameters are in the
-current DDT input files. We *think* they give the location of the center of the
-master final ref relative to the center of each exposure. That is, these
-parameters are always 0 for the master final ref. For an exposure offset by 1
-spaxel in each direction to the upper right (northwest) the parameters would be
-each be -1.*
+*NOTE: We're currently unsure of what the `XP` and `YP` parameters are
+in the current DDT input files. We *think* they give the location of
+the center of the master final ref relative to the center of each
+exposure in spaxels. That is, these parameters are always 0 for the
+master final ref. For an exposure offset by 1 spaxel in each direction
+to the upper right (northwest) the parameters would be each be -1.*
 
 The above parameter names and conventions are chosen to comply with the existing
 DDT input files. If we are creating a new script that produces these config
