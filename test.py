@@ -146,6 +146,15 @@ class TestFitting:
                     chisq_diff = np.sum(weight * (r1**2 - r0**2))
                     fdgrad[k, j, i] = chisq_diff / EPS
 
+        # debug
+        import matplotlib.pyplot as plt
+        for im, fname in [(grad[0], "grad_single.png"), (fdgrad[0], "fdgrad_single.png")]:
+            plt.imshow(im, origin="lower", interpolation="nearest",
+                       cmap="bone")
+            plt.colorbar()
+            plt.savefig(fname)
+            plt.clf()
+
         assert_allclose(grad, fdgrad, rtol=0.001, atol=0.)
 
     def test_chisq_galaxy_sky_multi_gradient(self):
@@ -201,16 +210,7 @@ class TestFitting:
                     chisq_diff = np.sum(weight * (r1**2 - r0**2))
                     fdgrad[k, j, i] = chisq_diff / EPS
 
-        # debug
-        import matplotlib.pyplot as plt
-        for im, fname in [(grad[0], "grad.png"), (fdgrad[0], "fdgrad.png")]:
-            plt.imshow(im, origin="lower", interpolation="nearest",
-                       cmap="bone")
-            plt.colorbar()
-            plt.savefig(fname)
-            plt.clf()
-
-        assert_allclose(grad, fdgrad, rtol=0.001, atol=0.)
+        assert_allclose(grad, fdgrad, rtol=0.005, atol=0.)
 
     def test_point_source(self):
         """Test that evaluate_point_source returns the expected point source.

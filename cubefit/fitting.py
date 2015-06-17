@@ -237,9 +237,9 @@ def chisq_galaxy_sky_multi(galaxy, datas, weights, ctrs, atms):
 
         # See note in docs/gradient.tex for the (non-trivial) derivation
         # of this gradient!
-        tmp = -2. * weight * (np.sum(wr, axis=(1, 2)) /
-                              np.sum(weight, axis=(1, 2)))[:, None, None]
-        grad += atm.gradient_helper(tmp, data.shape[1:3], ctr)
+        tmp = np.sum(wr, axis=(1, 2)) / np.sum(weight, axis=(1, 2))
+        vtwr = weight * tmp[:, None, None]
+        grad += atm.gradient_helper(-2. * (wr - vtwr), data.shape[1:3], ctr)
 
     return val, grad
 
