@@ -20,7 +20,7 @@
 \newcommand{\diag}{\mathrm{diag}}
 
 \newcommand{\ddx}{\frac{\partial}{\partial \mathbf{x}}}
-\newcommand{\ddxi}{\frac{\partial}{\partial \mathbf{x}_{i}}}
+\newcommand{\ddxi}{\frac{\partial}{\partial x_i}}
 
 \newcommand{\Nsn}{\textbf{XXX}}
 \newcommand{\Nspec}{\textbf{YYY}}
@@ -55,23 +55,24 @@ The $\chi^2$ in the galaxy fit is given by
 \chi^2 = (\y - \G\x)^T \W (\y - \G\x)
 \end{equation}
 
-\noindent where $\y$ is the data, $\x$ is the model parameters, $\W$ is the
-weight matrix (inverse covariance matrix; diagonal in our case) and $\G$ is
-the operator that translates the model into the data frame. $\G$ includes
-the effect of PSF convolution, shift operation and cropping. Note that we
-are supposing that we can represent all these operations as a matrix $\G$,
-but we haven't shown this. Remember also that this is all in real space.
-Carrying on,
+\noindent where $\y$ is the data, $\x$ is the model parameters, $\W$
+is the weight matrix (inverse covariance matrix; diagonal in our case)
+and $\G$ is the operator that translates the model into the data
+frame. $\G$ includes the effect of PSF convolution, shift operation
+and cropping. Note that we are supposing that we can represent all
+these operations as a matrix $\G$, but we will not show this until a
+later section. Remember also that this is all in real space.  Carrying
+on,
 
 \begin{eqnarray*}
   \label{eq:5}
   \ddx \chi^{2} & = & \ddx \left( (\y - \G\x)^{T} \W (\y - \G\x) \right)\\
-                & = & \ddx \left( (\G \x)^{T} \W \y \right)
-                    + \ddx \left( \y^{T} \W \G \x \right)
-                    - \ddx \left( (\G \x)^{T} \W \G \x \right) \\
-                & = & \ddx \left( \x^{T} \G^{T} \W \y \right)
-                    + \ddx \left( (\G^{T} \W \y)^{T} \x \right)
-                    - \ddx \left( \x^{T} \G^{T} \W \G \x \right) \\
+                & = & \ddx \left( (\G \x)^{T} \W \G \x \right)
+                    - \ddx \left( (\G \x)^{T} \W \y \right)
+                    - \ddx \left( \y^{T} \W \G \x \right) \\
+                & = & \ddx \left( \x^{T} \G^{T} \W \G \x \right)
+                    - \ddx \left( \x^{T} \G^{T} \W \y \right)
+                    - \ddx \left( (\G^{T} \W \y)^{T} \x \right)
 \end{eqnarray*}
 
 \noindent where in the second line we have simply separated terms, dropping the
@@ -87,10 +88,10 @@ constant vector $\avec$ and $\x$, so the partial derivative with respect to
 $\x$ is just $\avec$. Making this substitution, we have
 
 \begin{equation}
-\ddx \chi^{2} = 2 \G^T \W \y - \ddx \left( \x^{T} \G^{T} \W \G \x \right)
+\ddx \chi^{2} = \ddx \left( \x^{T} \G^{T} \W \G \x \right) - 2 \G^T \W \y 
 \end{equation}
 
-\noindent The second term has the form $\ddx \x^T\A\x$, with
+\noindent The first term has the form $\ddx \x^T\A\x$, with
 $\A = \G^T \W \G$. It helps to write this out:
 
 \begin{eqnarray*}
@@ -99,22 +100,26 @@ $\A = \G^T \W \G$. It helps to write this out:
                    & = & \left( \A \x + \A^{T} \x␇ \right)_{i}
 \end{eqnarray*}
 
-so
+\noindent or without the $i$ subscripts,
 
 \begin{equation}
-  \ddx \x^T\A\x = (\A + \A^T) \x .
+  \ddx \x^T\A\x = (\A + \A^T) \x
 \end{equation}
 
-Substituting this in (with $\A = \G^T \W \G$), we finally get:
+\noindent Substituting this in (with $\A = \G^T \W \G$), we finally get:
 
 \begin{eqnarray*}
-\ddx \chi^{2} & = & 2 \G^T \W \y - \left( \G^T \W \G \x + (\G^T \W \G)^T \x \right) \\
-              & = & 2 \G^T \W \y - 2 \G^T \W \G \x \\
-              & = & 2 \G^T \W ( \y - \G \x ) \\
+\ddx \chi^{2} & = & \left( \G^T \W \G \x + (\G^T \W \G)^T \x \right)
+                 - 2 \G^T \W \y \\
+             & = & 2 \G^T \W \G \x - 2 \G^T \W \y \\
+             & = & -2 \G^T \W ( \y - \G \x ) \\
+             & = & -2 \G^T \W \rvect \\
 \end{eqnarray*}
 
-But what is the matrix $\G$? For that we need to digress about Fourier transforms
-as matricies...
+\noindent where $\rvect$ is shorthand for the residual
+$\y - \G \x$. But what is the matrix $\G$ and what is $\G^T$?
+For that we need to digress about
+Fourier transforms as matricies (in the next section).
 
 \section{Discrete Fourier Transform: Matrix Form}
 
@@ -222,12 +227,17 @@ transpose of a diagonal matrix is the matrix itself. We find:
         & = & \F^{-1} \overline{\diag(\phat)} \F\\
 \end{eqnarray*}
 
-If we now write the residual $\rvect = \y - \G\x$, we finally find that the
-derivative of $\chi^{2}$ is:
-\begin{equation}
-  \ddx \chi^{2} = \F^{-1} \overline{\diag(\phat)} \F(\W \rvect)
-\end{equation}
+\noindent If we now write the residual $\rvect = \y - \G\x$, we
+finally find that the derivative of $\chi^{2}$ is:
 
+\begin{eqnarray*}
+ \ddx \chi^2 & = & -2 \G^T \W \rvect \\
+             & = & -2 \F^{-1} \overline{\diag(\phat)} \F \W \rvect
+\end{eqnarray*}
+
+\noindent In CubeFit, the operator $\G^T = \F^{-1}
+\overline{\diag(\phat)} \F$ is currently implemented by the method
+\verb|AtmModel.gradient_helper()|.
 
 \section{Fitting galaxy and sky simultaneously}
 
@@ -281,8 +291,8 @@ $\chi^2$ gradient holds under this replacement:
 subtracting the ``sky.''
 
 Practically, how do we calculate $\V^T \W \mathbf{r'}$? In other words, if
-$\V \x$ is equivalent to a weighted average by wavelength, what is $\V^T \x$?
-In our minimal example from above, it would be
+multiplication by $\V$ is equivalent to a weighted average by wavelength,
+what is $\V^T$? In our minimal example from above, it would be
 
 \begin{equation}
   \V^T \x
@@ -302,13 +312,21 @@ In our minimal example from above, it would be
 \end{equation}
 
 \noindent Looking at the result, we can see this is equivalent to, for
-each wavelength, taking the ratio of the sum of $\x$ and the sum of $\W$
-and multiplying the result by $\W$. In Python (where we are representing $\W$
-and $\x$ with 3-d arrays)
+each wavelength, taking the ratio of the sum of the input vector and
+the sum of $\W$ and multiplying the result by $\W$. In Python (where
+we are representing $\W$ and $\x$ with 3-d arrays), $\V^T \W \mathbf{r'}$
+would be
 
 \begin{verbatim}
 tmp = np.sum(w * rprime, axis=(1, 2)) / np.sum(w, axis=(1, 2))
-result = w * tmp[:, None, None]
+vtwrprime = w * tmp[:, None, None]
+\end{verbatim}
+
+\noindent where $\W$ is \verb|w| and $\mathbf{r'}$ is \verb|rprime|, and the
+full replacement for $\W \rvect$ would be:
+
+\begin{verbatim}
+w * rprime - vtwrprime
 \end{verbatim}
 
 \end{document}
