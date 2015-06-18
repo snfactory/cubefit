@@ -35,6 +35,16 @@ def fftconvolve(x, kernel):
     
     return ifft2(fft2(kernel) * fft2(x) * fshift).real
 
+
+def plot_gradient(im, fname):
+    """Helper function for debugging only."""
+    import matplotlib.pyplot as plt
+
+    plt.imshow(im, cmap="bone", interpolation="nearest", origin="lower")
+    plt.colorbar()
+    plt.savefig(fname)
+    plt.clf()
+
 # -----------------------------------------------------------------------------
 
 def test_determine_sky_and_sn():
@@ -104,6 +114,7 @@ class TestFitting:
         self.trueyctr = yoff + (ny-1)/2. - (MODEL_SHAPE[0]-1)/2.
         self.truexctr = xoff + (nx-1)/2. - (MODEL_SHAPE[1]-1)/2.
 
+
     def test_chisq_galaxy_single_gradient(self):
         """Test that gradient function (used in galaxy fitting) returns value
         close to what you get with a finite differences method.
@@ -145,15 +156,6 @@ class TestFitting:
                     r1 = data.astype(np.float64) - scene
                     chisq_diff = np.sum(weight * (r1**2 - r0**2))
                     fdgrad[k, j, i] = chisq_diff / EPS
-
-        # debug
-        import matplotlib.pyplot as plt
-        for im, fname in [(grad[0], "grad_single.png"), (fdgrad[0], "fdgrad_single.png")]:
-            plt.imshow(im, origin="lower", interpolation="nearest",
-                       cmap="bone")
-            plt.colorbar()
-            plt.savefig(fname)
-            plt.clf()
 
         assert_allclose(grad, fdgrad, rtol=0.001, atol=0.)
 
@@ -209,6 +211,38 @@ class TestFitting:
                     r1 -= sky[:, None, None]
                     chisq_diff = np.sum(weight * (r1**2 - r0**2))
                     fdgrad[k, j, i] = chisq_diff / EPS
+
+        assert_allclose(grad, fdgrad, rtol=0.005, atol=0.)
+
+    def test_regularization_penalty_gradient(self):
+        """Ensure that regularization penalty gradient matches what you
+        get with a finite-differences approach."""
+
+        EPS = 1.e-8
+        mu_wave = 0.07
+        mu_xy = 0.001
+
+        # set galaxy model to best-fit (so that it is not all zeros!)
+        self.galaxy[:, :, :] = self.truegal
+
+        mean_gal_spec = np.average(self.cube.data, axis=(1, 2))
+        galprior = np.zeros_like(self.galaxy)
+        regpenalty = cubefit.RegularizationPenalty(galprior, mean_gal_spec,
+                                                   mu_xy, mu_wave)
+
+        chisq0, grad = regpenalty(self.galaxy)
+        fdgrad = np.zeros_like(self.galaxy)
+        nk, nj, ni = self.galaxy.shape
+        for k in range(nk):
+            for j in range(nj):
+                for i in range(ni):
+                    self.galaxy[k, j, i] += EPS
+                    chisq1, _ = regpenalty(self.galaxy)
+                    self.galaxy[k, j, i] -= EPS # reset model value.
+                    fdgrad[k, j, i] = (chisq1 - chisq0) / EPS
+
+        plot_gradient(grad[0], "grad.png")
+        plot_gradient(fdgrad[0], "fdgrad.png")
 
         assert_allclose(grad, fdgrad, rtol=0.005, atol=0.)
 

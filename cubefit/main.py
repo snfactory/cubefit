@@ -170,6 +170,9 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         if val is not None:
             cfg[key] = val
 
+    logging.info("parameters: mu_wave={:.3g} mu_xy={:.3g} refitgal={}"
+                 .format(mu_wave, mu_xy, refitgal))
+
     # -------------------------------------------------------------------------
     # Load data cubes from the list of FITS files.
 
