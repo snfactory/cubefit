@@ -15,7 +15,7 @@ BAND_LIMITS = {'U': (3400., 3900.),
                'B': (4102., 5100.),
                'V': (6289., 7607.)}
 
-STAMP_SIZE = 0.9 #1.5
+STAMP_SIZE = 0.9
 IDR_PREFIX = '/home/cmsaunders/ACEv2/'
 COLORMAP = 'bone'
 
@@ -48,13 +48,14 @@ def plot_timeseries(cubes, results, band='B', fname=None):
 
     # upper and lower wavelength limits
     wmin, wmax = BAND_LIMITS[band]
-    mask = (wave > wmin) & (wave < wmax)
+    wavemask = (wave > wmin) & (wave < wmax)
 
     # plot data for each epoch, keeping track of vmin/vmax for each.
+    dataims = []
     datavmin = np.zeros(nt)
     datavmax = np.zeros(nt)
     for i_t, cube in enumerate(cubes):
-        dataim = np.average(cube.data[mask, :, :], axis=0)
+        dataim = np.average(cube.data[wavemask, :, :], axis=0)
         datavmax[i_t] = 1.1*np.max(dataim)
         datavmin[i_t] = -0.2*np.max(dataim)
         ax = plt.subplot2grid((nrow, ncol), (0, i_t + 2))
@@ -62,42 +63,51 @@ def plot_timeseries(cubes, results, band='B', fname=None):
                   interpolation='nearest', origin='lower')
         ax.xaxis.set_major_locator(NullLocator())
         ax.yaxis.set_major_locator(NullLocator())
+        dataims.append(dataim)
         if i_t == 0:
             ax.set_ylabel('Data')
 
     # evaluate all scenes and residuals first, so we can set vmin/vmax uniformly
     scenes = []
     residuals = []
+    masks = []
     for result in results.values():
         epochs = result['epochs']
         scenerow = []
         residualrow = []
+        maskrow = []
         for i_t in range(nt):
             galeval = epochs['galeval'][i_t]
             sneval = epochs['sneval'][i_t]
             sky = epochs['sky'][i_t, :, None, None]
             scene = sky + galeval + sneval
-            residual = cubes[i_t].data - scene
-            scenerow.append(np.average(scene[mask, :, :], axis=0))
-            residualrow.append(np.average(residual[mask, :, :], axis=0))
+            sceneim = np.average(scene[wavemask, :, :], axis=0)
+            residim = dataims[i_t] - sceneim
+            weightim = np.sum(cubes[i_t].weight[wavemask, :, :], axis=0)
+            mask = weightim > 0.
+            scenerow.append(sceneim)
+            residualrow.append(residim)
+            maskrow.append(mask)
         scenes.append(scenerow)
         residuals.append(residualrow)
+        masks.append(maskrow)
 
     # Set residual vmin/vmax based on *last* row.
     residvmin = np.zeros(nt)
     residvmax = np.zeros(nt)
-    for i_t, residualim in enumerate(residuals[-1]):
-        std = np.std(residualim)
-        residvmin[i_t] = -1.5 * std
-        residvmax[i_t] = 1.5 * std
+    for i_t in range(nt):
+        vals = residuals[-1][i_t][masks[-1][i_t]]
+        std = np.std(vals)
+        residvmin[i_t] = -3. * std
+        residvmax[i_t] = 3. * std
+
 
     for f, (key, result) in enumerate(results.iteritems()):
-
         galaxy = result['galaxy']
         epochs = result['epochs']
 
         # galaxy model
-        image = np.average(galaxy[mask, :, :], axis=0)
+        image = np.average(galaxy[wavemask, :, :], axis=0)
         ax = plt.subplot2grid((nrow, ncol), (1+2*f,0), rowspan=2, colspan=2)
         ax.imshow(image, cmap=COLORMAP, interpolation='nearest', origin='lower')
         ax.xaxis.set_major_locator(NullLocator())
@@ -178,7 +188,7 @@ def plot_wave_slices(cubes, galeval, indicies=None, fname=None):
             ax1.imshow(model_slice, vmin=vmin, vmax=vmax,
                        interpolation='nearest', origin='lower')
             ax2.imshow(residual_slice, interpolation='nearest',
-                       vmin = vmin, vmax=vmax, origin='lower')
+                       vmin=vmin, vmax=vmax, origin='lower')
 
             ax1.xaxis.set_major_locator(NullLocator())
             ax1.yaxis.set_major_locator(NullLocator())

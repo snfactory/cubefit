@@ -38,7 +38,8 @@ cubes = [cubefit.read_datacube(join(args.dataprefix, fname), scale=False)
 # Read in results, optionally with diagnostics.
 results = OrderedDict()
 if args.diagdir is not None:
-    for fname in glob.glob(join(args.diagdir, "step*.fits")):
+    fnames = sorted(glob.glob(join(args.diagdir, "step*.fits")))
+    for fname in fnames:
         name = basename(fname).split(".")[0]
         results[name] = cubefit.read_results(fname)
 results["final"] = cubefit.read_results(args.resultfile)
