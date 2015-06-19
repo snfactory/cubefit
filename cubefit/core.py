@@ -205,9 +205,9 @@ class RegularizationPenalty(object):
 
         galdiff = galmodel - self.galprior
         galdiff /= self.mean_gal_spec[:, None, None]
-        dw = galdiff[:-1, :, :] - galdiff[1:, :, :]
-        dy = galdiff[:, :-1, :] - galdiff[:, 1:, :]
-        dx = galdiff[:, :, :-1] - galdiff[:, :, 1:]
+        dw = galdiff[1:, :, :] - galdiff[:-1, :, :]
+        dy = galdiff[:, 1:, :] - galdiff[:, :-1, :]
+        dx = galdiff[:, :, 1:] - galdiff[:, :, :-1]
 
         # Regularlization penalty term
         val = (self.mu_wave * np.sum(dw**2) +
@@ -226,11 +226,13 @@ class RegularizationPenalty(object):
         #     gradient[i]   -= 2 * hyper * d
 
         grad = np.zeros_like(galdiff)
-        grad[:-1, :, :] += 2. * self.mu_wave * dw
-        grad[1:, :, :] -= 2. * self.mu_wave * dw
-        grad[:, :-1, :] += 2. * self.mu_xy * dy
-        grad[:, 1:, :] -= 2. * self.mu_xy * dy
-        grad[:, :, :-1] += 2. * self.mu_xy * dx
-        grad[:, :, 1:] -= 2. * self.mu_xy * dx
+        grad[1:, :, :] += 2. * self.mu_wave * dw
+        grad[:-1, :, :] -= 2. * self.mu_wave * dw
+        grad[:, 1:, :] += 2. * self.mu_xy * dy
+        grad[:, :-1, :] -= 2. * self.mu_xy * dy
+        grad[:, :, 1:] += 2. * self.mu_xy * dx
+        grad[:, :, :-1] -= 2. * self.mu_xy * dx
+
+        grad /= self.mean_gal_spec[:, None, None]  # put back normalization
 
         return val, grad

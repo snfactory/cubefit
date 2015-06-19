@@ -36,11 +36,12 @@ def fftconvolve(x, kernel):
     return ifft2(fft2(kernel) * fft2(x) * fshift).real
 
 
-def plot_gradient(im, fname):
+def plot_gradient(im, fname, **kwargs):
     """Helper function for debugging only."""
     import matplotlib.pyplot as plt
 
-    plt.imshow(im, cmap="bone", interpolation="nearest", origin="lower")
+    plt.imshow(im, cmap="bone", interpolation="nearest", origin="lower",
+               **kwargs)
     plt.colorbar()
     plt.savefig(fname)
     plt.clf()
@@ -214,11 +215,51 @@ class TestFitting:
 
         assert_allclose(grad, fdgrad, rtol=0.005, atol=0.)
 
+
+    def pixel_regpenalty_diff(self, regpenalty, galmodel, k, j, i, eps):
+        """What is the difference in the regpenalty caused by changing
+        galmodel[k, j, i] by EPS?"""
+
+        def galnorm(k, j, i, eps=0.0):
+            return ((galmodel[k, j, i] + eps - regpenalty.galprior[k, j, i]) /
+                    regpenalty.mean_gal_spec[k])
+
+        dchisq = 0.
+
+        if k > 0:
+            d0 = galnorm(k, j, i)      - galnorm(k-1, j, i)
+            d1 = galnorm(k, j, i, eps) - galnorm(k-1, j, i)
+            dchisq += regpenalty.mu_wave * (d1**2 - d0**2)
+        if k < galmodel.shape[0] - 1:
+            d0 = galnorm(k+1, j, i) - galnorm(k, j, i)
+            d1 = galnorm(k+1, j, i) - galnorm(k, j, i + eps)
+            dchisq += regpenalty.mu_wave * (d1**2 - d0**2)
+
+        if j > 0:
+            d0 = galnorm(k, j, i)      - galnorm(k, j-1, i)
+            d1 = galnorm(k, j, i, eps) - galnorm(k, j-1, i)
+            dchisq += regpenalty.mu_xy * (d1**2 - d0**2)
+        if j < galmodel.shape[1] - 1:
+            d0 = galnorm(k, j+1, i) - galnorm(k, j, i)
+            d1 = galnorm(k, j+1, i) - galnorm(k, j, i, eps)
+            dchisq += regpenalty.mu_xy * (d1**2 - d0**2)
+
+        if i > 0:
+            d0 = galnorm(k, j, i)      - galnorm(k, j, i-1)
+            d1 = galnorm(k, j, i, eps) - galnorm(k, j, i-1)
+            dchisq += regpenalty.mu_xy * (d1**2 - d0**2)
+        if i < galmodel.shape[2] - 1:
+            d0 = galnorm(k, j, i+1) - galnorm(k, j, i)
+            d1 = galnorm(k, j, i+1) - galnorm(k, j, i, eps)
+            dchisq += regpenalty.mu_xy * (d1**2 - d0**2)
+
+        return dchisq
+
     def test_regularization_penalty_gradient(self):
         """Ensure that regularization penalty gradient matches what you
         get with a finite-differences approach."""
 
-        EPS = 1.e-8
+        EPS = 1.e-9
         mu_wave = 0.07
         mu_xy = 0.001
 
@@ -230,21 +271,18 @@ class TestFitting:
         regpenalty = cubefit.RegularizationPenalty(galprior, mean_gal_spec,
                                                    mu_xy, mu_wave)
 
-        chisq0, grad = regpenalty(self.galaxy)
+        _, grad = regpenalty(self.galaxy)
         fdgrad = np.zeros_like(self.galaxy)
         nk, nj, ni = self.galaxy.shape
         for k in range(nk):
             for j in range(nj):
                 for i in range(ni):
-                    self.galaxy[k, j, i] += EPS
-                    chisq1, _ = regpenalty(self.galaxy)
-                    self.galaxy[k, j, i] -= EPS # reset model value.
-                    fdgrad[k, j, i] = (chisq1 - chisq0) / EPS
+                    fdgrad[k, j, i] = self.pixel_regpenalty_diff(
+                        regpenalty, self.galaxy, k, j, i, EPS) / EPS
 
-        plot_gradient(grad[0], "grad.png")
-        plot_gradient(fdgrad[0], "fdgrad.png")
-
-        assert_allclose(grad, fdgrad, rtol=0.005, atol=0.)
+        rtol = 0.001
+        atol = 1.e-6*np.max(np.abs(fdgrad))
+        assert_allclose(grad, fdgrad, rtol=rtol, atol=atol)
 
     def test_point_source(self):
         """Test that evaluate_point_source returns the expected point source.
