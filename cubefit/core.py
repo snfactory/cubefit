@@ -55,12 +55,20 @@ class AtmModel(object):
 
     """
 
-    def __init__(self, psf, adr_refract, fftw_threads=1):
+    def __init__(self, psf, adr_refract, dtype=np.float64, fftw_threads=1):
 
         self.shape = psf.shape
         self.nw, self.ny, self.nx = psf.shape
         spatial_shape = self.ny, self.nx
         nbyte = pyfftw.simd_alignment
+
+        self.dtype = dtype
+        if dtype == np.float32:
+            self.complex_dtype = np.complex64
+        if dtype == np.float64:
+            self.complex_dtype = np.complex128
+        else:
+            raise ValueError("dtype must be float32 or float64")
 
         # The attribute `fftconv` stores the Fourier-space array
         # necessary to convolve another array by the PSF. This is done
@@ -81,7 +89,7 @@ class AtmModel(object):
         fshift = fft_shift_phasor_2d(spatial_shape, shift)
         self.fftconv = fft2(psf) * fshift
         self.fftconv = pyfftw.n_byte_align(self.fftconv, nbyte,
-                                           dtype=np.complex64)
+                                           dtype=self.complex_dtype)
 
         # Check that ADR has the correct shape.
         assert adr_refract.shape == (2, self.nw)
@@ -95,9 +103,10 @@ class AtmModel(object):
         # set up input and output arrays for performing forward and reverse
         # FFTs.
         self.fftin = pyfftw.n_byte_align_empty(self.shape, nbyte,
-                                               dtype=np.complex64)
+                                               dtype=self.complex_dtype)
         self.fftout = pyfftw.n_byte_align_empty(self.shape, nbyte,
-                                                dtype=np.complex64)
+                                                dtype=self.complex_dtype)
+
         self.fft = pyfftw.FFTW(self.fftin, self.fftout, axes=(1, 2),
                                threads=fftw_threads)
         self.ifft = pyfftw.FFTW(self.fftout, self.fftin, axes=(1, 2),
@@ -130,6 +139,7 @@ class AtmModel(object):
         offset = yxoffset((self.ny, self.nx), shape, ctr)
         fshift = fft_shift_phasor_2d((self.ny, self.nx),
                                      (-offset[0], -offset[1]))
+        fshift = np.asarray(fshift, dtype=self.complex_dtype)
 
         # Shift to move point source from the lower left in the model array
         # to `pos` in model *coordinates*. Note that in model coordinates,
@@ -137,10 +147,11 @@ class AtmModel(object):
         fshift_point = fft_shift_phasor_2d((self.ny, self.nx),
                                            ((self.ny-1)/2. + pos[0],
                                             (self.nx-1)/2. + pos[1]))
+        fshift_point = np.asarray(fshift_point, dtype=self.complex_dtype)
 
         # following block is like ifft2(fftconv * fshift_point * fshift)
         np.copyto(self.fftout, self.fftconv)
-        self.fftout *= fshift_point * fshift * self.fftnorm
+        self.fftout *= self.fftnorm * fshift_point * fshift
         self.ifft.execute()
 
         return np.copy(self.fftin.real[:, 0:shape[0], 0:shape[1]])
@@ -167,9 +178,10 @@ class AtmModel(object):
         offset = yxoffset((self.ny, self.nx), shape, ctr)
         fshift = fft_shift_phasor_2d((self.ny, self.nx),
                                      (-offset[0], -offset[1]))
+        fshift = np.asarray(fshift, dtype=self.complex_dtype)
 
         # create output array
-        out = np.zeros((self.nw, self.ny, self.nx), dtype=np.float64)
+        out = np.zeros((self.nw, self.ny, self.nx), dtype=self.dtype)
         out[:, :x.shape[1], :x.shape[2]] = x
 
         for i in range(self.nw):

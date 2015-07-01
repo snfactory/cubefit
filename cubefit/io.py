@@ -17,21 +17,31 @@ def wcs_to_wave(hdr):
     return wave
 
 
-def read_datacube(filename, scale=True):
+def read_datacube(filename, scale=True, dtype=None):
     """Read a two-HDU FITS file into memory.
 
     Assumes 1st HDU is data and 2nd HDU is variance.
 
+    Parameters
+    ----------
+    filename : str
+    scale : bool, opitonal
+        Whether to scale the data by a universal scaling constant
+        (global parameter).
+    dtype : numpy.dtype
+        dtype of arrays in returned DataCube.
+
     Returns
     -------
     cube : DataCube
-        Object holding data, weight and wavelength arrays.
+        Object holding data, weight and wavelength arrays. dtype of internal
+        arrays will match the storage datatype or the dtype keyword, if given.
     """
 
     with fitsio.FITS(filename, "r") as f:
         hdr = f[0].read_header()
-        data = f[0].read()
-        variance = f[1].read()
+        data = np.asarray(f[0].read(), dtype=dtype)
+        variance = np.asarray(f[1].read(), dtype=dtype)
 
     wave = wcs_to_wave(hdr)
     weight = 1. / variance

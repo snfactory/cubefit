@@ -25,6 +25,8 @@ SNIFS_LATITUDE = np.deg2rad(19.8228)
 WAVE_REF_DEFAULT = 5000.
 MIN_NMAD = 2.5  # Minimum Number of Median Absolute Deviations above
                 # the minimum spaxel value in fit_position
+DTYPE = np.float64
+
 
 def parse_conf(inconf):
     """Parse the raw input configuration dictionary. Return a new dictionary.
@@ -179,7 +181,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
     nt = len(cfg["fnames"])
 
     logging.info("reading %d data cubes", nt)
-    cubes = [read_datacube(os.path.join(dataprefix, fname))
+    cubes = [read_datacube(os.path.join(dataprefix, fname), dtype=DTYPE)
              for fname in cfg["fnames"]]
     wave = cubes[0].wave
     wavewcs = cubes[0].wavewcs
@@ -225,13 +227,13 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         # make adr_refract[0, :] correspond to y and adr_refract[1, :] => x
         adr_refract = np.flipud(adr_refract)
 
-        atms.append(AtmModel(psf, adr_refract, fftw_threads=1))
+        atms.append(AtmModel(psf, adr_refract, dtype=DTYPE, fftw_threads=1))
 
     # -------------------------------------------------------------------------
     # Initialize all model parameters to be fit
 
-    galaxy = np.zeros((nw, MODEL_SHAPE[0], MODEL_SHAPE[1]))
-    sn = np.zeros((nt, nw))  # SN spectrum at each epoch
+    galaxy = np.zeros((nw, MODEL_SHAPE[0], MODEL_SHAPE[1]), dtype=DTYPE)
+    sn = np.zeros((nt, nw), dtype=DTYPE)  # SN spectrum at each epoch
     snctr = (cfg["sn_y_init"], cfg["sn_x_init"])
     xctr = np.copy(cfg["xctr_init"])
     yctr = np.copy(cfg["yctr_init"])
@@ -243,12 +245,12 @@ def main(configfname, outfname, dataprefix="", logfname=None,
     # Regularization penalty parameters
 
     # Calculate rough average galaxy spectrum from all final refs.
-    spectra = np.zeros((len(refs), len(wave)))
+    spectra = np.zeros((len(refs), len(wave)), dtype=DTYPE)
     for j, i in enumerate(refs):
         spectra[j] = np.average(cubes[i].data, axis=(1, 2)) - skys[i]
     mean_gal_spec = np.average(spectra, axis=0)
 
-    galprior = np.zeros((nw, MODEL_SHAPE[0], MODEL_SHAPE[1]))
+    galprior = np.zeros((nw, MODEL_SHAPE[0], MODEL_SHAPE[1]), dtype=DTYPE)
 
     regpenalty = RegularizationPenalty(galprior, mean_gal_spec, mu_xy, mu_wave)
 
