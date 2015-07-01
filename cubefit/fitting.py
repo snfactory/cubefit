@@ -244,7 +244,7 @@ def chisq_galaxy_sky_multi(galaxy, datas, weights, ctrs, atms):
     return val, grad
 
 
-def fit_galaxy_single(galaxy0, data, weight, ctr, atm, regpenalty):
+def fit_galaxy_single(galaxy0, data, weight, ctr, atm, regpenalty, factor):
     """Fit the galaxy model to a single epoch of data.
 
     Parameters
@@ -256,6 +256,8 @@ def fit_galaxy_single(galaxy0, data, weight, ctr, atm, regpenalty):
     weight : ndarray (3-d)
     ctr : tuple
         Length 2 tuple giving y, x position of data in model coordinates.
+    factor : float
+        Factor used in fmin_l_bfgs_b to determine fit accuracy.
     """
 
     # Define objective function to minimize.
@@ -274,14 +276,14 @@ def fit_galaxy_single(galaxy0, data, weight, ctr, atm, regpenalty):
 
     # run minimizer
     galparams0 = np.ravel(galaxy0)  # fit parameters must be 1-d
-    galparams, f, d = fmin_l_bfgs_b(objective, galparams0)
+    galparams, f, d = fmin_l_bfgs_b(objective, galparams0, factr=factor)
     _check_result(d['warnflag'], d['task'])
     _log_result("fmin_l_bfgs_b", f, d['nit'], d['funcalls'])
 
     return galparams.reshape(galaxy0.shape)
 
 
-def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty):
+def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty, factor):
     """Fit the galaxy model to multiple data cubes.
 
     Parameters
@@ -309,7 +311,7 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty):
 
     # run minimizer
     galparams0 = np.ravel(galaxy0)  # fit parameters must be 1-d
-    galparams, f, d = fmin_l_bfgs_b(objective, galparams0)
+    galparams, f, d = fmin_l_bfgs_b(objective, galparams0, factr=factor)
     _check_result(d['warnflag'], d['task'])
     _log_result("fmin_l_bfgs_b", f, d['nit'], d['funcalls'])
 
@@ -384,6 +386,60 @@ def fit_position_sky(galaxy, data, weight, ctr0, atm):
 
     return tuple(ctr), sky
 
+def chisq_position_sky_sn_multi(allctrs, galaxy, datas, weights, atms):
+    """Function to minimize. `allctrs` is a 1-d ndarray:
+
+    [yctr[0], xctr[0], yctr[1], xctr[1], ..., snyctr, snxctr]
+
+    where the indicies are
+    """
+    EPS = 0.001  # size of change in spaxels for gradient calculation
+
+    nepochs = len(datas)
+    allctrs = allctrs.reshape((nepochs+1, 2))
+    snctr = tuple(allctrs[nepochs, :])
+
+    # initialize return values
+    grad = np.zeros_like(allctrs)
+    chisq = 0.
+
+    for i in range(nepochs):
+        data = datas[i]
+        weight = weights[i]
+        atm = atms[i]
+        ctr = tuple(allctrs[i, :])
+
+        # calculate chisq for this epoch; add to total.
+        gal = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
+        psf = atm.evaluate_point_source(snctr, data.shape[1:3], ctr)
+        sky, sn = determine_sky_and_sn(gal, psf, data, weight)
+        scene = sky[:, None, None] + gal + sn[:, None, None] * psf
+        epoch_chisq = np.sum(weight * (data - scene)**2)
+        chisq += epoch_chisq
+
+        # calculate change in chisq from changing the sn position,
+        # in this epoch.
+        for j, snctr2 in ((0, (snctr[0]+EPS, snctr[1]    )),
+                          (1, (snctr[0]    , snctr[1]+EPS))):
+            psf = atm.evaluate_point_source(snctr2, data.shape[1:3], ctr)
+            sky, sn = determine_sky_and_sn(gal, psf, data, weight)
+            scene = sky[:, None, None] + gal + sn[:, None, None] * psf
+            new_epoch_chisq = np.sum(weight * (data - scene)**2)
+            grad[nepochs, j] += (new_epoch_chisq - epoch_chisq) / EPS
+
+        # calculate change in chisq from changing the data position for
+        # this epoch.
+        for j, ctr2 in ((0, (ctr[0]+EPS, ctr[1]    )),
+                        (1, (ctr[0]    , ctr[1]+EPS))):
+            gal = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr2)
+            psf = atm.evaluate_point_source(snctr, data.shape[1:3], ctr2)
+            sky, sn = determine_sky_and_sn(gal, psf, data, weight)
+            scene = sky[:, None, None] + gal + sn[:, None, None] * psf
+            new_epoch_chisq = np.sum(weight * (data - scene)**2)
+            grad[i, j] = (new_epoch_chisq - epoch_chisq) / EPS
+
+    # reshape gradient to 1-d upon return.
+    return chisq, np.ravel(grad)
 
 def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, atms):
     """Fit data pointing (nepochs), SN position (in model frame),
@@ -422,63 +478,9 @@ def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, atms):
     """
 
     BOUND = 2. # +/- position bound in spaxels
-    EPS = 0.001  # size of change in spaxels for gradient calculation
 
     nepochs = len(datas)
     assert len(weights) == len(ctrs0) == len(atms) == nepochs
-
-    def objective_func(allctrs):
-        """Function to minimize. `allctrs` is a 1-d ndarray:
-
-        [yctr[0], xctr[0], yctr[1], xctr[1], ..., snyctr, snxctr]
-
-        where the indicies are
-        """
-
-        allctrs = allctrs.reshape((nepochs+1, 2))
-        snctr = tuple(allctrs[nepochs, :])
-
-        # initialize return values
-        grad = np.zeros_like(allctrs)
-        chisq = 0.
-
-        for i in range(nepochs):
-            data = datas[i]
-            weight = weights[i]
-            atm = atms[i]
-            ctr = tuple(allctrs[i, :])
-
-            # calculate chisq for this epoch; add to total.
-            gal = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
-            psf = atm.evaluate_point_source(snctr, data.shape[1:3], ctr)
-            sky, sn = determine_sky_and_sn(gal, psf, data, weight)
-            scene = sky[:, None, None] + gal + sn[:, None, None] * psf
-            epoch_chisq = np.sum(weight * (data - scene)**2)
-            chisq += epoch_chisq
-
-            # calculate change in chisq from changing the sn position,
-            # in this epoch.
-            for j, snctr2 in ((0, (snctr[0]+EPS, snctr[1]    )),
-                              (1, (snctr[0]    , snctr[1]+EPS))):
-                psf = atm.evaluate_point_source(snctr2, data.shape[1:3], ctr)
-                sky, sn = determine_sky_and_sn(gal, psf, data, weight)
-                scene = sky[:, None, None] + gal + sn[:, None, None] * psf
-                new_epoch_chisq = np.sum(weight * (data - scene)**2)
-                grad[nepochs, j] += (new_epoch_chisq - epoch_chisq) / EPS
-
-            # calculate change in chisq from changing the data position for
-            # this epoch.
-            for j, ctr2 in ((0, (ctr[0]+EPS, ctr[1]    )),
-                            (1, (ctr[0]    , ctr[1]+EPS))):
-                gal = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr2)
-                psf = atm.evaluate_point_source(snctr, data.shape[1:3], ctr2)
-                sky, sn = determine_sky_and_sn(gal, psf, data, weight)
-                scene = sky[:, None, None] + gal + sn[:, None, None] * psf
-                new_epoch_chisq = np.sum(weight * (data - scene)**2)
-                grad[i, j] = (new_epoch_chisq - epoch_chisq) / EPS
-
-        # reshape gradient to 1-d upon return.
-        return chisq, np.ravel(grad)
 
     # Initial parameter array. Has order [y0, x0, y1, x1, ... , ysn, xsn].
     allctrs0 = np.ravel(np.vstack((ctrs0, snctr0)))
@@ -505,9 +507,12 @@ def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, atms):
         for i in range(len(params)//2-1):
             logging.debug('Epoch %s: %s, %s', i, params[2*i], params[2*i+1])
         logging.debug('SN position %s, %s', params[-2], params[-1])
+    logging.debug('Bounds:')
     callback(bounds)
+    logging.debug('')
 
-    fallctrs, f, d = fmin_l_bfgs_b(objective_func, allctrs0,
+    fallctrs, f, d = fmin_l_bfgs_b(chisq_position_sky_sn_multi, allctrs0,
+                                   args=(galaxy, datas, weights, atms),
                                    iprint=0, callback=callback, bounds=bounds)
     _check_result(d['warnflag'], d['task'])
     _log_result("fmin_l_bfgs_b", f, d['nit'], d['funcalls'])

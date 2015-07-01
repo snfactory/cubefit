@@ -26,7 +26,7 @@ WAVE_REF_DEFAULT = 5000.
 MIN_NMAD = 2.5  # Minimum Number of Median Absolute Deviations above
                 # the minimum spaxel value in fit_position
 DTYPE = np.float64
-
+LBFGSB_FACTOR = 1e10
 
 def parse_conf(inconf):
     """Parse the raw input configuration dictionary. Return a new dictionary.
@@ -263,7 +263,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
     logging.info("fitting galaxy to master ref [%d]", master_ref)
     galaxy = fit_galaxy_single(galaxy, data, weight,
                                (yctr[master_ref], xctr[master_ref]),
-                               atms[master_ref], regpenalty)
+                               atms[master_ref], regpenalty, LBFGSB_FACTOR)
 
     if diagdir:
         fname = os.path.join(diagdir, 'step1.fits')
@@ -314,7 +314,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
     atms_refs = [atms[i] for i in refs]
     logging.info("fitting galaxy to all refs %s", refs)
     galaxy, fskys = fit_galaxy_sky_multi(galaxy, datas, weights, ctrs,
-                                         atms_refs, regpenalty)
+                                         atms_refs, regpenalty, LBFGSB_FACTOR)
 
     # put fitted skys back in `skys`
     for i,j in enumerate(refs):
@@ -386,7 +386,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
             datas[i] = cubes[i].data - snpsf  # do *not* use in-place op (-=)!
 
         galaxy, fskys = fit_galaxy_sky_multi(galaxy, datas, weights, ctrs,
-                                             atms, regpenalty)
+                                             atms, regpenalty, LBFGSB_FACTOR)
         for i in range(nt):
             skys[i] = fskys[i]  # put fitted skys back in skys
 

@@ -5,11 +5,13 @@ from __future__ import print_function
 import numpy as np
 from numpy.fft import fft2, ifft2
 from numpy.testing import assert_allclose
+from scipy.optimize import check_grad, approx_fprime
 
 import cubefit
 from cubefit.fitting import (determine_sky_and_sn,
                              chisq_galaxy_single,
-                             chisq_galaxy_sky_multi)
+                             chisq_galaxy_sky_multi,
+                             chisq_position_sky_sn_multi)
 
 # -----------------------------------------------------------------------------
 # Helper functions
@@ -74,11 +76,12 @@ class TestFitting:
         nw = 3
         ny = 15
         nx = 15
-        yoff, xoff = (8, 8)  # offset between model and data
+        yoffs = np.array([7,8,9])  # offset between model and data
+        xoffs = np.array([8,9,7])
 
         # True data yctr, xctr given offset
-        trueyctr = yoff + (ny-1)/2. - (MODEL_SHAPE[0]-1)/2.
-        truexctr = xoff + (nx-1)/2. - (MODEL_SHAPE[1]-1)/2.
+        self.trueyctrs = yoffs + (ny-1)/2. - (MODEL_SHAPE[0]-1)/2.
+        self.truexctrs = xoffs + (nx-1)/2. - (MODEL_SHAPE[1]-1)/2.
 
         # Create a "true" underlying galaxy. This can be anything, but it
         # should not be all zeros or flat. The fourth and fifth parameters
@@ -95,13 +98,16 @@ class TestFitting:
 
         # create the data by convolving the true galaxy model with the psf
         # and taking a slice.
-        data = np.empty((nw, ny, nx), dtype=np.float32)
-        for i in range(nw):
-            data_2d = fftconvolve(truegal[i], psf[i])
-            data[i, :, :] = data_2d[yoff:yoff+ny, xoff:xoff+nx]
-
-        # cube
-        self.cube = cubefit.DataCube(data, np.ones_like(data), np.ones(nw))
+        cubes = []
+        for j in range(nt):
+            data = np.empty((nw, ny, nx), dtype=np.float32)        
+            for i in range(nw):
+                data_2d = fftconvolve(truegal[i], psf[i])
+                data[i, :, :] = data_2d[yoffs[j]:yoffs[j]+ny, 
+                                        xoffs[j]:xoffs[j]+nx]
+            cubes.append(cubefit.DataCube(data, np.ones_like(data), 
+                                          np.ones(nw)))
+        self.cubes = cubes
 
         # make a fake AtmModel
         adr_refract = np.zeros((2, nw))
@@ -109,11 +115,7 @@ class TestFitting:
 
         # initialize galaxy model
         self.galaxy = np.zeros((nw, MODEL_SHAPE[0], MODEL_SHAPE[1]))
-
-        # True data yctr, xctr given offset
         self.truegal = truegal
-        self.trueyctr = yoff + (ny-1)/2. - (MODEL_SHAPE[0]-1)/2.
-        self.truexctr = xoff + (nx-1)/2. - (MODEL_SHAPE[1]-1)/2.
 
 
     def test_chisq_galaxy_single_gradient(self):
@@ -123,8 +125,8 @@ class TestFitting:
 
         EPS = 1.e-7
 
-        data = self.cube.data
-        weight = self.cube.weight
+        data = self.cubes[0].data
+        weight = self.cubes[0].weight
         atm = self.atm
         ctr = (0., 0.)
 
@@ -167,8 +169,8 @@ class TestFitting:
 
         EPS = 1.e-8
 
-        datas = [self.cube.data]
-        weights = [self.cube.weight]
+        datas = [self.cubes[0].data]
+        weights = [self.cubes[0].weight]
         atms = [self.atm]
         ctrs = [(0., 0.)]
 
@@ -266,7 +268,7 @@ class TestFitting:
         # set galaxy model to best-fit (so that it is not all zeros!)
         self.galaxy[:, :, :] = self.truegal
 
-        mean_gal_spec = np.average(self.cube.data, axis=(1, 2))
+        mean_gal_spec = np.average(self.cubes[0].data, axis=(1, 2))
         galprior = np.zeros_like(self.galaxy)
         regpenalty = cubefit.RegularizationPenalty(galprior, mean_gal_spec,
                                                    mu_xy, mu_wave)
@@ -289,4 +291,29 @@ class TestFitting:
         """
 
         psf = self.atm.evaluate_point_source((0., 0.), (15, 15), (0., 0.))
+        
+    def test_fit_position_grad(self):
+        """Test the gradient of the sn and sky position fitting function
+        """
+        
+        def func_part(ctrs, galaxy, datas, weights, atms):
+            chisq, grad = chisq_position_sky_sn_multi(ctrs, galaxy, 
+                                                      datas, weights, atms)
+            return chisq
+
+        def grad_part(ctrs, galaxy, datas, weights, atms):
+            chisq, grad = chisq_position_sky_sn_multi(ctrs, galaxy, 
+                                                      datas, weights, atms)
+            return grad
+
+        x0s = np.zeros(8)
+        datas = [cube.data for cube in self.cubes]
+        weights = [cube.weight for cube in self.cubes]
+        atms = [self.atm for cube in self.cubes]
+
+        code_grad = grad_part(x0s, self.galaxy, datas, weights, atms)
+        test_grad = approx_fprime(x0s, func_part, np.sqrt(np.finfo(float).eps),
+                            self.galaxy, datas, weights, atms)
+        assert_allclose(code_grad[:-2], test_grad[:-2], rtol=0.005)
+        
         
