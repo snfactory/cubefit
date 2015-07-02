@@ -44,7 +44,7 @@ if args.diagdir is not None:
         results[name] = cubefit.read_results(fname)
 results["final"] = cubefit.read_results(args.resultfile)
 
-cubefit.plot_timeseries(cubes, results,
+cubefit.plot_timeseries(cubes, results, band=args.band,
                         fname=(args.outprefix + '_timeseries.eps'))
 
 # plot wave slices, just for final refs.

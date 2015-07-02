@@ -1,6 +1,7 @@
 DATADIR = data
 RESULTDIR = results
 DIAGDIR = diagnostics
+PLOTDIR = plots
 
 names = PTF09fox_B PTF09fox_R \
 	SN2006ob_B SN2006ob_R \
@@ -17,6 +18,8 @@ names = PTF09fox_B PTF09fox_R \
 
 $(names) : % : $(RESULTDIR)/%.fits
 
+all: $(names)
+
 $(RESULTDIR)/%.fits :
 	mkdir -p $(RESULTDIR)
 	mkdir -p $(DIAGDIR)/$*
@@ -27,3 +30,25 @@ $(RESULTDIR)/%.fits :
         --loglevel=info \
         --mu_wave=0.07 \
         --mu_xy=0.001
+
+$(foreach name,$(names),$(name)-plots) : %-plots : $(PLOTDIR)/%_timeseries.eps $(PLOTDIR)/%_waveslice.eps
+
+$(PLOTDIR)/%_B_timeseries.eps $(PLOTDIR)/%_B_waveslice.eps :
+	mkdir -p $(PLOTDIR)
+	cubefit-plot \
+	$(DATADIR)/$*_B/$*_B.json \
+	$(RESULTDIR)/$*_B.fits \
+	$(PLOTDIR)/$*_B \
+	--band=B \
+	--dataprefix=$(DATADIR)/$*_B \
+	--diagdir=$(DIAGDIR)/$*_B
+
+$(PLOTDIR)/%_R_timeseries.eps $(PLOTDIR)/%_R_waveslice.eps :
+	mkdir -p $(PLOTDIR)
+	cubefit-plot \
+	$(DATADIR)/$*_R/$*_R.json \
+	$(RESULTDIR)/$*_R.fits \
+	$(PLOTDIR)/$*_R \
+	--band=V \
+	--dataprefix=$(DATADIR)/$*_R \
+	--diagdir=$(DIAGDIR)/$*_R
