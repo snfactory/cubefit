@@ -22,3 +22,6 @@ docs/*.pdf
 
 # emacs
 *~
+
+# test data
+testset/*
