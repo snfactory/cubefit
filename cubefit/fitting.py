@@ -295,6 +295,13 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty, factor
     datas : list of ndarray
         Sky-subtracted data for each epoch to fit.
     """
+    # Get initial chisq values for debugging.
+    cval, cgrad, cvals = chisq_galaxy_sky_multi(galaxy0, datas, weights,
+                                                ctrs, atms)
+    rval, rgrad = regpenalty(galaxy0)
+    logging.debug('Initial chisq values:')
+    logging.debug('%s = %s + %s * %s', cval + rval * len(datas), 
+                  ' + '.join(cvals.astype(str)), len(datas), rval)
 
     # Define objective function to minimize.
     # Returns chi^2 (including regularization term) and its gradient.
@@ -307,8 +314,7 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty, factor
         rval, rgrad = regpenalty(galaxy) 
 
         totval = cval + rval * len(datas)
-        logging.debug('%s = %s + %s * %s', totval, 
-                      ' + '.join(cvals.astype(str)), len(datas), rval)
+        logging.debug('%s (%s + %s)', totval, cval, rval * len(datas))
         # ravel gradient to 1-d when returning.
         return totval, np.ravel(cgrad + rgrad * len(datas))
 
@@ -319,6 +325,13 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty, factor
     _log_result("fmin_l_bfgs_b", f, d['nit'], d['funcalls'])
 
     galaxy = galparams.reshape(galaxy0.shape)
+    # Get final chisq values.
+    cval, cgrad, cvals = chisq_galaxy_sky_multi(galaxy, datas, weights,
+                                                ctrs, atms)
+    rval, rgrad = regpenalty(galaxy)
+    logging.debug('Final chisq values:')
+    logging.debug('%s = %s + %s * %s', cval + rval * len(datas), 
+                  ' + '.join(cvals.astype(str)), len(datas), rval)
 
     # get last-calculated skys, given galaxy.
     skys = []
