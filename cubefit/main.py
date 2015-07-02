@@ -113,7 +113,7 @@ def parse_conf(inconf):
     return outconf
 
 
-def setup_logging(progname, loglevel, logfname=None):
+def setup_logging(loglevel, logfname=None):
     if logfname is None:
         logfmt = "\033[1m\033[34m%(levelname)s:\033[0m %(message)s"
     else:
@@ -162,7 +162,13 @@ def main(configfname, outfname, dataprefix="", logfname=None,
     """
 
     # Set up logging
-    setup_logging("cubefit", loglevel, logfname=logfname)
+    setup_logging(loglevel, logfname=logfname)
+
+    # record start time
+    tstart = datetime.now()
+    logging.info("cubefit started at %s",
+                 tstart.strftime("%Y-%m-%d %H:%M:%S"))
+
 
     # Read the config file and parse it into a nice dictionary.
     logging.info("reading config file")
