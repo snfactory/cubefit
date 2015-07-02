@@ -18,7 +18,7 @@ from .fitting import (guess_sky, fit_galaxy_single, fit_galaxy_sky_multi,
                       fit_position_sky, fit_position_sky_sn_multi)
 from .extern import ADR
 
-__all__ = ["main"]
+__all__ = ["main", "parse_conf", "setup_logging"]
 
 MODEL_SHAPE = (32, 32)
 SNIFS_LATITUDE = np.deg2rad(19.8228)
@@ -36,6 +36,8 @@ def parse_conf(inconf):
 
     outconf["fnames"] = inconf["IN_CUBE"]
     nt = len(outconf["fnames"])
+
+    outconf["outfnames"] = inconf["OUT_DATACUBE_SUBTRACTION_FILE"]
 
     # check apodizer flag because the code doesn't support it
     if inconf.get("FLAG_APODIZER", 0) >= 2:
@@ -111,6 +113,23 @@ def parse_conf(inconf):
     return outconf
 
 
+def setup_logging(progname, loglevel, logfname=None):
+    if logfname is None:
+        logfmt = "\033[1m\033[34m%(levelname)s:\033[0m %(message)s"
+    else:
+        if os.path.exists(logfname):
+            os.remove(logfname)
+        logfmt = "%(asctime)s %(levelname)s %(message)s"
+
+    logging.basicConfig(filename=logfname, format=logfmt,
+                        level=loglevel, datefmt="%Y-%m-%dT%H:%M:%S")
+
+    # record start time
+    tstart = datetime.now()
+    logging.info("%s started at %s", progname,
+                 tstart.strftime("%Y-%m-%d %H:%M:%S"))
+
+
 def main(configfname, outfname, dataprefix="", logfname=None,
          loglevel=logging.INFO, diagdir=None, refitgal=False,
          mu_wave=5.e-4, mu_xy=1.e-5, **kwargs):
@@ -143,19 +162,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
     """
 
     # Set up logging
-    if logfname is None:
-        logfmt = "\033[1m\033[34m%(levelname)s:\033[0m %(message)s"
-    else:
-        if os.path.exists(logfname):
-            os.remove(logfname)
-        logfmt = "%(asctime)s %(levelname)s %(message)s"
-
-    logging.basicConfig(filename=logfname, format=logfmt,
-                        level=loglevel, datefmt="%Y-%m-%dT%H:%M:%S")
-
-    # record start time
-    tstart = datetime.now()
-    logging.info("started at %s", tstart.strftime("%Y-%m-%d %H:%M:%S"))
+    setup_logging("cubefit", loglevel, logfname=logfname)
 
     # Read the config file and parse it into a nice dictionary.
     logging.info("reading config file")

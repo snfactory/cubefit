@@ -1,0 +1,53 @@
+#!/usr/bin/env python
+"""Subtract model determined by cubefit from the original data"""
+
+from argparse import ArgumentParser
+import logging
+import os
+import json
+import shutil
+
+import fitsio
+
+import cubefit
+
+if __name__ == "__main__":
+
+    parser = ArgumentParser(prog="cubefit-subtract", description=__doc__)
+    parser.add_argument("configfile", help="configuration file name "
+                        "(JSON format); same as cubefit input")
+    parser.add_argument("resultfile", help="Result FITS file from cubefit")
+    parser.add_argument("--dataprefix", default="",
+                        help="path prepended to data file names; default is "
+                        "empty string")
+    parser.add_argument("--outprefix", default="",
+                        help="path prepended to output file names; default is "
+                        "empty string")
+    args = parser.parse_args()
+
+    cubefit.setup_logging("cubefit-subtract", logging.INFO)
+
+    # get input & output filenames
+    with open(args.configfile) as f:
+        cfg = cubefit.parse_conf(json.load(f))
+    fnames = [os.path.join(args.dataprefix, fname) for fname in cfg["fnames"]]
+    outfnames = [os.path.join(args.outprefix, fname)
+                 for fname in cfg["outfnames"]]
+
+    # load results
+    results = cubefit.read_results(args.resultfile)
+    epochs = results["epochs"]
+    if not len(epochs) == len(fnames) == len(outfnames):
+        raise RuntimeError("number of epochs in result file not equal to "
+                           "number of input and output files in config file")
+
+    # subtract
+    for fname, outfname, epoch in zip(fnames, outfnames, epochs):
+        logging.info("writing %s", outfname)
+        shutil.copy(fname, outfname)
+        f = fitsio.FITS(outfname, "rw")
+        data = f[0].read()
+        scene = epoch["sky"][:, None, None] + epoch["galeval"]
+        data -= scene
+        f[0].write(data)
+        f.close()

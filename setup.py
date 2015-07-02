@@ -20,5 +20,6 @@ setup(name="cubefit",
       author=", ".join(authors),
       author_email="kylebarbary@gmail.com",
       packages=['cubefit'],
-      scripts=['scripts/cubefit','scripts/cubefit-plot'],
+      scripts=['scripts/cubefit','scripts/cubefit-subtract',
+               'scripts/cubefit-plot'],
       data_files=data_files)

@@ -24,11 +24,23 @@ Installation
 Usage
 -----
 
-```sh
+Fit the model, write output to given file:
+
+```
 cubefit config.json output.fits
-cubefit --help  # see options
 ```
 
+Producing subtracted data cubes is a separate step:
+
+```
+cubefit-subtract config.json output.fits
+```
+
+This reads the input and output filenames listed in the configuration file, and
+the results of the fit saved in `output.fits`.
+
+With either command, you can run with `-h` or `--help` options to see all the
+optional arguments: `cubefit --help`.
 
 Input format
 ------------
@@ -52,6 +64,7 @@ CubeFit currently expects to find the following keys in the input JSON file:
 | `"PARAM_HA"`               |        | position of the target (RA) in degrees
 | `"PARAM_DEC"`              |        | position of the target (DEC) in degrees
 | `"PARAM_MLA_TILT"`         |        | MLA tilt in radians
+| `"OUT_DATACUBE_SUBTRACTION_FILE"` | *list* | Output filenames to write galaxy-subtracted cubes to (only used in cubefit-subtract)
 
 *NOTE: We're currently unsure of what the `XP` and `YP` parameters are
 in the current DDT input files. We think they give the location of
