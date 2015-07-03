@@ -47,7 +47,6 @@ if __name__ == "__main__":
         shutil.copy(fname, outfname)
         f = fitsio.FITS(outfname, "rw")
         data = f[0].read()
-        scene = epoch["sky"][:, None, None] + epoch["galeval"]
-        data -= scene
+        data -= epoch["galeval"]
         f[0].write(data)
         f.close()
