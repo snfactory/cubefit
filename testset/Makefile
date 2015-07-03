@@ -2,6 +2,13 @@ DATADIR = data
 RESULTDIR = results
 DIAGDIR = diagnostics
 PLOTDIR = plots
+LOGLEVEL = info
+LOGFILE = N
+ifeq ($(LOGFILE), Y)
+LOGFILEARG = --logfile=$(RESULTDIR)/$*.log
+else
+LOGFILEARG = 
+endif
 
 names = PTF09fox_B PTF09fox_R \
 	SN2006ob_B SN2006ob_R \
@@ -27,7 +34,7 @@ $(RESULTDIR)/%.fits :
         $(RESULTDIR)/$*.fits \
         --dataprefix=$(DATADIR)/$* \
         --diagdir=$(DIAGDIR)/$* \
-        --loglevel=info \
+        --loglevel=$(LOGLEVEL) $(LOGFILEARG)\
         --mu_wave=0.07 \
         --mu_xy=0.001
 

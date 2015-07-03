@@ -1,8 +1,8 @@
-Test Set of SNe
-===============
+Test Data Set
+=============
 
-This directory contains a makefile useful for running debugging tests
-on a subset of the SNe. You need to get the test data and unpack it
+This directory contains a Makefile useful for running debugging tests
+on a set of test data. You need to get the test data and unpack it
 into a `data` directory in this directory. After you do this, the
 directory should look like this:
 
@@ -22,16 +22,18 @@ Run cubefit on some SNe
 -----------------------
 
 ```
-make PTF09fox_B
+make PTF09fox_B             # run one
+make PTF09fox_B PTF09fox_R  # run two
+make all                    # run all
 ```
 
-or run on multiple SNe using 2 jobs:
+Options (can be combined):
 
 ```
-make -j 2 PTF09fox_B PTF09fox_R
+make -j 2 PTF09fox_B PTF09fox_R  # run in parallel on two cores
+make LOGLEVEL=debug PTF09fox_B   # change the logging level
+make LOGFILE=Y PTF09fox_B        # log to a file
 ```
-
-Finally, `make all` will run all of them.
 
 Make plots
 ----------

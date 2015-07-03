@@ -124,11 +124,6 @@ def setup_logging(loglevel, logfname=None):
     logging.basicConfig(filename=logfname, format=logfmt,
                         level=loglevel, datefmt="%Y-%m-%dT%H:%M:%S")
 
-    # record start time
-    tstart = datetime.now()
-    logging.info("%s started at %s", progname,
-                 tstart.strftime("%Y-%m-%d %H:%M:%S"))
-
 
 def main(configfname, outfname, dataprefix="", logfname=None,
          loglevel=logging.INFO, diagdir=None, refitgal=False,
