@@ -119,10 +119,9 @@ def setup_logging(loglevel, logfname=None):
     else:
         if os.path.exists(logfname):
             os.remove(logfname)
-        logfmt = "%(asctime)s %(levelname)s %(message)s"
+        logfmt = "%(levelname)s %(message)s"
 
-    logging.basicConfig(filename=logfname, format=logfmt,
-                        level=loglevel, datefmt="%Y-%m-%dT%H:%M:%S")
+    logging.basicConfig(filename=logfname, format=logfmt, level=loglevel)
 
 
 def main(configfname, outfname, dataprefix="", logfname=None,
