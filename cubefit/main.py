@@ -3,10 +3,10 @@ from __future__ import print_function, division
 import os
 import json
 import math
-import cPickle as pickle
 from copy import copy
 import logging
 from datetime import datetime
+from collections import OrderedDict
 
 import numpy as np
 
@@ -163,7 +163,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
     tstart = datetime.now()
     logging.info("cubefit started at %s",
                  tstart.strftime("%Y-%m-%d %H:%M:%S"))
-
+    tsteps = OrderedDict()  # finish time of each step.
 
     # Read the config file and parse it into a nice dictionary.
     logging.info("reading config file")
@@ -262,6 +262,8 @@ def main(configfname, outfname, dataprefix="", logfname=None,
 
     regpenalty = RegularizationPenalty(galprior, mean_gal_spec, mu_xy, mu_wave)
 
+    tsteps["setup"] = datetime.now()
+
     # -------------------------------------------------------------------------
     # Fit just the galaxy model to just the master ref.
 
@@ -278,6 +280,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         write_results(galaxy, skys, sn, snctr, yctr, xctr,
                       cubes[0].data.shape, atms, wavewcs, fname)
 
+    tsteps["fit galaxy to master ref"] = datetime.now()
 
     # -------------------------------------------------------------------------
     # Fit the positions of the other final refs
@@ -313,6 +316,8 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         yctr[i], xctr[i] = fctr
         skys[i] = fsky
 
+    tsteps["fit positions of other refs"] = datetime.now()
+
     # -------------------------------------------------------------------------
     # Redo model fit, this time including all final refs.
 
@@ -332,6 +337,8 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         fname = os.path.join(diagdir, 'step2.fits')
         write_results(galaxy, skys, sn, snctr, yctr, xctr,
                       cubes[0].data.shape, atms, wavewcs, fname)
+
+    tsteps["fit galaxy to all refs"] = datetime.now()
 
     # -------------------------------------------------------------------------
     # Fit position of data and SN in non-references
@@ -356,6 +363,8 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         skys[j, :] = fskys[i]
         sn[j, :] = fsne[i]
         yctr[j], xctr[j] = fctrs[i]
+
+    tsteps["fit positions of nonrefs & SN"] = datetime.now()
 
     # -------------------------------------------------------------------------
     # optional step(s)
@@ -428,6 +437,16 @@ def main(configfname, outfname, dataprefix="", logfname=None,
     logging.info("writing results to %s", outfname)
     write_results(galaxy, skys, sn, snctr, yctr, xctr,
                   cubes[0].data.shape, atms, wavewcs, outfname)
+
+    # time info
+    logging.info("step times:")
+    maxlen = max(len(key) for key in tsteps)
+    fmtstr = "        %dm%02ds - %-" + str(maxlen) + "s"
+    tprev = tstart
+    for key, tstep in tsteps.iteritems():
+        t = (tstep - tprev).seconds
+        logging.info(fmtstr, t//60, t%60, key)
+        tprev = tstep
 
     tfinish = datetime.now()
     logging.info("finished at %s", tfinish.strftime("%Y-%m-%d %H:%M:%S"))

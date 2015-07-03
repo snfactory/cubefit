@@ -218,32 +218,42 @@ def chisq_galaxy_single(galaxy, data, weight, ctr, atm):
     return val, grad
 
 
+def chisq_galaxy_sky_single(galaxy, data, weight, ctr, atm):
+    """Chi^2 and gradient (not including regularization term) for 
+    single epoch, allowing sky to float."""
+
+    scene = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
+    r = data - scene
+
+    # subtract off sky (weighted avg of residuals)
+    sky = np.average(r, weights=weight, axis=(1, 2))
+    r -= sky[:, None, None]
+
+    wr = weight * r
+    val = np.sum(wr * r)
+
+    # See note in docs/gradient.tex for the (non-trivial) derivation
+    # of this gradient!
+    tmp = np.sum(wr, axis=(1, 2)) / np.sum(weight, axis=(1, 2))
+    vtwr = weight * tmp[:, None, None]
+    grad = atm.gradient_helper(-2. * (wr - vtwr), data.shape[1:3], ctr)
+
+    return val, grad
+
+
 def chisq_galaxy_sky_multi(galaxy, datas, weights, ctrs, atms):
     """Chi^2 and gradient (not including regularization term) for 
     multiple epochs, allowing sky to float."""
 
-    val = 0.
-    cvals = []
+    val = 0.0
     grad = np.zeros_like(galaxy)
     for data, weight, ctr, atm in zip(datas, weights, ctrs, atms):
-        scene = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
-        r = data - scene
+        epochval, epochgrad = chisq_galaxy_sky_single(galaxy, data, weight,
+                                                      ctr, atm)
+        val += epochval
+        grad += epochgrad
 
-        # subtract off sky (weighted avg of residuals)
-        sky = np.average(r, weights=weight, axis=(1, 2))
-        r -= sky[:, None, None]
-
-        wr = weight * r
-        val += np.sum(wr * r)
-        cvals.append(np.sum(wr * r))
-
-        # See note in docs/gradient.tex for the (non-trivial) derivation
-        # of this gradient!
-        tmp = np.sum(wr, axis=(1, 2)) / np.sum(weight, axis=(1, 2))
-        vtwr = weight * tmp[:, None, None]
-        grad += atm.gradient_helper(-2. * (wr - vtwr), data.shape[1:3], ctr)
-
-    return val, grad, np.array(cvals)
+    return val, grad
 
 
 def fit_galaxy_single(galaxy0, data, weight, ctr, atm, regpenalty, factor):
@@ -271,7 +281,7 @@ def fit_galaxy_single(galaxy0, data, weight, ctr, atm, regpenalty, factor):
         cval, cgrad = chisq_galaxy_single(galaxy, data, weight, ctr, atm)
         rval, rgrad = regpenalty(galaxy)
         totval = cval + rval
-        logging.debug('%s (%s + %s)', totval, cval, rval)
+        logging.debug(u'\u03C7\u00B2 = %8.2f (%8.2f + %8.2f)', totval, cval, rval)
 
         # ravel gradient to 1-d when returning.
         return totval, np.ravel(cgrad + rgrad)
@@ -285,7 +295,8 @@ def fit_galaxy_single(galaxy0, data, weight, ctr, atm, regpenalty, factor):
     return galparams.reshape(galaxy0.shape)
 
 
-def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty, factor):
+def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty,
+                         factor):
     """Fit the galaxy model to multiple data cubes.
 
     Parameters
@@ -295,13 +306,15 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty, factor
     datas : list of ndarray
         Sky-subtracted data for each epoch to fit.
     """
-    # Get initial chisq values for debugging.
-    cval, cgrad, cvals = chisq_galaxy_sky_multi(galaxy0, datas, weights,
-                                                ctrs, atms)
-    rval, rgrad = regpenalty(galaxy0)
-    logging.debug('Initial chisq values:')
-    logging.debug('%s = %s + %s * %s', cval + rval * len(datas), 
-                  ' + '.join(cvals.astype(str)), len(datas), rval)
+
+    nepochs = len(datas)
+
+    # Get initial chisq values for info output.
+    cvals_init = []
+    for data, weight, ctr, atm in zip(datas, weights, ctrs, atms):
+        cval, _ = chisq_galaxy_single(galaxy0, data, weight, ctr, atm)
+        cvals_init.append(cval)
+
 
     # Define objective function to minimize.
     # Returns chi^2 (including regularization term) and its gradient.
@@ -309,14 +322,17 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty, factor
 
         # galparams is 1-d (raveled version of galaxy); reshape to 3-d.
         galaxy = galparams.reshape(galaxy0.shape)
-        cval, cgrad, cvals = chisq_galaxy_sky_multi(galaxy, datas, weights,
-                                                    ctrs, atms)
-        rval, rgrad = regpenalty(galaxy) 
+        cval, cgrad = chisq_galaxy_sky_multi(galaxy, datas, weights,
+                                             ctrs, atms)
+        rval, rgrad = regpenalty(galaxy)
+        rval *= nepochs
+        rgrad *= nepochs
 
-        totval = cval + rval * len(datas)
-        logging.debug('%s (%s + %s)', totval, cval, rval * len(datas))
+        totval = cval + rval
+        logging.debug(u'\u03C7\u00B2 = %8.2f (%8.2f + %8.2f)', totval, cval, rval)
+
         # ravel gradient to 1-d when returning.
-        return totval, np.ravel(cgrad + rgrad * len(datas))
+        return totval, np.ravel(cgrad + rgrad)
 
     # run minimizer
     galparams0 = np.ravel(galaxy0)  # fit parameters must be 1-d
@@ -325,13 +341,17 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty, factor
     _log_result("fmin_l_bfgs_b", f, d['nit'], d['funcalls'])
 
     galaxy = galparams.reshape(galaxy0.shape)
+
     # Get final chisq values.
-    cval, cgrad, cvals = chisq_galaxy_sky_multi(galaxy, datas, weights,
-                                                ctrs, atms)
-    rval, rgrad = regpenalty(galaxy)
-    logging.debug('Final chisq values:')
-    logging.debug('%s = %s + %s * %s', cval + rval * len(datas), 
-                  ' + '.join(cvals.astype(str)), len(datas), rval)
+    cvals = []
+    for data, weight, ctr, atm in zip(datas, weights, ctrs, atms):
+        cval, _ = chisq_galaxy_single(galaxy, data, weight, ctr, atm)
+        cvals.append(cval)
+
+    logging.info(u"        initial \u03C7\u00B2/epoch: [%s]",
+                 ", ".join(["%8.2f" % v for v in cvals_init]))
+    logging.info(u"        final   \u03C7\u00B2/epoch: [%s]",
+                 ", ".join(["%8.2f" % v for v in cvals]))
 
     # get last-calculated skys, given galaxy.
     skys = []
