@@ -23,12 +23,12 @@ parser.add_argument("--diagdir", default=None,
 parser.add_argument("--refitgal", default=False, action="store_true",
                     help="Add an iteration where galaxy model is fit using "
                     "all epochs and then data/SN positions are refit")
-parser.add_argument("--mu_wave", default=5.e-4, type=float,
+parser.add_argument("--mu_wave", default=0.07, type=float,
                     help="Wavelength regularization parameter. "
-                    "Default is 5.e-4.")
-parser.add_argument("--mu_xy", default=1.e-5, type=float,
+                    "Default is 0.07.")
+parser.add_argument("--mu_xy", default=0.001, type=float,
                     help="Spatial regularization parameter. "
-                    "Default is 1.e-5.")
+                    "Default is 0.001.")
 parser.add_argument("--master_ref", default=None, type=int,
                     help="Choose index of exposure used as master ref")
 args = parser.parse_args()
