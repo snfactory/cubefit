@@ -27,6 +27,8 @@ $(names) : % : $(RESULTDIR)/%.fits
 
 all: $(names)
 
+all-plots : $(foreach name,$(names),$(name)-plots)
+
 $(RESULTDIR)/%.fits :
 	mkdir -p $(RESULTDIR)
 	mkdir -p $(DIAGDIR)/$*
