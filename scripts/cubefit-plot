@@ -23,6 +23,9 @@ parser.add_argument("--dataprefix", default="",
                     "empty string")
 parser.add_argument('-b', '--band', help='timeseries band', default='B',
                     dest='band')
+parser.add_argument('--idrprefix', default=None,
+                    help='Path to IDR or sn data; if given, the cubefit sn '
+                    'spectra are plotted against the production values')
 parser.add_argument("--diagdir", default=None,
                     help="If given, read intermediate diagnostic "
                     "results from this directory and include in plot(s)")
@@ -54,6 +57,8 @@ refgaleval = results['final']['epochs']['galeval'][isref]
 cubefit.plot_wave_slices(refcubes, refgaleval,
                          fname=(args.outprefix + '_waveslice.eps'))
 
-# The IDR stuff should be decoupled in this function
-#cubefit.plot_sn(results['final']['epochs']['sn'], cfg,
-#                fname=(args.outprefix + %s_sn.eps'))
+# Plot cubefit spectra against IDR spectra:
+if args.idrprefix is not None:
+    cubefit.plot_sn(results['final']['epochs']['sn'], cfg, 
+                    results['final']['wave'],
+                    args.idrprefix, fname=(args.outprefix + '_sn.eps' ))

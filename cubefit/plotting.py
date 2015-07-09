@@ -16,7 +16,6 @@ BAND_LIMITS = {'U': (3400., 3900.),
                'V': (6289., 7607.)}
 
 STAMP_SIZE = 0.9
-IDR_PREFIX = '/home/cmsaunders/ACEv2/'
 COLORMAP = 'bone'
 
 
@@ -145,7 +144,7 @@ def plot_timeseries(cubes, results, band='B', fname=None):
     plt.close()
 
 
-def plot_wave_slices(cubes, galeval, indicies=None, fname=None):
+def plot_wave_slices(cubes, galeval, indices=None, fname=None):
     """Return a figure showing wavelength slices of data and model.
 
     Parameters
@@ -154,8 +153,6 @@ def plot_wave_slices(cubes, galeval, indicies=None, fname=None):
         Dictionary with data and results of ddt fit at three steps
     fname : str
         Output file name
-    slices : list
-        Optional indices of wavelengths to plot.
     """
 
     if len(cubes) != len(galeval):
@@ -164,18 +161,18 @@ def plot_wave_slices(cubes, galeval, indicies=None, fname=None):
     cube_shape = cubes[0].data.shape
     wave = cubes[0].wave
 
-    if indicies is None:
-        indicies = np.arange(0, len(wave), 100)
+    if indices is None:
+        indices = np.arange(0, len(wave), 100)
 
     ncol = 2*len(cubes)  # two rows per final ref (model and residual)
-    nrow = len(indicies)  # one column for each wavelength slice
+    nrow = len(indices)  # one column for each wavelength slice
     figsize = (STAMP_SIZE * nrow, STAMP_SIZE * ncol)
     fig = plt.figure(figsize=figsize)
 
     # Plot data, model and residual for each final ref epoch at a range of
     # wavelength slices.
     for i in range(len(cubes)):
-        for s, idx in enumerate(indicies):
+        for s, idx in enumerate(indices):
             data_slice = cubes[i].data[idx, :, :]
             model_slice = galeval[i][idx, : , :]
             residual_slice = data_slice - model_slice 
@@ -210,7 +207,7 @@ def plot_wave_slices(cubes, galeval, indicies=None, fname=None):
     plt.close()
 
 
-def plot_sn(sn_spectra, cfg, fname=None):
+def plot_sn(sn_spectra, cfg, wave, idr_prefix, fname=None):
     """Return a figure with th SN
 
     Parameters
@@ -219,10 +216,10 @@ def plot_sn(sn_spectra, cfg, fname=None):
         Dictionary with data and results of ddt fit at three steps
     cfg : dict
         Raw configuration dictionary.
+    idr_prefix : str
+        Path to IDR directory.
     fname : str
         Output file name
-    slices : list
-        Optional indices of wavelengths to plot.
     """
 
     sn_max = sn_spectra.max()
@@ -231,9 +228,14 @@ def plot_sn(sn_spectra, cfg, fname=None):
     channel = cfg["PARAM_CHANNEL"]
     day_exp_nums = [file.split('_')[2:5] for file in in_cube_files]
 
-    sn_name = json_file.split('/')[-1].split('_')[0]
-    idr_files = (glob(IDR_PREFIX+'training/%s/*%s.fits' % (sn_name, channel))+
-                 glob(IDR_PREFIX+'validation/%s/*%s.fits' % (sn_name, channel)))
+    sn_name = cfg["PARAM_SN_NAME"]
+    idr_files = glob(idr_prefix+'/%s*%s.fits' % (sn_name, channel))
+    if len(idr_files) == 0:
+        idr_files = glob(idr_prefix+'/*/%s/*%s.fits' % (sn_name, channel))
+    try:
+        assert len(idr_files) > 0
+    except:
+        raise ValueError("No files matching this sn in provided directory")
     phase_strings = [file.split('_')[-2] for file in idr_files]
 
     phases = [((-1 if phase_string[0] == 'M' else 1) *
