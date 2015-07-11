@@ -18,99 +18,16 @@ from .fitting import (guess_sky, fit_galaxy_single, fit_galaxy_sky_multi,
                       fit_position_sky, fit_position_sky_sn_multi)
 from .extern import ADR
 
-__all__ = ["main", "parse_conf", "setup_logging"]
+__all__ = ["main", "setup_logging"]
 
 MODEL_SHAPE = (32, 32)
 SNIFS_LATITUDE = np.deg2rad(19.8228)
-WAVE_REF_DEFAULT = 5000.
+SPAXEL_SIZE = 0.43
 MIN_NMAD = 2.5  # Minimum Number of Median Absolute Deviations above
                 # the minimum spaxel value in fit_position
 DTYPE = np.float64
 LBFGSB_FACTOR = 1e10
-
-def parse_conf(inconf):
-    """Parse the raw input configuration dictionary. Return a new dictionary.
-    """
-
-    outconf = {}
-
-    outconf["fnames"] = inconf["IN_CUBE"]
-    nt = len(outconf["fnames"])
-
-    outconf["outfnames"] = inconf["OUT_DATACUBE_SUBTRACTION_FILE"]
-
-    # check apodizer flag because the code doesn't support it
-    if inconf.get("FLAG_APODIZER", 0) >= 2:
-        raise RuntimeError("FLAG_APODIZER >= 2 not implemented")
-
-    outconf["spaxel_size"] = inconf["PARAM_SPAXEL_SIZE"]
-    outconf["wave_ref"] = inconf.get("PARAM_LAMBDA_REF", WAVE_REF_DEFAULT)
-
-    # index of master final ref. Subtract 1 for Python indexing.
-    outconf["master_ref"] = inconf["PARAM_FINAL_REF"] - 1
-
-    is_ref = np.array(inconf.get("PARAM_IS_FINAL_REF"))
-    assert len(is_ref) == nt
-    refs = np.flatnonzero(is_ref)
-
-    # indicies of all final refs
-    outconf["refs"] = refs
-
-    # atmospheric conditions at each observation time.
-    outconf["airmass"] = np.array(inconf["PARAM_AIRMASS"])
-    outconf["p"] = np.asarray(inconf.get("PARAM_P", 615.*np.ones(nt)))
-    outconf["t"] = np.asarray(inconf.get("PARAM_T", 2.*np.ones(nt)))
-
-    # Position of the instrument (note that config file is in degrees)
-    outconf["ha"] = np.deg2rad(np.array(inconf["PARAM_HA"]))
-    outconf["dec"] = np.deg2rad(np.array(inconf["PARAM_DEC"]))
-
-    # TODO: check that this is in radians!
-    outconf["tilt"] = inconf["PARAM_MLA_TILT"]
-
-    if inconf["PARAM_PSF_TYPE"] != "GS-PSF":
-        raise RuntimeError("unrecognized PARAM_PSF_TYPE. "
-                           "[G-PSF (from FITS files) not implemented.]")
-    outconf["psfparams"] = inconf["PARAM_PSF_ES"]
-
-    # If target positions are given in the config file, set them in
-    # the model.  (Otherwise, the positions default to zero in all
-    # exposures.)
-    if "PARAM_TARGET_XP" in inconf:
-        xctr_init = np.array(inconf["PARAM_TARGET_XP"])
-    else:
-        xctr_init = np.zeros(nt)
-    if "PARAM_TARGET_YP" in inconf:
-        yctr_init = np.array(inconf["PARAM_TARGET_YP"])
-    else:
-        yctr_init = np.zeros(nt)
-
-    # In the input file, we *think* the coordinates are where the center of
-    # the reference is relative to the exposure.
-
-    # First, negate the coordinates, so that they give the position of
-    # the center of each exposure relative to the center of the
-    # reference.
-    xctr_init = -xctr_init
-    yctr_init = -yctr_init
-
-    # Now, we guess that the SN is located at approximately the
-    # average center of all exposures (supposing that on average, we
-    # pointed perfectly at the SN). Determine the average center
-    # position:
-    avgxctr = np.average(xctr_init)
-    avgyctr = np.average(yctr_init)
-
-    # Finally, subtract this average position, effectively shifting
-    # the model reference frame to be centered on this location. Our
-    # guess at the SN position is then centered in this reference
-    # frame.
-    outconf["xctr_init"] = xctr_init - avgxctr
-    outconf["yctr_init"] = yctr_init - avgyctr
-    outconf["sn_x_init"] = 0.
-    outconf["sn_y_init"] = 0.
-
-    return outconf
+REFWAVE = 5000.  # reference wavelength in Angstroms for PSF params and ADR
 
 
 def setup_logging(loglevel, logfname=None):
@@ -155,7 +72,6 @@ def main(configfname, outfname, dataprefix="", logfname=None,
     (after config file is parsed).
     """
 
-    # Set up logging
     setup_logging(loglevel, logfname=logfname)
 
     # record start time
@@ -164,11 +80,23 @@ def main(configfname, outfname, dataprefix="", logfname=None,
                  tstart.strftime("%Y-%m-%d %H:%M:%S"))
     tsteps = OrderedDict()  # finish time of each step.
 
+    logging.info("parameters: mu_wave={:.3g} mu_xy={:.3g} refitgal={}"
+                 .format(mu_wave, mu_xy, refitgal))
+
     # Read the config file and parse it into a nice dictionary.
     logging.info("reading config file")
     with open(configfname) as f:
         cfg = json.load(f)
-        cfg = parse_conf(cfg)
+
+    # convert to radians (config file is in degrees)
+    cfg["ha"] = np.deg2rad(cfg["ha"])
+    cfg["dec"] = np.deg2rad(cfg["dec"])
+
+    # basic checks on config contents.
+    assert (len(cfg["filenames"]) == len(cfg["airmasses"]) ==
+            len(cfg["pressures"]) == len(cfg["temperatures"]) ==
+            len(cfg["xcenters"]) == len(cfg["ycenters"]) ==
+            len(cfg["psf_params"]) == len(cfg["ha"]) == len(cfg["dec"]))
 
     # Change any parameters that have been chosen at command line.
     # There is a check to ensure that we only try to set parameters that are
@@ -179,17 +107,14 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         if val is not None:
             cfg[key] = val
 
-    logging.info("parameters: mu_wave={:.3g} mu_xy={:.3g} refitgal={}"
-                 .format(mu_wave, mu_xy, refitgal))
-
     # -------------------------------------------------------------------------
     # Load data cubes from the list of FITS files.
 
-    nt = len(cfg["fnames"])
+    nt = len(cfg["filenames"])
 
     logging.info("reading %d data cubes", nt)
     cubes = [read_datacube(os.path.join(dataprefix, fname), dtype=DTYPE)
-             for fname in cfg["fnames"]]
+             for fname in cfg["filenames"]]
     wave = cubes[0].wave
     wavewcs = cubes[0].wavewcs
     nw = len(wave)
@@ -200,7 +125,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
     if master_ref not in refs:
         raise ValueError("master ref choice must be one of the final refs (" +
                          " ".join(refs.astype(str)) + ")")
-    nonmaster_refs = refs[refs != master_ref]
+    nonmaster_refs = [i for i in refs if i != master_ref]
     nonrefs = [i for i in range(nt) if i not in refs]
 
     # Ensure that all cubes have the same wavelengths.
@@ -216,7 +141,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
 
         # Create a 3-d cube representing the Point Spread Function (PSF)
         # as a function of wavelength.
-        psf = psf_3d_from_params(cfg["psfparams"][i], wave, cfg["wave_ref"],
+        psf = psf_3d_from_params(cfg["psf_params"][i], wave, REFWAVE,
                                  MODEL_SHAPE)
 
         # Atmospheric differential refraction (ADR): Because of ADR,
@@ -225,11 +150,11 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         # atmospheric conditions and the pointing and angle of the
         # instrument. We calculate the offsets here as a function of
         # observation and wavelength and input these to the model.
-        pa = paralactic_angle(cfg["airmass"][i], cfg["ha"][i], cfg["dec"][i],
-                              cfg["tilt"], SNIFS_LATITUDE)
-        adr = ADR(cfg["p"][i], cfg["t"][i], lref=cfg["wave_ref"],
-                  airmass=cfg["airmass"][i], theta=pa)
-        adr_refract = adr.refract(0, 0, wave, unit=cfg["spaxel_size"])
+        pa = paralactic_angle(cfg["airmasses"][i], cfg["ha"][i], cfg["dec"][i],
+                              cfg["mla_tilt"], SNIFS_LATITUDE)
+        adr = ADR(cfg["pressures"][i], cfg["temperatures"][i], lref=REFWAVE,
+                  airmass=cfg["airmasses"][i], theta=pa)
+        adr_refract = adr.refract(0, 0, wave, unit=SPAXEL_SIZE)
 
         # make adr_refract[0, :] correspond to y and adr_refract[1, :] => x
         adr_refract = np.flipud(adr_refract)
@@ -241,9 +166,9 @@ def main(configfname, outfname, dataprefix="", logfname=None,
 
     galaxy = np.zeros((nw, MODEL_SHAPE[0], MODEL_SHAPE[1]), dtype=DTYPE)
     sn = np.zeros((nt, nw), dtype=DTYPE)  # SN spectrum at each epoch
-    snctr = (cfg["sn_y_init"], cfg["sn_x_init"])
-    xctr = np.copy(cfg["xctr_init"])
-    yctr = np.copy(cfg["yctr_init"])
+    snctr = (0.0, 0.0)
+    xctr = np.array(cfg["xcenters"])
+    yctr = np.array(cfg["ycenters"])
 
     logging.info("guessing sky for all %d epochs", nt)
     skys = np.array([guess_sky(cube, npix=20) for cube in cubes])

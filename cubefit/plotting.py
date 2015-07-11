@@ -207,36 +207,20 @@ def plot_wave_slices(cubes, galeval, indices=None, fname=None):
     plt.close()
 
 
-def plot_sn(sn_spectra, cfg, wave, idr_prefix, fname=None):
+def plot_sn(filenames, sn_spectra, wave, idrfilenames, outfname):
     """Return a figure with th SN
 
     Parameters
     ----------
-    ddt_output : pickle dictionary
-        Dictionary with data and results of ddt fit at three steps
-    cfg : dict
-        Raw configuration dictionary.
-    idr_prefix : str
-        Path to IDR directory.
     fname : str
         Output file name
     """
 
     sn_max = sn_spectra.max()
 
-    in_cube_files = cfg["IN_CUBE_DDTNAME"]
-    channel = cfg["PARAM_CHANNEL"]
-    day_exp_nums = [file.split('_')[2:5] for file in in_cube_files]
+    day_exp_nums = [fname.split('_')[1:4] for fname in filenames]
 
-    sn_name = cfg["PARAM_SN_NAME"]
-    idr_files = glob(idr_prefix+'/%s*%s.fits' % (sn_name, channel))
-    if len(idr_files) == 0:
-        idr_files = glob(idr_prefix+'/*/%s/*%s.fits' % (sn_name, channel))
-    try:
-        assert len(idr_files) > 0
-    except:
-        raise ValueError("No files matching this sn in provided directory")
-    phase_strings = [file.split('_')[-2] for file in idr_files]
+    phase_strings = [fname.split('_')[-2] for fname in idrfilenames]
 
     phases = [((-1 if phase_string[0] == 'M' else 1) *
                float(phase_string[1:])/1000.)
@@ -246,7 +230,7 @@ def plot_sn(sn_spectra, cfg, wave, idr_prefix, fname=None):
 
     for p, phase_arg in enumerate(phase_sort):
         
-        file = idr_files[phase_arg]
+        file = idrfilenames[phase_arg]
         phase = phases[phase_arg]
         
         with fitsio.FITS(file, 'r') as f:
@@ -258,7 +242,7 @@ def plot_sn(sn_spectra, cfg, wave, idr_prefix, fname=None):
         #crpix = header["CRPIX1"]-1.0  # FITS is 1-indexed, numpy as 0-indexed 
         crval = header["CRVAL1"]
         cdelt = header["CDELT1"]
-        sn_wave = crval + cdelt * (np.arange(n))# - crpix)
+        sn_wave = crval + cdelt * (np.arange(n)) # - crpix)
 
         file_day_exp = header["FILENAME"].split('_')[1:4]
         i_t_match = np.flatnonzero(np.array([day_exp == file_day_exp for
@@ -271,8 +255,5 @@ def plot_sn(sn_spectra, cfg, wave, idr_prefix, fname=None):
         plt.text(sn_wave[-20], p/2., 'Phase = '+str(phase))
 
 
-    if fname is None:
-        return fig
-    
-    plt.savefig(fname)
+    plt.savefig(outfname)
     plt.close()

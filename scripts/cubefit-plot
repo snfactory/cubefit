@@ -23,8 +23,9 @@ parser.add_argument("--dataprefix", default="",
                     "empty string")
 parser.add_argument('-b', '--band', help='timeseries band', default='B',
                     dest='band')
-parser.add_argument('--idrprefix', default=None,
-                    help='Path to IDR or sn data; if given, the cubefit sn '
+parser.add_argument('--idrfiles', nargs='+', default=None,
+                    help='IDR filenames to compare to. If given, the '
+                    'cubefit SN '
                     'spectra are plotted against the production values')
 parser.add_argument("--diagdir", default=None,
                     help="If given, read intermediate diagnostic "
@@ -36,7 +37,7 @@ args = parser.parse_args()
 with open(args.configfile) as f:
     cfg = json.load(f)
 cubes = [cubefit.read_datacube(join(args.dataprefix, fname), scale=False)
-         for fname in cfg["IN_CUBE"]]
+         for fname in cfg["filenames"]]
 
 # Read in results, optionally with diagnostics.
 results = OrderedDict()
@@ -51,14 +52,13 @@ cubefit.plot_timeseries(cubes, results, band=args.band,
                         fname=(args.outprefix + '_timeseries.eps'))
 
 # plot wave slices, just for final refs.
-isref = np.array(cfg["PARAM_IS_FINAL_REF"], dtype=np.bool)
-refcubes = [cubes[i] for i in range(len(cubes)) if isref[i]]
-refgaleval = results['final']['epochs']['galeval'][isref]
+refcubes = [cubes[i] for i in cfg['refs']]
+refgaleval = results['final']['epochs']['galeval'][cfg['refs']]
 cubefit.plot_wave_slices(refcubes, refgaleval,
                          fname=(args.outprefix + '_waveslice.eps'))
 
 # Plot cubefit spectra against IDR spectra:
-if args.idrprefix is not None:
-    cubefit.plot_sn(results['final']['epochs']['sn'], cfg, 
-                    results['final']['wave'],
-                    args.idrprefix, fname=(args.outprefix + '_sn.eps' ))
+if args.idrfiles is not None:
+    cubefit.plot_sn(cfg["filenames"], results['final']['epochs']['sn'],
+                    results['final']['wave'], args.idrfiles,
+                    args.outprefix + '_sn.eps')

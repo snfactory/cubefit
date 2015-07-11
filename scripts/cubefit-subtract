@@ -29,10 +29,11 @@ if __name__ == "__main__":
 
     # get input & output filenames
     with open(args.configfile) as f:
-        cfg = cubefit.parse_conf(json.load(f))
-    fnames = [os.path.join(args.dataprefix, fname) for fname in cfg["fnames"]]
+        cfg = json.load(f)
+    fnames = [os.path.join(args.dataprefix, fname)
+              for fname in cfg["filenames"]]
     outfnames = [os.path.join(args.outprefix, fname)
-                 for fname in cfg["outfnames"]]
+                 for fname in cfg["outnames"]]
 
     # load results
     results = cubefit.read_results(args.resultfile)

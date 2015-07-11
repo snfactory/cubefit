@@ -41,3 +41,10 @@ Make plots
 ```
 make PTF09fox_B-plots
 ```
+
+To plot against the IDR, create a file `Make.user` in this directory,
+with a single line giving the path to the root of the IDR, such as:
+
+```
+IDRPREFIX = ~/projects/cubefit/BEDELLv1
+```

@@ -5,9 +5,21 @@ PLOTDIR = plots
 LOGLEVEL = info
 LOGFILE = N
 ifeq ($(LOGFILE), Y)
-LOGFILEARG = --logfile=$(RESULTDIR)/$*.log
+	LOGFILEARG = --logfile=$(RESULTDIR)/$*.log
 else
-LOGFILEARG = 
+	LOGFILEARG = 
+endif
+
+# user override for --idrfiles argument in `cubefit-plot`
+ifeq (exists, $(shell [ -e ./Make.user ] && echo exists ))
+include ./Make.user
+endif
+ifdef IDRPREFIX
+	IDRFILESARG_B = --idrfiles $(IDRPREFIX)/*/$*/$*_*_B.fits
+	IDRFILESARG_R = --idrfiles $(IDRPREFIX)/*/$*/$*_*_R.fits
+else
+	IDRFILESARG_B =
+	IDRFILESARG_R =
 endif
 
 names = PTF09fox_B PTF09fox_R \
@@ -36,7 +48,7 @@ $(RESULTDIR)/%.fits :
         $(RESULTDIR)/$*.fits \
         --dataprefix=$(DATADIR)/$* \
         --diagdir=$(DIAGDIR)/$* \
-        --loglevel=$(LOGLEVEL) $(LOGFILEARG)\
+        --loglevel=$(LOGLEVEL) $(LOGFILEARG) \
         --mu_wave=0.07 \
         --mu_xy=0.001
 
@@ -50,6 +62,7 @@ $(PLOTDIR)/%_B_timeseries.eps $(PLOTDIR)/%_B_waveslice.eps :
 	$(PLOTDIR)/$*_B \
 	--band=B \
 	--dataprefix=$(DATADIR)/$*_B \
+	$(IDRFILESARG_B) \
 	--diagdir=$(DIAGDIR)/$*_B
 
 $(PLOTDIR)/%_R_timeseries.eps $(PLOTDIR)/%_R_waveslice.eps :
@@ -60,4 +73,5 @@ $(PLOTDIR)/%_R_timeseries.eps $(PLOTDIR)/%_R_waveslice.eps :
 	$(PLOTDIR)/$*_R \
 	--band=V \
 	--dataprefix=$(DATADIR)/$*_R \
+	$(IDRFILESARG_R) \
 	--diagdir=$(DIAGDIR)/$*_R

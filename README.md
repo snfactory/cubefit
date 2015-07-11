@@ -45,59 +45,34 @@ optional arguments: `cubefit --help`.
 Input format
 ------------
 
-CubeFit currently expects to find the following keys in the input JSON file:
+CubeFit requires the following keys in the input JSON file. Keys are
+case-sensitive. Additional keys are simply ignored.
 
-| Parameter                  | Type   | Description                           |
-| -------------------------- | ------ | ------------------------------------- |
-| `"IN_CUBE"`                | *list* | file names
-| `"PARAM_AIRMASS"`          | *list* | airmass for each epoch
-| `"PARAM_P"`                | *list* | pressure in mmHg for each epoch
-| `"PARAM_T"`                | *list* | temperature in degrees Celcius for each epoch
-| `"PARAM_IS_FINAL_REF"`     | *list* | Integers indicating whether epoch is final ref (0 or 1)
-| `"PARAM_FINAL_REF"`        |        | index of "master" final ref (1-based indexing)
-| `"PARAM_TARGET_XP"`        | *list* | *See NOTE below*
-| `"PARAM_TARGET_YP"`        | *list* | *See NOTE below*
-| `"PARAM_PSF_TYPE"`         |        | must be `"GS-PSF"`
-| `"PARAM_PSF_ES"`           | *list of lists* | PSF parameters for each epoch
-| `"PARAM_SPAXEL_SIZE"`      |        | instrument spaxel size in arcseconds
-| `"PARAM_LAMBDA_REF"`       |        | reference wavelength in Angstroms
-| `"PARAM_HA"`               |        | position of the target (RA) in degrees
-| `"PARAM_DEC"`              |        | position of the target (DEC) in degrees
-| `"PARAM_MLA_TILT"`         |        | MLA tilt in radians
-| `"OUT_DATACUBE_SUBTRACTION_FILE"` | *list* | Output filenames to write galaxy-subtracted cubes to (only used in cubefit-subtract)
+| Parameter        | Type   | Description                           |
+| ---------------- | ------ | ------------------------------------- |
+| `"filenames"`    | *list* | list of FITS data cube files
+| `"airmasses"`    | *list* | airmass for each epoch
+| `"pressures"`    | *list* | pressure for each epoch **[mmHg]**
+| `"temperatures"` | *list* | temperature for each epoch **[deg Celcius]**
+| `"xcenters"`     | *list* | x position of MLA center relative to SN **[spaxels]**
+| `"ycenters"`     | *list* | y position of MLA center relative to SN **[spaxels]**
+| `"ha"`           | *list* | HA (?) of instrument **[degrees]**
+| `"dec"`          | *list* | declination of the target **[degrees]**
+| `"psf_params"`   | *list of lists* | PSF parameters for each epoch
+| `"refs"`         | *list* | index of final refs in lists **[0-based indexing]**
+| `"master_ref"`   |        | index of "master" final ref **[0-based indexing]**
+| `"mla_tilt"`     |        | MLA tilt **[radians]** (?)
 
-*NOTE: We're currently unsure of what the `XP` and `YP` parameters are
-in the current DDT input files. We think they give the location of
-the center of the master final ref relative to the center of each
-exposure in spaxels. That is, these parameters are always 0 for the
-master final ref. For an exposure offset by 1 spaxel in each direction
-to the upper right (northwest) the parameters would be each be -1.*
 
-The above parameter names and conventions are chosen to comply with the existing
-DDT input files. If we are creating a new script that produces these config
-files, it would be nice to choose some new names without the baggage of DDT
-conventions. Here are the preferred names for the future. *Note that these do
-not currently work!*
+Parameter only used in `cubefit-subtract`:
 
-| Parameter            | Type   | Description                           |
-| -------------------- | ------ | ------------------------------------- |
-| `"FILENAMES"`        | *list* | file names
-| `"AIRMASS"`          | *list* | airmass for each epoch
-| `"PRESSURE"`         | *list* | pressure in mmHg for each epoch
-| `"TEMPERATURE"`      | *list* | temperature in degrees Celcius for each epoch
-| `"IS_FINAL_REF"`     | *list* | Boolean (true/false) indicating whether epoch is final ref
-| `"MASTER_FINAL_REF"` |        | index of "master" final ref (1-based indexing)
-| `"XCTR"`             | *list* | x position of MLA center relative to SN
-| `"YCTR"`             | *list* | y position of MLA center relative to SN
-| `"PSF_PARAMS"`       | *list of lists* | PSF parameters for each epoch
-| `"SPAXEL_SIZE"`      |        | instrument spaxel size in arcseconds
-| `"WAVE_REF"`         |        | reference wavelength in Angstroms
-| `"RA"`               |        | position of the target (RA) in degrees
-| `"DEC"`              |        | position of the target (DEC) in degrees
-| `"MLA_TILT"`         |        | MLA tilt in radians (?)
+| Parameter        | Type   | Description                           |
+| ---------------- | ------ | ------------------------------------- |
+| `"outnames"`     | *list* | Target filenames for galaxy-subtracted cubes
 
-*NOTE: the meaning of `X` and `Y` parameters is different than in the previous
-table!*
+
+**NOTE:** the meaning of `xcenters` and `ycenters` is different than in DDT
+config files!
 
 Output format
 -------------
