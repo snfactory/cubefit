@@ -161,8 +161,7 @@ Finally, there are two regularization parameters that determine the
 penalty on the galaxy model for being "rougher" (having a high
 pixel-to-pixel variation).
 
-Procedure
----------
+**The Procedure**
 
 These steps are carried out in ``cubefit.main`` (which is called from
 the command-line script).
