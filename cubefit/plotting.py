@@ -14,12 +14,11 @@ __all__ = ["plot_timeseries", "plot_wave_slices", "plot_sn"]
 BAND_LIMITS = {'U': (3400., 3900.),
                'B': (4102., 5100.),
                'V': (6289., 7607.)}
-
 STAMP_SIZE = 0.9
 COLORMAP = 'bone'
 
 
-def plot_timeseries(cubes, results, band='B', fname=None):
+def plot_timeseries(cubes, results, band=None, fname=None):
     """Return a figure showing data and model.
 
     Parameters
@@ -45,8 +44,13 @@ def plot_timeseries(cubes, results, band='B', fname=None):
     figsize = (STAMP_SIZE * ncol, STAMP_SIZE * nrow)
     fig = plt.figure(figsize=figsize)
 
-    # upper and lower wavelength limits
-    wmin, wmax = BAND_LIMITS[band]
+    # upper and lower wavelength limits:
+    if band is None:
+        # default is a 1000 Angstrom wide band in the middle of the cube.
+        wmid = (wave[0] + wave[-1]) / 2.0
+        wmin, wmax = wmid - 500.0, wmid + 500.0
+    else:
+        wmin, wmax = BAND_LIMITS[band]
     wavemask = (wave > wmin) & (wave < wmax)
 
     # plot data for each epoch, keeping track of vmin/vmax for each.

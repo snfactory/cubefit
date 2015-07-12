@@ -21,12 +21,12 @@ parser.add_argument("outprefix", help="output prefix")
 parser.add_argument("--dataprefix", default="",
                     help="path prepended to data file names; default is "
                     "empty string")
-parser.add_argument('-b', '--band', help='timeseries band', default='B',
-                    dest='band')
+parser.add_argument('-b', '--band', help='timeseries band (U, B, V). '
+                    'Default is a 1000 A wide band in middle of cube.',
+                    default=None, dest='band')
 parser.add_argument('--idrfiles', nargs='+', default=None,
-                    help='IDR filenames to compare to. If given, the '
-                    'cubefit SN '
-                    'spectra are plotted against the production values')
+                    help='Prefix of IDR. If given, the cubefit SN '
+                    'spectra are plotted against the production values.')
 parser.add_argument("--diagdir", default=None,
                     help="If given, read intermediate diagnostic "
                     "results from this directory and include in plot(s)")
@@ -59,6 +59,6 @@ cubefit.plot_wave_slices(refcubes, refgaleval,
 
 # Plot cubefit spectra against IDR spectra:
 if args.idrfiles is not None:
-    cubefit.plot_sn(cfg["filenames"], results['final']['epochs']['sn'],
+    cubefit.plot_sn(cfg['filenames'], results['final']['epochs']['sn'],
                     results['final']['wave'], args.idrfiles,
                     args.outprefix + '_sn.eps')

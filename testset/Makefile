@@ -15,11 +15,9 @@ ifeq (exists, $(shell [ -e ./Make.user ] && echo exists ))
 include ./Make.user
 endif
 ifdef IDRPREFIX
-	IDRFILESARG_B = --idrfiles $(IDRPREFIX)/*/$*/$*_*_B.fits
-	IDRFILESARG_R = --idrfiles $(IDRPREFIX)/*/$*/$*_*_R.fits
+	IDRFILESARG = --idrfiles $(IDRPREFIX)/*/$(firstword $(subst _, ,$*))/$(firstword $(subst _, ,$*))_*_$(word 2,$(subst _, ,$*)).fits
 else
-	IDRFILESARG_B =
-	IDRFILESARG_R =
+	IDRFILESARG =
 endif
 
 names = PTF09fox_B PTF09fox_R \
@@ -42,7 +40,7 @@ all: $(names)
 all-plots : $(foreach name,$(names),$(name)-plots)
 
 $(RESULTDIR)/%.fits :
-	mkdir -p $(RESULTDIR)
+	mkdir -p $(RESULTDIR)dd
 	mkdir -p $(DIAGDIR)/$*
 	cubefit $(DATADIR)/$*/$*.json \
         $(RESULTDIR)/$*.fits \
@@ -54,24 +52,18 @@ $(RESULTDIR)/%.fits :
 
 $(foreach name,$(names),$(name)-plots) : %-plots : $(PLOTDIR)/%_timeseries.eps $(PLOTDIR)/%_waveslice.eps
 
-$(PLOTDIR)/%_B_timeseries.eps $(PLOTDIR)/%_B_waveslice.eps :
+$(PLOTDIR)/%_timeseries.eps $(PLOTDIR)/%_waveslice.eps :
 	mkdir -p $(PLOTDIR)
 	cubefit-plot \
-	$(DATADIR)/$*_B/$*_B.json \
-	$(RESULTDIR)/$*_B.fits \
-	$(PLOTDIR)/$*_B \
-	--band=B \
-	--dataprefix=$(DATADIR)/$*_B \
-	$(IDRFILESARG_B) \
-	--diagdir=$(DIAGDIR)/$*_B
+	$(DATADIR)/$*/$*.json \
+	$(RESULTDIR)/$*.fits \
+	$(PLOTDIR)/$* \
+	--dataprefix=$(DATADIR)/$* \
+	$(IDRFILESARG) \
+	--diagdir=$(DIAGDIR)/$*
 
-$(PLOTDIR)/%_R_timeseries.eps $(PLOTDIR)/%_R_waveslice.eps :
-	mkdir -p $(PLOTDIR)
-	cubefit-plot \
-	$(DATADIR)/$*_R/$*_R.json \
-	$(RESULTDIR)/$*_R.fits \
-	$(PLOTDIR)/$*_R \
-	--band=V \
-	--dataprefix=$(DATADIR)/$*_R \
-	$(IDRFILESARG_R) \
-	--diagdir=$(DIAGDIR)/$*_R
+clean :
+	rm $(RESULTSDIR)/*
+
+clean-plots :
+	rm $(PLOTDIR)/*
