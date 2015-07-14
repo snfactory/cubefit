@@ -1,4 +1,5 @@
 import logging
+import os
 
 import numpy as np
 import fitsio
@@ -117,6 +118,9 @@ def write_results(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms, wavewcs,
 
     # Create epochs table.
     epochs = epoch_results(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms)
+
+    if os.path.exists(fname):
+        os.remove(fname)
 
     with fitsio.FITS(fname, "rw") as f:
         f.write(galaxy, extname="galaxy", header=wavewcs)
