@@ -40,7 +40,7 @@ all: $(names)
 all-plots : $(foreach name,$(names),$(name)-plots)
 
 $(RESULTDIR)/%.fits :
-	mkdir -p $(RESULTDIR)dd
+	mkdir -p $(RESULTDIR)
 	mkdir -p $(DIAGDIR)/$*
 	cubefit $(DATADIR)/$*/$*.json \
         $(RESULTDIR)/$*.fits \
