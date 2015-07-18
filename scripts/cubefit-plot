@@ -30,6 +30,8 @@ parser.add_argument('--idrfiles', nargs='+', default=None,
 parser.add_argument("--diagdir", default=None,
                     help="If given, read intermediate diagnostic "
                     "results from this directory and include in plot(s)")
+parser.add_argument("--plotepochs", default=False,
+                    help="Make diagnostic plots for each epoch")
 
 args = parser.parse_args()
 
@@ -49,16 +51,22 @@ if args.diagdir is not None:
 results["final"] = cubefit.read_results(args.resultfile)
 
 cubefit.plot_timeseries(cubes, results, band=args.band,
-                        fname=(args.outprefix + '_timeseries.eps'))
+                        fname=(args.outprefix + '_timeseries.png'))
 
 # plot wave slices, just for final refs.
 refcubes = [cubes[i] for i in cfg['refs']]
 refgaleval = results['final']['epochs']['galeval'][cfg['refs']]
 cubefit.plot_wave_slices(refcubes, refgaleval,
-                         fname=(args.outprefix + '_waveslice.eps'))
+                         fname=(args.outprefix + '_waveslice.png'))
 
 # Plot cubefit spectra against IDR spectra:
 if args.idrfiles is not None:
     cubefit.plot_sn(cfg['filenames'], results['final']['epochs']['sn'],
                     results['final']['wave'], args.idrfiles,
-                    args.outprefix + '_sn.eps')
+                    args.outprefix + '_sn.png')
+
+if args.plotepochs:
+    for i_t in range(len(cubes)):
+        cubefit.plot_epoch(cubes, results, i_t, 
+                           fname=(args.outprefix + '_epoch%s.png' % i_t))
+

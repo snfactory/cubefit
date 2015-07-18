@@ -9,7 +9,7 @@ from glob import glob
 from matplotlib import pyplot as plt
 from matplotlib.ticker import NullLocator
 
-__all__ = ["plot_timeseries", "plot_wave_slices", "plot_sn"]
+__all__ = ["plot_timeseries", "plot_wave_slices", "plot_sn", "plot_epoch"]
 
 BAND_LIMITS = {'U': (3400., 3900.),
                'B': (4102., 5100.),
@@ -104,6 +104,8 @@ def plot_timeseries(cubes, results, band=None, fname=None):
         residvmin[i_t] = -3. * std
         residvmax[i_t] = 3. * std
 
+    fig.subplots_adjust(left=0.02, right=0.999, bottom=0.15, top=0.98,
+                        wspace=0.01)
 
     for f, (key, result) in enumerate(results.iteritems()):
         galaxy = result['galaxy']
@@ -124,9 +126,18 @@ def plot_timeseries(cubes, results, band=None, fname=None):
                        origin='lower', vmin=datavmin[i_t], vmax=datavmax[i_t])
 
             ax2 = plt.subplot2grid((nrow, ncol), (1+2*f+1,i_t+2))
-            ax2.imshow(residuals[f][i_t], cmap=COLORMAP, interpolation='nearest',
-                       origin='lower', vmin=residvmin[i_t], vmax=residvmax[i_t])
-
+            a2 = ax2.imshow(residuals[f][i_t], cmap=COLORMAP, 
+                            interpolation='nearest', origin='lower',
+                            vmin=residvmin[i_t], vmax=residvmax[i_t])
+            apos = ax2.get_position()
+            cb = fig.add_axes([apos.x0+.005, apos.y0-.03, apos.width-.01, 0.02])
+            fig.colorbar(a2, cax=cb, ticks=[residvmin[i_t], 0, residvmax[i_t]],
+                         orientation='horizontal')
+            min_percent = int(100*(residvmin[i_t]/np.max(dataim)))
+            max_percent = int(100*(residvmax[i_t]/np.max(dataim)))
+            cb.set_xticklabels(['%2d' % min_percent + '%', '0%', 
+                                '%2d' % max_percent + '%'], fontsize=8) 
+            
             ax1.xaxis.set_major_locator(NullLocator())
             ax1.yaxis.set_major_locator(NullLocator())
             ax2.xaxis.set_major_locator(NullLocator())
@@ -137,16 +148,16 @@ def plot_timeseries(cubes, results, band=None, fname=None):
                 ax2.set_ylabel('Residuals', fontsize=8)
                 ax1.yaxis.set_label_coords(-0.02, 0.5)
                 ax2.yaxis.set_label_coords(-0.02, 0.5)
-
-    fig.subplots_adjust(left=0.02, right=0.999, bottom=0.02, top=0.98,
-                        wspace=0.01)
+        
+    #fig.subplots_adjust(left=0.02, right=0.999, bottom=0.1, top=0.98,
+    #                    wspace=0.01)
 
     if fname is None:
         return fig
     
     plt.savefig(fname)
     plt.close()
-
+    
 
 def plot_wave_slices(cubes, galeval, indices=None, fname=None):
     """Return a figure showing wavelength slices of data and model.
@@ -212,7 +223,7 @@ def plot_wave_slices(cubes, galeval, indices=None, fname=None):
 
 
 def plot_sn(filenames, sn_spectra, wave, idrfilenames, outfname):
-    """Return a figure with th SN
+    """Return a figure with the SN
 
     Parameters
     ----------
@@ -260,4 +271,118 @@ def plot_sn(filenames, sn_spectra, wave, idrfilenames, outfname):
 
 
     plt.savefig(outfname)
+    plt.close()
+
+
+def plot_epoch(cubes, result, i_t, fname=None):
+    """Return a figure with diagnostic plots for one epoch
+    """
+
+    epochs = result['final']['epochs']
+    data = cubes[i_t].data
+    weight = cubes[i_t].weight
+    wave = cubes[i_t].wave
+    numslices = 5
+    metaslices = np.linspace(0, len(wave), numslices+1)
+
+    fig = plt.figure(figsize=(1.5*STAMP_SIZE*7, 1.5*STAMP_SIZE*(numslices+1)))
+    data_plot = plt.subplot2grid((numslices+1, 7), (0, 0))
+    model_plot = plt.subplot2grid((numslices+1, 7), (0, 1))
+    resid_plot = plt.subplot2grid((numslices+1, 7), (0, 2))
+
+    wmin, wmax = wave[0], wave[-1]
+    wavemask = (wave > wmin) & (wave < wmax)
+
+    dataim = np.average(data[wavemask, :, :], axis=0)
+    galeval = epochs['galeval'][i_t]
+    sneval = epochs['sneval'][i_t]
+    sky = epochs['sky'][i_t, :, None, None]
+    scene = sky + galeval + sneval
+    sceneim = np.average(scene[wavemask, :, :], axis=0)
+    residim = dataim - sceneim
+
+    datavmax = 1.1*np.max(dataim)
+    datavmin = -0.2*np.max(dataim)
+    weightim = np.sum(weight[wavemask, :, :], axis=0)
+    mask = weightim > 0.
+    vals = residim[mask]
+    std = np.std(vals)
+    residvmin = -3. * std
+    residvmax = 3. * std
+
+    data_plot.imshow(dataim, cmap=COLORMAP, vmin=datavmin, vmax=datavmax,
+                     interpolation='nearest', origin='lower')
+    model_plot.imshow(sceneim, cmap=COLORMAP, vmin=datavmin, vmax=datavmax,
+                      interpolation='nearest', origin='lower')
+    rp = resid_plot.imshow(residim, cmap=COLORMAP, 
+                           vmin=residvmin, vmax=residvmax,
+                           interpolation='nearest', origin='lower')
+    cb = fig.colorbar(rp, ticks=[residvmin, 0, residvmax], pad=0.1, shrink=0.8)
+
+    cb.ax.set_yticklabels(['%.0f' % (100*residvmin/np.max(dataim))+'%', '0%',
+                           '%.0f' % (100*residvmax/np.max(dataim))+'%'])
+    
+    data_plot.xaxis.set_major_locator(NullLocator())
+    data_plot.yaxis.set_major_locator(NullLocator())
+    model_plot.xaxis.set_major_locator(NullLocator())
+    model_plot.yaxis.set_major_locator(NullLocator())
+    resid_plot.xaxis.set_major_locator(NullLocator())
+    resid_plot.yaxis.set_major_locator(NullLocator())
+    
+    data_plot.set_ylabel('%s -\n %s$\AA$' % (wmin, wmax))
+    data_plot.set_title('Data')
+    model_plot.set_title('Model')
+    resid_plot.set_title('Residual')
+
+    for i in range(numslices):
+        sliceindices = np.arange(metaslices[i], metaslices[i+1], dtype=int)
+        dataslice = np.average(data[sliceindices, :, :], axis=0)
+        sceneslice = np.average(scene[sliceindices, :, :], axis=0)
+        residslice = dataslice - sceneslice
+        vmin, vmax = -.2*np.max(dataslice), 1.1*np.max(dataslice)
+
+        data_plot = plt.subplot2grid((numslices+1, 7), (i+1, 0))
+        model_plot = plt.subplot2grid((numslices+1, 7), (i+1, 1))
+        resid_plot = plt.subplot2grid((numslices+1, 7), (i+1, 2))
+        residmax = 3. * np.std(residslice[mask])
+        residmin = -residmax
+    
+        data_plot.imshow(dataslice, cmap=COLORMAP, vmin=vmin, vmax=vmax,
+                         interpolation='nearest', origin='lower')
+        model_plot.imshow(sceneslice, cmap=COLORMAP, vmin=vmin, vmax=vmax,
+                          interpolation='nearest', origin='lower')
+        rp = resid_plot.imshow(residslice, cmap=COLORMAP, vmin=residmin,
+                               vmax=residmax, interpolation='nearest', 
+                               origin='lower')
+        data_plot.xaxis.set_major_locator(NullLocator())
+        data_plot.yaxis.set_major_locator(NullLocator())
+        model_plot.xaxis.set_major_locator(NullLocator())
+        model_plot.yaxis.set_major_locator(NullLocator())
+        resid_plot.xaxis.set_major_locator(NullLocator())
+        resid_plot.yaxis.set_major_locator(NullLocator())
+        cb = fig.colorbar(rp, ticks=[residmin, 0, residmax],
+                          shrink=0.8, pad=0.1)
+        cb.ax.set_yticklabels(['%.0f' % (100*residmin/np.max(dataim)) + '%',
+                               '0%',
+                               '%.0f' % (100*residmax/np.max(dataim)) + '%'])
+        data_plot.set_ylabel('%s -\n %s$\AA$' % (wave[metaslices[i]],
+                                                 wave[metaslices[i+1]-1]))
+
+
+    spec = plt.subplot2grid((numslices+1, 14), (0, 7), rowspan=(numslices+1),
+                            colspan=7)
+    spec.plot(wave, epochs['sn'][i_t], label='SN spectrum')
+    spec.plot(wave, epochs['sky'][i_t], label='Sky spectrum')
+    spec.yaxis.set_major_locator(NullLocator())
+
+    gal_ave = galeval.mean(axis=(1,2))
+    spec.plot(wave, gal_ave, label = 'Ave. Galaxy spectrum')
+    spec.legend(fontsize=9)
+    fig.subplots_adjust(left=0.045, right=0.97, bottom=0.03, top=0.97,
+                        wspace=0.02)
+
+    if fname is None:
+        return fig
+        
+    plt.savefig(fname)
     plt.close()
