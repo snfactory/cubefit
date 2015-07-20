@@ -59,14 +59,17 @@ refgaleval = results['final']['epochs']['galeval'][cfg['refs']]
 cubefit.plot_wave_slices(refcubes, refgaleval,
                          fname=(args.outprefix + '_waveslice.png'))
 
-# Plot cubefit spectra against IDR spectra:
+# Plot cubefit spectra against IDR spectra.
 if args.idrfiles is not None:
     cubefit.plot_sn(cfg['filenames'], results['final']['epochs']['sn'],
                     results['final']['wave'], args.idrfiles,
                     args.outprefix + '_sn.png')
 
+# Plot wave slices and sn, galaxy and sky spectra for all epochs.
 if args.plotepochs:
     for i_t in range(len(cubes)):
         cubefit.plot_epoch(cubes, results, i_t, 
                            fname=(args.outprefix + '_epoch%s.png' % i_t))
 
+# Plot the x-y coordinates of the adr versus wavelength.
+cubefit.plot_adr(cfg, cubes[0].wave, fname=(args.outprefix + '_adr.png'))

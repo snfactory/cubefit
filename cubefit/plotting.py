@@ -8,8 +8,11 @@ from glob import glob
 #mpl.use('Agg')
 from matplotlib import pyplot as plt
 from matplotlib.ticker import NullLocator
+from .adr import paralactic_angle
+from .extern import ADR
 
-__all__ = ["plot_timeseries", "plot_wave_slices", "plot_sn", "plot_epoch"]
+__all__ = ["plot_timeseries", "plot_wave_slices", "plot_sn", "plot_epoch",
+           "plot_adr"]
 
 BAND_LIMITS = {'U': (3400., 3900.),
                'B': (4102., 5100.),
@@ -17,6 +20,10 @@ BAND_LIMITS = {'U': (3400., 3900.),
 STAMP_SIZE = 0.9
 COLORMAP = 'bone'
 
+# ADR parameters:
+REFWAVE = 5000.
+SNIFS_LATITUDE = np.deg2rad(19.8228)
+SPAXEL_SIZE = 0.43
 
 def plot_timeseries(cubes, results, band=None, fname=None):
     """Return a figure showing data and model.
@@ -386,3 +393,58 @@ def plot_epoch(cubes, result, i_t, fname=None):
         
     plt.savefig(fname)
     plt.close()
+
+
+def plot_adr(cfg, wave, i_ts = None, fname=None):
+    """Plot adr x and y vs. wavelength, and x vs y
+
+    Parameters
+    ----------
+    cfg : json dict
+        Input configuration file.
+    wave : 1-d array
+    i_t : list
+        Optional list of epochs to plot
+    """
+
+    nt = len(cfg["filenames"])
+    if i_ts is None:
+        i_ts = range(nt)
+
+    # convert to radians (config file is in degrees)
+    cfg["ha"] = np.deg2rad(cfg["ha"])
+    cfg["dec"] = np.deg2rad(cfg["dec"])
+
+    fig = plt.figure()
+    yplot = plt.subplot2grid((2, 2), (0, 0))
+    xplot = plt.subplot2grid((2, 2), (0, 1))
+    xyplot = plt.subplot2grid((2, 2), (1, 0), colspan=2)
+
+    for i in i_ts:
+        pa = paralactic_angle(cfg["airmasses"][i], cfg["ha"][i], cfg["dec"][i],
+                              cfg["mla_tilt"], SNIFS_LATITUDE)
+        adr = ADR(cfg["pressures"][i], cfg["temperatures"][i], lref=REFWAVE,
+                  airmass=cfg["airmasses"][i], theta=pa)
+        adr_refract = adr.refract(0, 0, wave, unit=SPAXEL_SIZE)
+        # make adr_refract[0, :] correspond to y and adr_refract[1, :] => x
+        adr_refract = np.flipud(adr_refract)
+
+        yplot.plot(wave, adr_refract[0])
+        xplot.plot(wave, adr_refract[1])
+        xyplot.plot(adr_refract[1], adr_refract[0])
+
+    yplot.set_ylabel('dY')
+    xplot.set_ylabel('dX')
+    yplot.set_xlabel('Lambda')
+    xplot.set_xlabel('Lambda')
+    xyplot.set_xlabel('dX')
+    xyplot.set_ylabel('dY')
+    plt.tight_layout()
+    if fname is None:
+        return fig
+    
+    plt.savefig(fname)
+    plt.close()
+
+        
+        
