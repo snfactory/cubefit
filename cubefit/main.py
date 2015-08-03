@@ -137,6 +137,12 @@ def main(configfname, outfname, dataprefix="", logfname=None,
 
         # Create a 3-d cube representing the Point Spread Function (PSF)
         # as a function of wavelength.
+        relwave = wave / REFWAVE - 1.0
+        ellipticity = cfg["psf_params"][i][0]
+        alpha = (cfg["psf_params"][i][1] +
+                 cfg["psf_params"][i][2] * relwave +
+                 cfg["psf_params"][i][3] * relwave**2)
+
         psf = psf_3d_from_params(cfg["psf_params"][i], wave, REFWAVE,
                                  MODEL_SHAPE)
 

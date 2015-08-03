@@ -101,3 +101,72 @@ def psf_3d_from_params(params, wave, wave_ref, shape):
         psf[i, :, :] = psf2d
 
     return psf
+
+
+class DiscretePSF(object):
+    """A Discrete (tabular) 3-d point spread function.
+    
+    Parameters
+    ----------
+    psf : ndarray (3-d)
+        The PSF, which is assumed to be centered in the array. The shape
+        should be (nw, ny, nx).
+    """
+
+    def __init__(self, psf):
+        self.psf = psf
+
+
+class GaussMoffatPSF(object):
+    """A Gaussian plus Moffat function 3-d point spread function.
+
+    This describes a separate analytic PSF at multiple (discrete) wavelengths.
+    At each wavelength, the PSF is described by two parameters.
+
+    Parameters
+    ----------
+    ellipticity : ndarray (1-d)
+    alpha : ndarray (1-d)
+    """
+
+    def __init__(self, ellipticity, alpha, alpha=0.0):
+        if not (len(ellipticity) == len(alpha)):
+            raise ValueError("length of ellipticity and alpha must match")
+        self.ellipticity == ellipticity
+        self.alpha = alpha
+
+
+    def __call__(self, shape, yctr, xctr, angle=0.0):
+        """Sample the PSF onto a 3-d grid with 2-d shape `shape`.
+        parameters.
+
+        Parameters
+        ----------
+        params : 4-tuple
+            Ellipticty and polynomial parameters in wavelength
+        wave : np.ndarray (1-d)
+            Wavelengths
+        wave_ref : float
+            Reference wavelength
+        shape : 2-tuple
+            (ny, nx) shape of spatial component of output array.
+
+        Returns
+        -------
+        psf : 3-d array
+            Shape is (nw, ny, nx) where (nw,) is the shape of wave array.
+            PSF will be spatially centered in array.
+        """
+
+        nw = len(wave)
+        ny, nx = shape
+        xctr = (nx - 1) / 2.
+        yctr = (ny - 1) / 2.
+        psf = np.empty((nw, ny, nx), dtype=np.float)
+        for i in range(nw):
+            psf2d = gaussian_plus_moffat_psf(shape, xctr, yctr, ellipticity,
+                                             alpha[i], 0.0)
+            psf2d /= np.sum(psf2d)  # normalize array sum to 1.0.
+            psf[i, :, :] = psf2d
+
+        return psf
