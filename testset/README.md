@@ -40,6 +40,7 @@ Make plots
 
 ```
 make PTF09fox_B-plots
+make PLOTEPOCHS=Y PTF09fox_B-plots  # make plots for individual epochs
 ```
 
 To plot against the IDR, create a file `Make.user` in this directory,

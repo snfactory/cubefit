@@ -7,6 +7,7 @@ from glob import glob
 #import matplotlib as mpl # Uncomment these if ddt run as batch job
 #mpl.use('Agg')
 from matplotlib import pyplot as plt
+from matplotlib import gridspec
 from matplotlib.ticker import NullLocator
 from .adr import paralactic_angle
 from .extern import ADR
@@ -290,12 +291,37 @@ def plot_epoch(cubes, result, i_t, fname=None):
     weight = cubes[i_t].weight
     wave = cubes[i_t].wave
     numslices = 5
-    metaslices = np.linspace(0, len(wave), numslices+1)
 
-    fig = plt.figure(figsize=(1.5*STAMP_SIZE*7, 1.5*STAMP_SIZE*(numslices+1)))
-    data_plot = plt.subplot2grid((numslices+1, 7), (0, 0))
-    model_plot = plt.subplot2grid((numslices+1, 7), (0, 1))
-    resid_plot = plt.subplot2grid((numslices+1, 7), (0, 2))
+    # plot parameters in physical units (in)
+    left = 0.5
+    right = 0.2
+    bottom = 0.6
+    top = 0.3
+    wspace = 0.2
+    hspace = 0.2
+    height = 1.3  # stamp height
+    widths = [1.3, 1.3, 1.3, 0.1, 0.8, 4.2]  # column widths: [data,
+                                             # model, resid, colorbar,
+                                             # (blank), spectrum]
+    numcols = len(widths)
+    numrows = numslices + 1
+
+    # set up figure and subplot grid.
+    figwidth = left + right + sum(widths) + (numcols - 1) * wspace
+    figheight = bottom + top + numrows * height + (numrows - 1) * hspace
+    fig = plt.figure(figsize=(figwidth, figheight))
+    gs = gridspec.GridSpec(numrows, numcols, width_ratios=widths)
+    gs.update(left=(left / figwidth),
+              right=(1.0 - right / figwidth),
+              bottom=(bottom / figheight),
+              top=(1.0 - top / figheight),
+              wspace=(wspace / figwidth * (numcols - 1)),
+              hspace=(hspace / figheight * (numrows - 1)))
+
+    # First row of stamps
+    data_plot = plt.subplot(gs[0, 0])
+    model_plot = plt.subplot(gs[0, 1])
+    resid_plot = plt.subplot(gs[0, 2])
 
     wmin, wmax = wave[0], wave[-1]
     wavemask = (wave > wmin) & (wave < wmax)
@@ -324,10 +350,12 @@ def plot_epoch(cubes, result, i_t, fname=None):
     rp = resid_plot.imshow(residim, cmap=COLORMAP, 
                            vmin=residvmin, vmax=residvmax,
                            interpolation='nearest', origin='lower')
-    cb = fig.colorbar(rp, ticks=[residvmin, 0, residvmax], pad=0.1, shrink=0.8)
+    cb = fig.colorbar(rp, cax=plt.subplot(gs[0, 3]),
+                          ticks=[residvmin, 0, residvmax])
 
-    cb.ax.set_yticklabels(['%.0f' % (100*residvmin/np.max(dataim))+'%', '0%',
-                           '%.0f' % (100*residvmax/np.max(dataim))+'%'])
+    cb.ax.set_yticklabels(['%.0f%%' % (100*residvmin/np.max(dataim)), '0%',
+                           '%.0f%%' % (100*residvmax/np.max(dataim))],
+                          fontsize='small')
     
     data_plot.xaxis.set_major_locator(NullLocator())
     data_plot.yaxis.set_major_locator(NullLocator())
@@ -336,10 +364,12 @@ def plot_epoch(cubes, result, i_t, fname=None):
     resid_plot.xaxis.set_major_locator(NullLocator())
     resid_plot.yaxis.set_major_locator(NullLocator())
     
-    data_plot.set_ylabel('%s -\n %s$\AA$' % (wmin, wmax))
+    data_plot.set_ylabel('all\nwavelengths')
     data_plot.set_title('Data')
     model_plot.set_title('Model')
     resid_plot.set_title('Residual')
+
+    metaslices = np.linspace(0, len(wave), numslices + 1)
 
     for i in range(numslices):
         sliceindices = np.arange(metaslices[i], metaslices[i+1], dtype=int)
@@ -348,9 +378,9 @@ def plot_epoch(cubes, result, i_t, fname=None):
         residslice = dataslice - sceneslice
         vmin, vmax = -.2*np.max(dataslice), 1.1*np.max(dataslice)
 
-        data_plot = plt.subplot2grid((numslices+1, 7), (i+1, 0))
-        model_plot = plt.subplot2grid((numslices+1, 7), (i+1, 1))
-        resid_plot = plt.subplot2grid((numslices+1, 7), (i+1, 2))
+        data_plot = plt.subplot(gs[i+1, 0])
+        model_plot = plt.subplot(gs[i+1, 1])
+        resid_plot = plt.subplot(gs[i+1, 2])
         residmax = 3. * np.std(residslice[mask])
         residmin = -residmax
     
@@ -367,26 +397,24 @@ def plot_epoch(cubes, result, i_t, fname=None):
         model_plot.yaxis.set_major_locator(NullLocator())
         resid_plot.xaxis.set_major_locator(NullLocator())
         resid_plot.yaxis.set_major_locator(NullLocator())
-        cb = fig.colorbar(rp, ticks=[residmin, 0, residmax],
-                          shrink=0.8, pad=0.1)
-        cb.ax.set_yticklabels(['%.0f' % (100*residmin/np.max(dataim)) + '%',
+        cb = fig.colorbar(rp, cax=plt.subplot(gs[i+1, 3]),
+                          ticks=[residmin, 0, residmax])
+        cb.ax.set_yticklabels(['%.0f%%' % (100*residmin/np.max(dataim)),
                                '0%',
-                               '%.0f' % (100*residmax/np.max(dataim)) + '%'])
-        data_plot.set_ylabel('%s -\n %s$\AA$' % (wave[metaslices[i]],
-                                                 wave[metaslices[i+1]-1]))
+                               '%.0f%%' % (100*residmax/np.max(dataim))],
+                              fontsize='small')
+        data_plot.set_ylabel('%d -\n %d $\AA$' % (wave[metaslices[i]],
+                                                  wave[metaslices[i+1]-1]))
 
-
-    spec = plt.subplot2grid((numslices+1, 14), (0, 7), rowspan=(numslices+1),
-                            colspan=7)
+    spec = plt.subplot(gs[:, 5])
     spec.plot(wave, epochs['sn'][i_t], label='SN spectrum')
     spec.plot(wave, epochs['sky'][i_t], label='Sky spectrum')
-    spec.yaxis.set_major_locator(NullLocator())
 
     gal_ave = galeval.mean(axis=(1,2))
-    spec.plot(wave, gal_ave, label = 'Ave. Galaxy spectrum')
-    spec.legend(fontsize=9)
-    fig.subplots_adjust(left=0.045, right=0.97, bottom=0.03, top=0.97,
-                        wspace=0.02)
+    spec.plot(wave, gal_ave, label = 'Avg. galaxy spectrum')
+    spec.set_xlim(wave[0], wave[-1])
+    spec.legend(fontsize=9, frameon=False)
+    spec.set_xlabel("wavelength ($\\AA$)")
 
     if fname is None:
         return fig
@@ -420,6 +448,7 @@ def plot_adr(cfg, wave, i_ts = None, fname=None):
     xplot = plt.subplot2grid((2, 2), (0, 1))
     xyplot = plt.subplot2grid((2, 2), (1, 0), colspan=2)
 
+    cm = plt.get_cmap("jet")
     for i in i_ts:
         pa = paralactic_angle(cfg["airmasses"][i], cfg["ha"][i], cfg["dec"][i],
                               cfg["mla_tilt"], SNIFS_LATITUDE)
@@ -429,14 +458,14 @@ def plot_adr(cfg, wave, i_ts = None, fname=None):
         # make adr_refract[0, :] correspond to y and adr_refract[1, :] => x
         adr_refract = np.flipud(adr_refract)
 
-        yplot.plot(wave, adr_refract[0])
-        xplot.plot(wave, adr_refract[1])
-        xyplot.plot(adr_refract[1], adr_refract[0])
+        yplot.plot(wave, adr_refract[0], color=cm(i/nt))
+        xplot.plot(wave, adr_refract[1], color=cm(i/nt))
+        xyplot.plot(adr_refract[1], adr_refract[0], color=cm(i/nt))
 
-    yplot.set_ylabel('dY')
-    xplot.set_ylabel('dX')
-    yplot.set_xlabel('Lambda')
-    xplot.set_xlabel('Lambda')
+    yplot.set_ylabel('dY (spaxels)')
+    xplot.set_ylabel('dX (spaxels)')
+    yplot.set_xlabel('wavelength ($\\AA$)')
+    xplot.set_xlabel('wavelength ($\\AA$)')
     xyplot.set_xlabel('dX')
     xyplot.set_ylabel('dY')
     plt.tight_layout()

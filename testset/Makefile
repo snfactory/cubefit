@@ -4,10 +4,16 @@ DIAGDIR = diagnostics
 PLOTDIR = plots
 LOGLEVEL = info
 LOGFILE = N
+PLOTEPOCHS = N
 ifeq ($(LOGFILE), Y)
 	LOGFILEARG = --logfile=$(RESULTDIR)/$*.log
 else
 	LOGFILEARG = 
+endif
+ifeq ($(PLOTEPOCHS), Y)
+	PLOTEPOCHSARG = --plotepochs
+else
+	PLOTEPOCHSARG = 
 endif
 
 # user override for --idrfiles argument in `cubefit-plot`
@@ -50,17 +56,15 @@ $(RESULTDIR)/%.fits :
         --mu_wave=0.07 \
         --mu_xy=0.001
 
-$(foreach name,$(names),$(name)-plots) : %-plots : $(PLOTDIR)/%_timeseries.eps $(PLOTDIR)/%_waveslice.eps
-
-$(PLOTDIR)/%_timeseries.eps $(PLOTDIR)/%_waveslice.eps :
-	mkdir -p $(PLOTDIR)
+$(foreach name,$(names),$(name)-plots) : %-plots :
+	mkdir -p $(PLOTDIR)/$*
 	cubefit-plot \
 	$(DATADIR)/$*/$*.json \
 	$(RESULTDIR)/$*.fits \
-	$(PLOTDIR)/$* \
+	$(PLOTDIR)/$*/$* \
 	--dataprefix=$(DATADIR)/$* \
 	$(IDRFILESARG) \
-	--diagdir=$(DIAGDIR)/$*
+	--diagdir=$(DIAGDIR)/$* $(PLOTEPOCHSARG)
 
 clean :
 	rm $(RESULTSDIR)/*

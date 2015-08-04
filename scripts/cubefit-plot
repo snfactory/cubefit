@@ -30,7 +30,7 @@ parser.add_argument('--idrfiles', nargs='+', default=None,
 parser.add_argument("--diagdir", default=None,
                     help="If given, read intermediate diagnostic "
                     "results from this directory and include in plot(s)")
-parser.add_argument("--plotepochs", default=False,
+parser.add_argument("--plotepochs", default=False, action="store_true",
                     help="Make diagnostic plots for each epoch")
 
 args = parser.parse_args()
@@ -69,7 +69,7 @@ if args.idrfiles is not None:
 if args.plotepochs:
     for i_t in range(len(cubes)):
         cubefit.plot_epoch(cubes, results, i_t, 
-                           fname=(args.outprefix + '_epoch%s.png' % i_t))
+                           fname=(args.outprefix + '_epoch%02d.png' % i_t))
 
 # Plot the x-y coordinates of the adr versus wavelength.
 cubefit.plot_adr(cfg, cubes[0].wave, fname=(args.outprefix + '_adr.png'))
