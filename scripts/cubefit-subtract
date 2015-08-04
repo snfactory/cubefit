@@ -38,6 +38,7 @@ if __name__ == "__main__":
     # load results
     results = cubefit.read_results(args.resultfile)
     epochs = results["epochs"]
+    sny, snx = results["snctr"]
     if not len(epochs) == len(fnames) == len(outfnames):
         raise RuntimeError("number of epochs in result file not equal to "
                            "number of input and output files in config file")
@@ -50,4 +51,9 @@ if __name__ == "__main__":
         data = f[0].read()
         data -= epoch["galeval"]
         f[0].write(data)
+        f[0].write_history("galaxy subtracted by cubefit-subtract")
+        f[0].write_key("CBFT_SNX", snx - epoch['xctr'],
+                       comment="SN x offset from array center at ref wave")
+        f[0].write_key("CBFT_SNY", sny - epoch['yctr'],
+                       comment="SN y offset from array center at ref wave")
         f.close()
