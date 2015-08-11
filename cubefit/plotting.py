@@ -1,14 +1,16 @@
 from __future__ import print_function, division
 
-import numpy as np
 import json
-import fitsio
 from glob import glob
+
+import fitsio
+import numpy as np
 #import matplotlib as mpl # Uncomment these if ddt run as batch job
 #mpl.use('Agg')
 from matplotlib import pyplot as plt
 from matplotlib import gridspec
 from matplotlib.ticker import NullLocator
+
 from .adr import paralactic_angle
 from .extern import ADR
 
@@ -115,7 +117,7 @@ def plot_timeseries(cubes, results, band=None, fname=None):
     fig.subplots_adjust(left=0.02, right=0.999, bottom=0.15, top=0.98,
                         wspace=0.01)
 
-    for f, (key, result) in enumerate(results.iteritems()):
+    for f, (key, result) in enumerate(results.items()):
         galaxy = result['galaxy']
         epochs = result['epochs']
 

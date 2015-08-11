@@ -9,7 +9,7 @@ Installation
 
 **Dependencies:**
 
-- Python 2.7
+- Python 2.7 or 3.3+
 - numpy
 - scipy (for optimization)
 - [fitsio](https://github.com/esheldon/fitsio) (for FITS file I/O)

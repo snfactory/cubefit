@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# Functions in this file copied from the SNfactory Toolbox package.
+# modified dict.iteritems -> dict.items to support Python 3.
 import numpy as N
 
 # Coords functions from SNfactory/Offline/Toolbox/Astro/Coords.py
@@ -239,7 +241,7 @@ class ADR:
         - zd: (supposedly true) zenithal distance [deg].
         """
 
-        for k,val in kwargs.iteritems():
+        for k,val in kwargs.items():
             if k=='delta':                           # tan(zenithal distance)
                 self.delta = val
             elif k=='theta':                         # Parallactic angle [rad]

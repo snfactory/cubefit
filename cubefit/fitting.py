@@ -537,7 +537,8 @@ def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, atms):
         minbound[2*i+1] = max(minbound[2*i+1], xminabs)  # xmin
         maxbound[2*i+1] = min(maxbound[2*i+1], xmaxabs)  # xmax
 
-    bounds = zip(minbound, maxbound)  # [(y0min, y0max), (x0min, x0max), ...]
+    # [(y0min, y0max), (x0min, x0max), ...]
+    bounds = list(zip(minbound, maxbound))
 
     def callback(params):
         for i in range(len(params)//2-1):

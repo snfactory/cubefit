@@ -101,7 +101,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
     # Change any parameters that have been chosen at command line.
     # There is a check to ensure that we only try to set parameters that are
     # already in the config file.
-    for key, val in kwargs.iteritems():
+    for key, val in kwargs.items():
         if key not in cfg:
             raise RuntimeError("key not in configuration: " + repr(key))
         if val is not None:
@@ -367,7 +367,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
     maxlen = max(len(key) for key in tsteps)
     fmtstr = "        %dm%02ds - %-" + str(maxlen) + "s"
     tprev = tstart
-    for key, tstep in tsteps.iteritems():
+    for key, tstep in tsteps.items():
         t = (tstep - tprev).seconds
         logging.info(fmtstr, t//60, t%60, key)
         tprev = tstep
