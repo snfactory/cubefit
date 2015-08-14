@@ -171,7 +171,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
     yctr = np.array(cfg["ycenters"])
 
     logging.info("guessing sky for all %d epochs", nt)
-    skys = np.array([guess_sky(cube, npix=20) for cube in cubes])
+    skys = np.array([guess_sky(cube, npix=30) for cube in cubes])
 
     # -------------------------------------------------------------------------
     # Regularization penalty parameters

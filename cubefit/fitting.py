@@ -98,7 +98,7 @@ def guess_sky_clipping(cube, clip, maxiter=10):
 
 
 def guess_sky(cube, npix=10):
-    """Guess sky based on lowest signal pixels at each wavelength.
+    """Guess sky based on lowest signal pixels.
 
     With the small field of fiew of an IFU, we have no guarantee of
     getting an accurate measurement of the real sky level; the galaxy
@@ -120,21 +120,24 @@ def guess_sky(cube, npix=10):
         Sky level at each wavelength.
     """
 
-    sky = np.zeros(cube.nw)
-    for i in range(cube.nw):
-        mask = cube.weight[i] > 0.
-        v = cube.data[i][mask]
-        vw = cube.weight[i][mask]
-        k = min(npix, len(v))  # number of pixels to use.
-        if k <= 0:
-            # if there are no values with weight != 0, it doesn't
-            # matter what the sky is because these data are never used
-            # anywhere in the fit.
-            sky[i] = 0.
-        else:
-            # sort values, average lowest k values.
-            idx = np.argsort(v)
-            sky[i] = np.average(v[idx][0:k], weights=vw[idx][0:k])
+    # reshape data to (nw, nspaxels)
+    flatshape = (cube.nw, cube.ny * cube.nx)
+    flatdata = cube.data.reshape(flatshape)
+    flatweight = cube.weight.reshape(flatshape)
+
+    # get rid of spaxels that are *all* zero weight
+    mask = ~np.all(flatweight == 0.0, axis=0)
+    flatdata = flatdata[:, mask]
+    flatweight = flatweight[:, mask]
+
+    # average over wavelengths: 1-d array of (nspaxels,)
+    avg = np.average(flatdata, weights=flatweight, axis=0)
+
+    # get indicies of lowest `npix` spaxels in flattened data
+    idx = np.argsort(avg)[0:npix]
+
+    # get average spectrum of those spaxels
+    sky = np.average(flatdata[:, idx], weights=flatweight[:, idx], axis=1)
 
     return sky
 
