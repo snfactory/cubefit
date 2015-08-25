@@ -11,7 +11,7 @@ from collections import OrderedDict
 import numpy as np
 
 from .version import __version__
-from .psf import psf_3d_from_params
+from .psf import GaussMoffatPSF
 from .core import AtmModel, RegularizationPenalty
 from .io import read_datacube, write_results
 from .adr import paralactic_angle
@@ -135,16 +135,18 @@ def main(configfname, outfname, dataprefix="", logfname=None,
     atms = []
     for i in range(nt):
 
-        # Create a 3-d cube representing the Point Spread Function (PSF)
-        # as a function of wavelength.
+        # Get Gaussian+Moffat parameters at each wavelength.
         relwave = wave / REFWAVE - 1.0
-        ellipticity = cfg["psf_params"][i][0]
+        ellipticity = cfg["psf_params"][i][0] * np.ones_like(wave)
         alpha = (cfg["psf_params"][i][1] +
                  cfg["psf_params"][i][2] * relwave +
                  cfg["psf_params"][i][3] * relwave**2)
 
-        psf = psf_3d_from_params(cfg["psf_params"][i], wave, REFWAVE,
-                                 MODEL_SHAPE)
+        # Create a representation of the PSF as a function of wavelength.
+        psf = GaussMoffatPSF(ellipticity, alpha)
+
+        # evaluate PSF centered in array.
+        psfarray = psf(MODEL_SHAPE, np.zeros_like(wave), np.zeros_like(wave))
 
         # Atmospheric differential refraction (ADR): Because of ADR,
         # the center of the PSF will be different at each wavelength,
@@ -161,7 +163,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         # make adr_refract[0, :] correspond to y and adr_refract[1, :] => x
         adr_refract = np.flipud(adr_refract)
 
-        atms.append(AtmModel(psf, adr_refract))
+        atms.append(AtmModel(psfarray, adr_refract))
 
     # -------------------------------------------------------------------------
     # Initialize all model parameters to be fit

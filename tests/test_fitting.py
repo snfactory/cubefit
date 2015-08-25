@@ -1,11 +1,21 @@
-#!/usr/bin/env py.test
+#/usr/bin/env py.test
 
 from __future__ import print_function
+
+import os
+import sys
+import sysconfig
 
 import numpy as np
 from numpy.fft import fft2, ifft2
 from numpy.testing import assert_allclose
 from scipy.optimize import check_grad, approx_fprime
+
+# Use built version of cubefit, because C-extensions
+#dirname = "lib.{}-{}.{}".format(sysconfig.get_platform(),
+#                                sys.version_info[0],
+#                                sys.version_info[1])
+#sys.path.insert(0, os.path.join("build", dirname))
 
 import cubefit
 from cubefit.fitting import (sky_and_sn,
@@ -86,15 +96,17 @@ class TestFitting:
         # Create a "true" underlying galaxy. This can be anything, but it
         # should not be all zeros or flat. The fourth and fifth parameters
         # are ellipticity and alpha.
-        truegal_2d = cubefit.gaussian_plus_moffat_psf(MODEL_SHAPE, 13.5, 13.5,
-                                                      4.5, 6.0, 0.5)
-        truegal = np.tile(truegal_2d, (nw, 1, 1))
+        ellip = 4.5 * np.ones(nw)
+        alpha = 6.0 * np.ones(nw)
+        p = cubefit.GaussMoffatPSF(ellip, alpha)
+        truegal = p(MODEL_SHAPE, np.zeros(nw) - 2., np.zeros(nw) - 2.)
 
         # Create a PSF. The fourth and fifth parameters are ellipticity and
         # alpha.
-        psf_2d = cubefit.gaussian_plus_moffat_psf(MODEL_SHAPE, 15.5, 15.5,
-                                                  1.5, 2.0, 0.)
-        psf = np.tile(psf_2d, (nw, 1, 1))
+        ellip = 1.5 * np.ones(nw)
+        alpha = 2.0 * np.ones(nw)
+        psfmodel = cubefit.GaussMoffatPSF(ellip, alpha)
+        psf = psfmodel(MODEL_SHAPE, np.zeros(nw), np.zeros(nw))
 
         # create the data by convolving the true galaxy model with the psf
         # and taking a slice.
@@ -283,7 +295,7 @@ class TestFitting:
                         regpenalty, self.galaxy, k, j, i, EPS) / EPS
 
         rtol = 0.001
-        atol = 1.e-6*np.max(np.abs(fdgrad))
+        atol = 1.e-5*np.max(np.abs(fdgrad))
         assert_allclose(grad, fdgrad, rtol=rtol, atol=atol)
 
     def test_point_source(self):
@@ -315,5 +327,3 @@ class TestFitting:
         test_grad = approx_fprime(x0s, func_part, np.sqrt(np.finfo(float).eps),
                             self.galaxy, datas, weights, atms)
         assert_allclose(code_grad[:-2], test_grad[:-2], rtol=0.005)
-        
-        
