@@ -46,19 +46,31 @@ class AtmModel(object):
 
     Parameters
     ----------
-    psf : ndarray (3-d)
+    psfarr : ndarray (3-d)
         PSF as a function of wavelength - assumed to be spatially centered
-        in array.
+        in array. The shape (nw, ny, nx) determines the shape of the model.
     adr_refract : ndarray (2-d)
         Array with shape (2, nw) where [0, :] corresponds to the refraction
         in y and [1, :] corresponds to the refraction in x at each wavelength.
+    dtype : {np.float64, np.float32}, optional
+        Data type used internally. Default is np.float64.
+    fftw_threads : int, optional
+        Threads used by FFTW.
+    psf : callable, optional
+        If specified, a callable that will be used to evaluate a point source
+        on the image. The callable should accept three parameters:
+        (shape, yctr, xctr), where shape is a 2-tuple giving the spatial shape
+        of the output array, and yctr and xctr are 1-d arrays of length nw
+        giving the center of the psf relative to the center of the output
+        grid. The callable should return a 3-d array of shape (nw, ny, nx) with
+        the PSF centered at (yctr[i], xctr[i]) in each slice, relative to the
+        array center.
 
     """
 
-    def __init__(self, psf, adr_refract):
-
-        self.shape = psf.shape
-        self.nw, self.ny, self.nx = psf.shape
+    def __init__(self, psfarr, adr_refract, psf=None):
+        self.shape = psfarr.shape
+        self.nw, self.ny, self.nx = psfarr.shape
         spatial_shape = self.ny, self.nx
         nbyte = pyfftw.simd_alignment
 
@@ -79,7 +91,7 @@ class AtmModel(object):
         # real space, shifted to be centered on the lower-left pixel.
         shift = -(self.ny - 1) / 2., -(self.nx - 1) / 2.
         fshift = fft_shift_phasor_2d(spatial_shape, shift)
-        self.fftconv = fft2(psf) * fshift
+        self.fftconv = fft2(psfarr) * fshift
         self.fftconv = pyfftw.n_byte_align(self.fftconv, nbyte,
                                            dtype=np.complex128)
 
@@ -105,6 +117,14 @@ class AtmModel(object):
                                 threads=1, direction='FFTW_BACKWARD')
 
         self.fftnorm = 1. / (self.ny * self.nx) 
+
+        # Set up evaluate_point_source().
+        if psf is None:
+            self.evaluate_point_source = self._evaluate_point_source_fft
+        else:
+            self.psf = psf
+            self.adr_refract = adr_refract
+            self.evaluate_point_source = self._evaluate_point_source_func
 
     def evaluate_galaxy(self, galmodel, shape, ctr, grad=False):
         """convolve, shift and sample the galaxy model"""
@@ -142,7 +162,7 @@ class AtmModel(object):
         else:
             return gal
 
-    def evaluate_point_source(self, pos, shape, ctr, grad=False):
+    def _evaluate_point_source_fft(self, pos, shape, ctr, grad=False):
         """Evaluate a point source at the given position.
 
         If grad is True, return a 2-tuple, with the second item being
@@ -184,6 +204,27 @@ class AtmModel(object):
 
         else:
             return s
+
+    def _evaluate_point_source_func(self, pos, shape, ctr):
+        """Use the psf attribute to evalute a point source at the given
+        position.
+
+        Parameters
+        ----------
+        pos : tuple
+            (y, x) position of point source in model frame (relative to center).
+        shape : tuple
+            (y, x) shape of output.
+        ctr : tuple
+            (y, x) position of center of output frame relative to center of
+            model frame.
+        """
+
+        # where is the SN in the data frame (relative to center)?
+        y = pos[0] - ctr[0] + self.adr_refract[0, :]
+        x = pos[1] - ctr[1] + self.adr_refract[1, :]
+
+        return self.psf(shape, y, x)
 
     def gradient_helper(self, x, shape, ctr):
         """Not sure exactly what this does yet.

@@ -100,6 +100,8 @@ class TestFitting:
         alpha = 6.0 * np.ones(nw)
         p = cubefit.GaussMoffatPSF(ellip, alpha)
         truegal = p(MODEL_SHAPE, np.zeros(nw) - 2., np.zeros(nw) - 2.)
+        # debug:
+        truegal /= np.sum(truegal, axis=(1, 2))[:, None, None]
 
         # Create a PSF. The fourth and fifth parameters are ellipticity and
         # alpha.
@@ -107,6 +109,8 @@ class TestFitting:
         alpha = 2.0 * np.ones(nw)
         psfmodel = cubefit.GaussMoffatPSF(ellip, alpha)
         psf = psfmodel(MODEL_SHAPE, np.zeros(nw), np.zeros(nw))
+        # debug
+        psf /= np.sum(psf, axis=(1, 2))[:, None, None]
 
         # create the data by convolving the true galaxy model with the psf
         # and taking a slice.

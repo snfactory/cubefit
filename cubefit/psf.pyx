@@ -23,13 +23,14 @@ class GaussMoffatPSF:
     alpha : ndarray (1-d)
     """
 
-    def __init__(self, ellipticity, alpha):
+    def __init__(self, ellipticity, alpha, subpix=1):
         self.nw = len(ellipticity)
         if not len(alpha) == self.nw:
             raise ValueError("length of ellipticity and alpha must match")
 
         self.ellipticity = np.abs(ellipticity)
         self.alpha = np.abs(alpha)
+        self.subpix = subpix
 
         # Correlated params (determined externally)
         s0, s1 = 0.545, 0.215
@@ -43,7 +44,7 @@ class GaussMoffatPSF:
     @cython.boundscheck(False)
     @cython.wraparound(False)
     @cython.cdivision(True)
-    def __call__(self, shape, double[:] yctr, double[:] xctr, int subpix=1):
+    def __call__(self, shape, double[:] yctr, double[:] xctr, int subpix=0):
         """Evaluate a gaussian+moffat function on a 3-d grid. 
 
         Parameters
@@ -53,6 +54,9 @@ class GaussMoffatPSF:
         yctr, xctr : ndarray (1-d)
             Position of center of PSF relative to *center* of output array
             at each wavelength.
+        subpix : int, optional
+            Subpixel sampling. If 0, default specified in constructor
+            will be used.
 
         Returns
         -------
@@ -70,8 +74,11 @@ class GaussMoffatPSF:
         cdef double yc, xc, dy, dx, sx, sy
         cdef double gnorm, mnorm, g, m
         cdef double scale, area
-        cdef double[:, :, :] out
+        cdef double[:, :, :] outview
         cdef double[:] sigma, alpha, beta, ellipticity, eta
+
+        if subpix == 0:
+            subpix = self.subpix
 
         scale = 1. / subpix
         area = scale * scale
@@ -87,18 +94,19 @@ class GaussMoffatPSF:
         ny, nx = shape
 
         # allocate output buffer
-        out = np.empty((nw, ny, nx))
+        out = np.empty((nw, ny, nx), dtype=np.float64)
+        outview = out
 
         for k in range(nw):
 
             # We are defining, in the Gaussian,
-            # sigma_y^2 / sigma_x^2 === ellipticity
+            # sigma_x^2 / sigma_y^2 === ellipticity
             # and in the Moffat,
-            # alpha_y^2 / alpha_x^2 === ellipticity
-            sigma_x = sigma[k]
-            alpha_x = alpha[k]
-            sigma_y = sqrt(ellipticity[k]) * sigma_x
-            alpha_y = sqrt(ellipticity[k]) * alpha_x
+            # alpha_x^2 / alpha_y^2 === ellipticity
+            sigma_y = sigma[k]
+            alpha_y = alpha[k]
+            sigma_x = sqrt(ellipticity[k]) * sigma_y
+            alpha_x = sqrt(ellipticity[k]) * alpha_y
 
             # normalizing pre-factors for gaussian and moffat
             gnorm = 1. / (2. * M_PI * sigma_x * sigma_y)
@@ -135,6 +143,6 @@ class GaussMoffatPSF:
                     g *= area * gnorm
                     m *= area * mnorm
 
-                    out[k, j, i] = (m + eta[k] * g) / (1. + eta[k])
+                    outview[k, j, i] = (m + eta[k] * g) / (1. + eta[k])
 
         return out

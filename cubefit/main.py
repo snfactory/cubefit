@@ -143,7 +143,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
                  cfg["psf_params"][i][3] * relwave**2)
 
         # Create a representation of the PSF as a function of wavelength.
-        psf = GaussMoffatPSF(ellipticity, alpha)
+        psf = GaussMoffatPSF(ellipticity, alpha, subpix=1)
 
         # evaluate PSF centered in array.
         psfarray = psf(MODEL_SHAPE, np.zeros_like(wave), np.zeros_like(wave))
@@ -163,7 +163,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         # make adr_refract[0, :] correspond to y and adr_refract[1, :] => x
         adr_refract = np.flipud(adr_refract)
 
-        atms.append(AtmModel(psfarray, adr_refract))
+        atms.append(AtmModel(psfarray, adr_refract, psf=psf))
 
     # -------------------------------------------------------------------------
     # Initialize all model parameters to be fit

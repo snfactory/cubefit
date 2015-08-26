@@ -28,7 +28,7 @@ class TestGaussMoffatPSF:
 
         xctr = np.zeros_like(self.ellip)
         yctr = np.zeros_like(self.ellip)
-        x = self.psf((100, 100), yctr, xctr)
+        x = self.psf((100, 100), yctr, xctr, subpix=1)
         y = psf2((100, 100), yctr, xctr)
 
         assert_allclose(x, y)

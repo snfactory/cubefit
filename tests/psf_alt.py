@@ -59,8 +59,8 @@ class GaussMoffatPSF:
 
         output = np.zeros((self.nw, ny, nx), dtype=np.float64)
         for i in range(self.nw):
-            sigma_x = self.sigma[i]
-            alpha_x = self.alpha[i]
+            sigma_y = self.sigma[i]
+            alpha_y = self.alpha[i]
             beta = self.beta[i]
             e = self.ellipticity[i]
             eta = self.eta[i]
@@ -81,8 +81,8 @@ class GaussMoffatPSF:
             # sigma_y^2 / sigma_x^2 === ellipticity
             # and in the Moffat,
             # alpha_y^2 / alpha_x^2 === ellipticity
-            sigma_y = math.sqrt(e) * sigma_x
-            alpha_y = math.sqrt(e) * alpha_x
+            sigma_x = math.sqrt(e) * sigma_y
+            alpha_x = math.sqrt(e) * alpha_y
 
             # Gaussian normalized to 1.0
             g = 1. / (2. * math.pi * sigma_x * sigma_y) * \
