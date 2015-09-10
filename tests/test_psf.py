@@ -32,3 +32,32 @@ class TestGaussMoffatPSF:
         y = psf2((100, 100), yctr, xctr)
 
         assert_allclose(x, y)
+
+def test_old_version():
+    MODEL_SHAPE = (32, 32)
+    REFWAVE = 5000.
+    psf_params = [1.659338,   # from PTF09fox_B epoch 0
+                  1.921927,
+                  -0.185608,
+                  1.851729,
+                  2.121143,
+                  -0.148159,
+                  0.066841]
+    wave = np.linspace(3200., 5600., 800)
+
+    # old version
+    psfarray = psf_alt.psf_3d_from_params(psf_params, wave, REFWAVE,
+                                          MODEL_SHAPE)
+
+    # new version
+
+    relwave = wave / REFWAVE - 1.0
+    ellip = psf_params[0] * np.ones_like(wave)
+    alpha = (psf_params[1] +
+             psf_params[2] * relwave +
+             psf_params[3] * relwave**2)
+
+    psf = cubefit.GaussMoffatPSF(ellip, alpha)
+    psfarray2 = psf(MODEL_SHAPE, np.zeros_like(wave), np.zeros_like(wave))
+
+    assert_allclose(psfarray2, psfarray)
