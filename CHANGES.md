@@ -1,3 +1,9 @@
+v0.2.1
+======
+
+- Added cubefit version to FITS header in output files written by
+  `cubefit` and `cubefit-subtract`
+
 v0.2.0 (2015-08-14)
 ===================
 

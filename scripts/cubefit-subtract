@@ -1,5 +1,13 @@
 #!/usr/bin/env python
-"""Subtract model determined by cubefit from the original data"""
+"""Subtract model determined by cubefit from the original data.
+
+The input FITS header is passed unaltered to the output file, with the
+following additions:
+- A `HISTORY` entry.
+- `CBFT_SNX` and `CBFT_SNY` keywords giving the cubefit-determined position of
+  the SN relative to the center of the data array (at the reference
+  wavelength).
+"""
 
 from argparse import ArgumentParser
 import logging
@@ -13,7 +21,10 @@ import cubefit
 
 if __name__ == "__main__":
 
-    parser = ArgumentParser(prog="cubefit-subtract", description=__doc__)
+    progname = "cubefit-subtract"
+    progname_ver = "{} v{}".format(progname, cubefit.__version__)
+
+    parser = ArgumentParser(prog=progname, description=__doc__)
     parser.add_argument("configfile", help="configuration file name "
                         "(JSON format); same as cubefit input")
     parser.add_argument("resultfile", help="Result FITS file from cubefit")
@@ -51,7 +62,7 @@ if __name__ == "__main__":
         data = f[0].read()
         data -= epoch["galeval"]
         f[0].write(data)
-        f[0].write_history("galaxy subtracted by cubefit-subtract")
+        f[0].write_history("galaxy subtracted by " + progname_ver)
         f[0].write_key("CBFT_SNX", snx - epoch['xctr'],
                        comment="SN x offset from array center at ref wave")
         f[0].write_key("CBFT_SNY", sny - epoch['yctr'],

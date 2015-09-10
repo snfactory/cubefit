@@ -5,6 +5,7 @@ import numpy as np
 import fitsio
 
 from .core import DataCube
+from .version import __version__
 
 __all__ = ["read_datacube", "write_results", "read_results"]
 
@@ -124,6 +125,7 @@ def write_results(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms, wavewcs,
 
     with fitsio.FITS(fname, "rw") as f:
         f.write(galaxy, extname="galaxy", header=wavewcs)
+        f[0].write_history("created by cubefit v" + __version__)
         f.write(epochs, extname="epochs",
                 header={"SNY": snctr[0], "SNX": snctr[1]})
 

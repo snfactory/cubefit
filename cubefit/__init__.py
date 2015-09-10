@@ -6,3 +6,4 @@ from .main import *
 from .plotting import *
 from .psf import *
 from .utils import *
+from .version import *
