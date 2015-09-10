@@ -7,18 +7,21 @@ Fit supernova + galaxy model on a Nearby Supernova Factory spectral data cube.
 Installation
 ------------
 
-**Dependencies:**
+To install a release version:
+
+```
+pip install http://github.com/snfactory/cubefit/archive/v0.2.0.tar.gz
+```
+
+Release versions are listed
+[here](http://github.com/snfactory/cubefit/releases). CubeFit has the
+following dependencies:
 
 - Python 2.7 or 3.3+
 - numpy
 - scipy (for optimization)
 - [fitsio](https://github.com/esheldon/fitsio) (for FITS file I/O)
 - [pyfftw](http://hgomersall.github.io/pyFFTW) (for fast FFTs)
-
-**Install command:** `./setup.py install`
-
-**Running Tests:** Run `./test.py`. Requires the `pytest` package
-(available via pip or conda).
 
 
 Usage
@@ -237,6 +240,16 @@ Internal API documentation
 | ----------------------------- | ---------------------------------------- |
 | `cubefit.fft_shift_phasor_2d` | phasor array used to shift an array (in real space) by multiplication in fourier space. |
 | `cubefit.plot_timeseries`     | Return a figure showing data and model. |
+
+
+Developer Documentation
+-----------------------
+
+**Running Tests:**
+
+If you've clone the repository (rather than using pip to install), you
+can run tests with `./test.py`. Requires the `pytest` package
+(available via pip or conda).
 
 
 License
