@@ -6,4 +6,4 @@ from .main import *
 from .plotting import *
 from .psf import *
 from .utils import *
-from .version import *
+from .version import __version__

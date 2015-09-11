@@ -1,12 +1,15 @@
 #!/usr/bin/env python
 """Subtract model determined by cubefit from the original data.
 
-The input FITS header is passed unaltered to the output file, with the
-following additions:
-- A `HISTORY` entry.
-- `CBFT_SNX` and `CBFT_SNY` keywords giving the cubefit-determined position of
+The "outnames" key in the supplied configuration file is used to
+determine the output FITS file names. The input FITS header is passed
+unaltered to the output file, with the following additions:
+(1) A `HISTORY` entry. (2) `CBFT_SNX` and `CBFT_SNY` records giving the cubefit-determined position of
   the SN relative to the center of the data array (at the reference
   wavelength).
+
+This script also writes fitted SN spectra to individual FITS files.
+The "sn_outfiles" configuration field determines the output filenames.
 """
 
 from argparse import ArgumentParser
@@ -21,12 +24,12 @@ import cubefit
 
 if __name__ == "__main__":
 
-    progname = "cubefit-subtract"
-    progname_ver = "{} v{}".format(progname, cubefit.__version__)
+    prog_name = "cubefit-subtract"
+    prog_name_ver = "{} v{}".format(prog_name, cubefit.__version__)
 
-    parser = ArgumentParser(prog=progname, description=__doc__)
+    parser = ArgumentParser(prog=prog_name, description=__doc__)
     parser.add_argument("configfile", help="configuration file name "
-                        "(JSON format); same as cubefit input")
+                        "(JSON format), same as cubefit input.")
     parser.add_argument("resultfile", help="Result FITS file from cubefit")
     parser.add_argument("--dataprefix", default="",
                         help="path prepended to data file names; default is "
@@ -54,7 +57,7 @@ if __name__ == "__main__":
         raise RuntimeError("number of epochs in result file not equal to "
                            "number of input and output files in config file")
 
-    # subtract
+    # subtract and write out.
     for fname, outfname, epoch in zip(fnames, outfnames, epochs):
         logging.info("writing %s", outfname)
         shutil.copy(fname, outfname)
@@ -62,9 +65,23 @@ if __name__ == "__main__":
         data = f[0].read()
         data -= epoch["galeval"]
         f[0].write(data)
-        f[0].write_history("galaxy subtracted by " + progname_ver)
+        f[0].write_history("galaxy subtracted by " + prog_name_ver)
         f[0].write_key("CBFT_SNX", snx - epoch['xctr'],
-                       comment="SN x offset from array center at ref wave")
+                       comment="SN x offset from center at ref wave [spaxels]")
         f[0].write_key("CBFT_SNY", sny - epoch['yctr'],
-                       comment="SN y offset from array center at ref wave")
+                       comment="SN y offset from center at ref wave [spaxels]")
         f.close()
+
+    # output SN spectra to separate files.
+    sn_outnames = [os.path.join(args.outprefix, fname)
+                   for fname in cfg["sn_outnames"]]
+    header = {"CRVAL1": results["wavewcs"]["CRVAL3"],
+              "CRPIX1": results["wavewcs"]["CRPIX3"],
+              "CDELT1": results["wavewcs"]["CDELT3"]}
+    for outfname, epoch in zip(sn_outnames, epochs):
+        logging.info("writing %s", outfname)
+        if os.path.exists(outfname):  # avoid warning from clobber=True
+            os.remove(outfname)
+        with fitsio.FITS(outfname, "rw") as f:
+            f.write(epoch["sn"], extname="sn", header=header)
+            f[0].write_history("created by " + prog_name_ver)

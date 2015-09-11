@@ -120,7 +120,7 @@ def write_results(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms, wavewcs,
     # Create epochs table.
     epochs = epoch_results(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms)
 
-    if os.path.exists(fname):
+    if os.path.exists(fname):  # avoids warning doing FITS(..., clobber=True)
         os.remove(fname)
 
     with fitsio.FITS(fname, "rw") as f:
@@ -139,7 +139,12 @@ def read_results(fname):
         epochs_hdr = f[1].read_header()
         epochs = f[1].read()
 
+        wavewcs = {"CRVAL3": galaxy_hdr["CRVAL3"],
+                   "CRPIX3": galaxy_hdr["CRPIX3"],
+                   "CDELT3": galaxy_hdr["CDELT3"]}
+
     return {"galaxy": galaxy,
+            "wavewcs": wavewcs,
             "wave": wcs_to_wave(galaxy_hdr),
             "epochs": epochs,
             "snctr": (epochs_hdr["SNY"], epochs_hdr["SNX"])}

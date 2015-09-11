@@ -1,8 +1,10 @@
-v0.2.1
-======
+v0.2.1 (2015-09-10)
+===================
 
 - Added cubefit version to FITS header in output files written by
-  `cubefit` and `cubefit-subtract`
+  `cubefit` and `cubefit-subtract`.
+- `cubefit-subtract` now writes SN spectra from cubefit to separate files.
+  Output file names are taken from the "sn_outnames" configuration parameter.
 
 v0.2.0 (2015-08-14)
 ===================
