@@ -9,7 +9,7 @@ unaltered to the output file, with the following additions:
   wavelength).
 
 This script also writes fitted SN spectra to individual FITS files.
-The "sn_outfiles" configuration field determines the output filenames.
+The "sn_outnames" configuration field determines the output filenames.
 """
 
 from argparse import ArgumentParser
