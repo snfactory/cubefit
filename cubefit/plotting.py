@@ -5,8 +5,8 @@ from glob import glob
 
 import fitsio
 import numpy as np
-#import matplotlib as mpl # Uncomment these if ddt run as batch job
-#mpl.use('Agg')
+import matplotlib as mpl
+mpl.use('Agg')
 from matplotlib import pyplot as plt
 from matplotlib import gridspec
 from matplotlib.ticker import NullLocator
