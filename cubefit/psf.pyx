@@ -1,10 +1,10 @@
 from __future__ import division
 import numpy as np
-cimport numpy as np
+cimport numpy as cnp
 from libc.math cimport exp, sqrt, pow, M_PI
 import cython
 
-np.import_array()  # To access the numpy C-API.
+cnp.import_array()  # To access the numpy C-API.
 
 __all__ = ["GaussMoffatPSF"]
 
@@ -69,7 +69,7 @@ class GaussMoffatPSF:
         #     dxp = dx * sin(angle) + dy * cos(angle)
         # and then use dyp, dxp.
 
-        cdef np.intp_t nw, ny, nx, i, j, k
+        cdef cnp.intp_t nw, ny, nx, i, j, k
         cdef double sigma_x, sigma_y, alpha_x, alpha_y
         cdef double yc, xc, dy, dx, sx, sy
         cdef double gnorm, mnorm, g, m
