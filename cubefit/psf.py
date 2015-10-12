@@ -57,7 +57,7 @@ def gaussian_plus_moffat_psf(shape, xctr, yctr, ellipticity, alpha, angle):
 
     # scalars normalization
     norm_moffat = 1./math.pi * math.sqrt(ellipticity) * (beta-1.) / alpha**2
-    norm_gauss = 1./math.pi * math.sqrt(ellipticity) / (2. * eta * sigma**2)
+    norm_gauss = 1./math.pi * math.sqrt(ellipticity) / (2. * sigma**2)
     norm_psf = 1. / (1./norm_moffat + eta * 1./norm_gauss)
 
     return norm_psf * (moffat + eta*gauss)
