@@ -72,7 +72,7 @@ class GaussMoffatPSF:
         cdef cnp.intp_t nw, ny, nx, i, j, k
         cdef double sigma_x, sigma_y, alpha_x, alpha_y
         cdef double yc, xc, dy, dx, sx, sy
-        cdef double gnorm, mnorm, g, m
+        cdef double gnorm, mnorm, norm, g, m
         cdef double scale, area
         cdef double[:, :, :] outview
         cdef double[:] sigma, alpha, beta, ellipticity, eta
@@ -103,14 +103,17 @@ class GaussMoffatPSF:
             # sigma_x^2 / sigma_y^2 === ellipticity
             # and in the Moffat,
             # alpha_x^2 / alpha_y^2 === ellipticity
-            sigma_y = sigma[k]
-            alpha_y = alpha[k]
-            sigma_x = sqrt(ellipticity[k]) * sigma_y
-            alpha_x = sqrt(ellipticity[k]) * alpha_y
+            sigma_x = sigma[k]
+            alpha_x = alpha[k]
+            sigma_y = sigma_x / sqrt(ellipticity[k])
+            alpha_y = alpha_x / sqrt(ellipticity[k])
 
             # normalizing pre-factors for gaussian and moffat
             gnorm = 1. / (2. * M_PI * sigma_x * sigma_y)
             mnorm = (beta[k] - 1.) / (M_PI * alpha_x * alpha_y)
+
+            # normalization on (m + eta * g) [see below]
+            norm = 1. / (1. / mnorm + eta[k] / gnorm)
 
             # center in pixel coordinates
             yc = yctr[k] + (ny-1) / 2.0
@@ -139,10 +142,16 @@ class GaussMoffatPSF:
                             sx += scale
                         sy += scale
 
-                    # normalize by subpixel area and constant prefactor
-                    g *= area * gnorm
-                    m *= area * mnorm
-
-                    outview[k, j, i] = (m + eta[k] * g) / (1. + eta[k])
+                    # Note: eta is *apparently* defined as the scaling
+                    # of the peak of the Gaussian relative to the peak
+                    # of the Moffat. therefore eta is applied to the
+                    # unnormalized function values (m and g) rather
+                    # than the normalized values, which would look
+                    # like `(mnorm * m + eta[k] * gnorm * g)`. The
+                    # normalization constant `norm` accounts for the
+                    # integral of `m + eta[k] * g`.
+                    #
+                    # `area` accounts for the subpixel area.
+                    outview[k, j, i] = norm * area * (m + eta[k] * g)
 
         return out

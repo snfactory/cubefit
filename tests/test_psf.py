@@ -50,7 +50,6 @@ def test_old_version():
                                           MODEL_SHAPE)
 
     # new version
-
     relwave = wave / REFWAVE - 1.0
     ellip = psf_params[0] * np.ones_like(wave)
     alpha = (psf_params[1] +
@@ -60,4 +59,4 @@ def test_old_version():
     psf = cubefit.GaussMoffatPSF(ellip, alpha)
     psfarray2 = psf(MODEL_SHAPE, np.zeros_like(wave), np.zeros_like(wave))
 
-    assert_allclose(psfarray2, psfarray)
+    assert_allclose(psfarray2, psfarray, rtol=1.e-2)

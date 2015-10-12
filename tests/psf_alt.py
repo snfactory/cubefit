@@ -39,7 +39,7 @@ class GaussMoffatPSF:
         self.eta   = e0 + e1 * self.alpha  # gaussian ampl. / moffat ampl.
 
     def __call__(self, shape, yctr, xctr, angle=0.0):
-        """Evaluate a gaussian+moffat function on a 3-d grid. 
+        """Evaluate a gaussian+moffat function on a 3-d grid.
 
         Parameters
         ----------
@@ -59,8 +59,8 @@ class GaussMoffatPSF:
 
         output = np.zeros((self.nw, ny, nx), dtype=np.float64)
         for i in range(self.nw):
-            sigma_y = self.sigma[i]
-            alpha_y = self.alpha[i]
+            sigma_x = self.sigma[i]
+            alpha_x = self.alpha[i]
             beta = self.beta[i]
             e = self.ellipticity[i]
             eta = self.eta[i]
@@ -78,21 +78,25 @@ class GaussMoffatPSF:
             DYp = DX * math.sin(angle) + DY * math.cos(angle)
 
             # We are defining, in the Gaussian,
-            # sigma_y^2 / sigma_x^2 === ellipticity
+            # sigma_x^2 / sigma_y^2 === ellipticity
             # and in the Moffat,
-            # alpha_y^2 / alpha_x^2 === ellipticity
-            sigma_x = math.sqrt(e) * sigma_y
-            alpha_x = math.sqrt(e) * alpha_y
+            # alpha_x^2 / alpha_y^2 === ellipticity
+            sigma_y = sigma_x / math.sqrt(e)
+            alpha_y = alpha_x / math.sqrt(e) 
 
-            # Gaussian normalized to 1.0
-            g = 1. / (2. * math.pi * sigma_x * sigma_y) * \
-                np.exp(-(DXp**2/(2.*sigma_x**2) + DYp**2/(2.*sigma_y**2)))
+            # Unnormalized gaussian
+            G = np.exp(-(DXp**2/(2.*sigma_x**2) + DYp**2/(2.*sigma_y**2)))
 
-            # Moffat normalized to 1.0
-            m = (beta - 1.) / (math.pi * alpha_x * alpha_y) * \
-                (1. + DXp**2/alpha_x**2 + DYp**2/alpha_y**2)**-beta
+            # Gaussian normalization factor
+            c_g = 1. / (2. * math.pi * sigma_x * sigma_y)
 
-            output[i, :, :] = (m + eta * g) / (1. + eta)
+            # Unnormalized Moffat
+            M = (1. + DXp**2/alpha_x**2 + DYp**2/alpha_y**2)**-beta
+
+            # Moffat normalization factor
+            c_m = (beta - 1.) / (math.pi * alpha_x * alpha_y) 
+
+            output[i, :, :] = (M + eta * G) / (1. / c_m + eta / c_g)
 
         return output
 
@@ -148,7 +152,9 @@ def gaussian_plus_moffat_psf(shape, xctr, yctr, ellipticity, alpha, angle):
 
     # scalars normalization
     norm_moffat = 1./math.pi * math.sqrt(ellipticity) * (beta-1.) / alpha**2
-    norm_gauss = 1./math.pi * math.sqrt(ellipticity) / (2. * eta * sigma**2)
+    #norm_gauss = 1./math.pi * math.sqrt(ellipticity) / (2. * eta * sigma**2)
+
+    norm_gauss = 1./math.pi * math.sqrt(ellipticity) / (2. * sigma**2)
     norm_psf = 1. / (1./norm_moffat + eta * 1./norm_gauss)
 
     return norm_psf * (moffat + eta*gauss)
