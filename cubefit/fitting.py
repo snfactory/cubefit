@@ -315,7 +315,7 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty,
     # Get initial chisq values for info output.
     cvals_init = []
     for data, weight, ctr, atm in zip(datas, weights, ctrs, atms):
-        cval, _ = chisq_galaxy_single(galaxy0, data, weight, ctr, atm)
+        cval, _ = chisq_galaxy_sky_single(galaxy0, data, weight, ctr, atm)
         cvals_init.append(cval)
 
 
@@ -348,7 +348,7 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty,
     # Get final chisq values.
     cvals = []
     for data, weight, ctr, atm in zip(datas, weights, ctrs, atms):
-        cval, _ = chisq_galaxy_single(galaxy, data, weight, ctr, atm)
+        cval, _ = chisq_galaxy_sky_single(galaxy, data, weight, ctr, atm)
         cvals.append(cval)
 
     logging.info(u"        initial \u03C7\u00B2/epoch: [%s]",
