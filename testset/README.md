@@ -2,20 +2,35 @@ Test Data Set
 =============
 
 This directory contains a Makefile useful for running debugging tests
-on a set of test data. You need to get the test data and unpack it
-into a `data` directory in this directory. After you do this, the
-directory should look like this:
+on a set of test data. 
+
+Fetching data
+-------------
+
+- Run `fetch_conf.py` to fetch configuration files for all the test SNe.
+- For individual SNe, fetch the data files with, e.g.,
+  `fetch_data.py PTF09fox_B`.
+
+Both of these commands use rsync, which will prompt you for a
+password. You also need to set an environment variable
+`SNF_CC_USER_MACHINE` to something like `USER@MACHINE`. This is so the
+username is not in the code.
+
+After you do this, the directory should look like this:
 
 ```
-cubefit/testset/data/NAME1/NAME1.json
-                          /FILE1.fits
-                          /FILE2.fits
-                          /...
-                    /NAME2/NAME2.json
-                          /FILE1.fits
-                          /FILE2.fits
-                          /...
-                    /...
+data/config_orig/NAME1/...
+                /NAME2/...
+                /...
+    /NAME1/NAME1.json
+          /FILE1.fits
+          /FILE2.fits
+          /...
+    /NAME2/NAME2.json
+          /FILE1.fits
+          /FILE2.fits
+          /...
+    /...
 ```
 
 Run cubefit on some SNe
