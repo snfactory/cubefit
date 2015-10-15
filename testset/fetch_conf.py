@@ -8,11 +8,20 @@ import os
 import subprocess
 import glob
 
-names = ["PTF09fox",
+names = ["LSQ12dbr",
+         "PTF09fox",
+         "PTF10nlg",
+         "SN2005ki",
+         "SN2006ac",
          "SN2006ob",
+         "SN2011by",
+         "SNF20050919-000",
+         "SNF20051003-003",
+         "SNF20060624-019",
          "SNF20060512-002",
          "SNF20060609-002",
          "SNF20061009-008",
+         "SNF20070427-001",
          "SNF20070429-000",
          "SNF20070712-003",
          "SNF20070831-015",
@@ -21,6 +30,9 @@ names = ["PTF09fox",
          "SNF20080717-000",
          "SNF20080720-001",
          "SNF20080725-004",
+         "SNF20080821-000",
+         "SNF20080918-000",
+         "SNNGC4424",
          "SNNGC6801"]
 
 if "SNF_CC_USER_MACHINE" not in os.environ:
