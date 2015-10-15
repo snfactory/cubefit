@@ -247,6 +247,7 @@ def plot_sn(filenames, sn_spectra, wave, idrfilenames, outfname):
 
     phase_strings = [fname.split('_')[-2] for fname in idrfilenames]
 
+    print(phase_strings)
     phases = [((-1 if phase_string[0] == 'M' else 1) *
                float(phase_string[1:])/1000.)
               for phase_string in phase_strings]
@@ -284,14 +285,19 @@ def plot_sn(filenames, sn_spectra, wave, idrfilenames, outfname):
     plt.close()
 
 
-def plot_epoch(cubes, result, i_t, fname=None):
+def plot_epoch(cube, epoch, fname=None):
     """Return a figure with diagnostic plots for one epoch
+
+    Parameters
+    ----------
+    cube : DataCube
+    epoch : structured ndarray
+        One row from the table of result['epochs'].
     """
 
-    epochs = result['final']['epochs']
-    data = cubes[i_t].data
-    weight = cubes[i_t].weight
-    wave = cubes[i_t].wave
+    data = cube.data
+    weight = cube.weight
+    wave = cube.wave
     numslices = 5
 
     # plot parameters in physical units (in)
@@ -329,9 +335,9 @@ def plot_epoch(cubes, result, i_t, fname=None):
     wavemask = (wave > wmin) & (wave < wmax)
 
     dataim = np.average(data[wavemask, :, :], axis=0)
-    galeval = epochs['galeval'][i_t]
-    sneval = epochs['sneval'][i_t]
-    sky = epochs['sky'][i_t, :, None, None]
+    galeval = epoch['galeval']
+    sneval = epoch['sneval']
+    sky = epoch['sky'][:, None, None]
     scene = sky + galeval + sneval
     sceneim = np.average(scene[wavemask, :, :], axis=0)
     residim = dataim - sceneim
@@ -409,8 +415,8 @@ def plot_epoch(cubes, result, i_t, fname=None):
                                                   wave[metaslices[i+1]-1]))
 
     spec = plt.subplot(gs[:, 5])
-    spec.plot(wave, epochs['sn'][i_t], label='SN spectrum')
-    spec.plot(wave, epochs['sky'][i_t], label='Sky spectrum')
+    spec.plot(wave, epoch['sn'], label='SN spectrum')
+    spec.plot(wave, epoch['sky'], label='Sky spectrum')
 
     gal_ave = galeval.mean(axis=(1,2))
     spec.plot(wave, gal_ave, label = 'Avg. galaxy spectrum')

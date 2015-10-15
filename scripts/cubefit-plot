@@ -5,7 +5,8 @@ from __future__ import print_function
 
 import glob
 from argparse import ArgumentParser
-from os.path import join, basename
+import os.path
+from os.path import join
 import json
 from collections import OrderedDict
 import numpy as np
@@ -41,35 +42,42 @@ with open(args.configfile) as f:
 cubes = [cubefit.read_datacube(join(args.dataprefix, fname), scale=False)
          for fname in cfg["filenames"]]
 
-# Read in results, optionally with diagnostics.
 results = OrderedDict()
+
+# Diagnostic results at each step
 if args.diagdir is not None:
     fnames = sorted(glob.glob(join(args.diagdir, "step*.fits")))
     for fname in fnames:
-        name = basename(fname).split(".")[0]
+        name = os.path.basename(fname).split(".")[0]
         results[name] = cubefit.read_results(fname)
-results["final"] = cubefit.read_results(args.resultfile)
 
+# Final result (don't fail if not available)
+if os.path.exists(args.resultfile):
+    results["final"] = cubefit.read_results(args.resultfile)
+
+# plot time series
 cubefit.plot_timeseries(cubes, results, band=args.band,
                         fname=(args.outprefix + '_timeseries.png'))
 
-# plot wave slices, just for final refs.
-refcubes = [cubes[i] for i in cfg['refs']]
-refgaleval = results['final']['epochs']['galeval'][cfg['refs']]
-cubefit.plot_wave_slices(refcubes, refgaleval,
-                         fname=(args.outprefix + '_waveslice.png'))
-
-# Plot cubefit spectra against IDR spectra.
-if args.idrfiles is not None:
-    cubefit.plot_sn(cfg['filenames'], results['final']['epochs']['sn'],
-                    results['final']['wave'], args.idrfiles,
-                    args.outprefix + '_sn.png')
-
-# Plot wave slices and sn, galaxy and sky spectra for all epochs.
-if args.plotepochs:
-    for i_t in range(len(cubes)):
-        cubefit.plot_epoch(cubes, results, i_t, 
-                           fname=(args.outprefix + '_epoch%02d.png' % i_t))
-
 # Plot the x-y coordinates of the adr versus wavelength.
 cubefit.plot_adr(cfg, cubes[0].wave, fname=(args.outprefix + '_adr.png'))
+
+# Plots that depend on final results being available.
+if 'final' in results:
+    # plot wave slices, just for final refs.
+    refcubes = [cubes[i] for i in cfg['refs']]
+    refgaleval = results['final']['epochs']['galeval'][cfg['refs']]
+    cubefit.plot_wave_slices(refcubes, refgaleval,
+                             fname=(args.outprefix + '_waveslice.png'))
+
+    # Plot cubefit spectra against IDR spectra.
+    if args.idrfiles is not None:
+        cubefit.plot_sn(cfg['filenames'], results['final']['epochs']['sn'],
+                        results['final']['wave'], args.idrfiles,
+                        args.outprefix + '_sn.png')
+
+    # Plot wave slices and sn, galaxy and sky spectra for all epochs.
+    if args.plotepochs:
+        for i_t in range(len(cubes)):
+            cubefit.plot_epoch(cubes[i_t], results['final']['epochs'][i_t],
+                               fname=(args.outprefix + '_epoch%02d.png' % i_t))
