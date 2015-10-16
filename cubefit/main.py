@@ -10,6 +10,7 @@ from collections import OrderedDict
 
 import numpy as np
 
+from .version import __version__
 from .psf import psf_3d_from_params
 from .core import AtmModel, RegularizationPenalty
 from .io import read_datacube, write_results
@@ -76,7 +77,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
 
     # record start time
     tstart = datetime.now()
-    logging.info("cubefit started at %s",
+    logging.info("cubefit v%s started at %s", __version__,
                  tstart.strftime("%Y-%m-%d %H:%M:%S"))
     tsteps = OrderedDict()  # finish time of each step.
 
