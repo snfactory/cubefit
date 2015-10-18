@@ -114,47 +114,84 @@ class AtmModel(object):
                                 direction='FFTW_BACKWARD')
         self.fftnorm = 1. / (self.ny * self.nx) 
 
-    def evaluate_galaxy(self, galmodel, shape, ctr):
+    def evaluate_galaxy(self, galmodel, shape, ctr, grad=False):
         """convolve, shift and sample the galaxy model"""
 
         # shift necessary to put model onto data coordinates
         offset = yxoffset((self.ny, self.nx), shape, ctr)
         fshift = fft_shift_phasor_2d((self.ny, self.nx),
-                                     (-offset[0], -offset[1]))
+                                     (-offset[0], -offset[1]), grad=grad)
+        if grad:
+            fshift, fshiftgrad = fshift
+            fshiftgrad *= -1.  # make derivatives w.r.t. `ctr`.
 
-        # ifft2(self.fftconv * fshift * fft2(galmodel))
+        # calculate `fft(galmodel) * fftconv`
         np.copyto(self.fftin, galmodel)  # copy input array to complex array
         self.fft.execute()  # populates self.fftout
-        self.fftout *= fshift
         self.fftout *= self.fftconv
+        if grad:
+            fftgal = np.copy(self.fftout)  # cache result for use in gradient.
+
+        self.fftout *= fshift
         self.ifft.execute() # populates self.fftin
         self.fftin *= self.fftnorm
+        gal = np.copy(self.fftin.real[:, 0:shape[0], 0:shape[1]])
 
-        return np.copy(self.fftin.real[:, 0:shape[0], 0:shape[1]])
+        if grad:
+            galgrad = np.empty((2,) + gal.shape, dtype=np.float64)
+            for i in (0, 1):
+                np.copyto(self.fftout, fftgal)
+                self.fftout *= fshiftgrad[i]
+                self.ifft.execute() # populates self.fftin
+                self.fftin *= self.fftnorm
+                galgrad[i] = self.fftin.real[:, 0:shape[0], 0:shape[1]]
+            return gal, galgrad
 
-    def evaluate_point_source(self, pos, shape, ctr):
-        """Evaluate a point source at the given position."""
+        else:
+            return gal
+
+    def evaluate_point_source(self, pos, shape, ctr, grad=False):
+        """Evaluate a point source at the given position.
+
+        If grad is True, return a 2-tuple, with the second item being
+        a 4-d array of gradient with respect to
+        ctr[0], ctr[1], pos[0], pos[1].
+        """
 
         # shift necessary to put model onto data coordinates
         offset = yxoffset((self.ny, self.nx), shape, ctr)
-        fshift = fft_shift_phasor_2d((self.ny, self.nx),
-                                     (-offset[0], -offset[1]))
-        fshift = np.asarray(fshift, dtype=self.complex_dtype)
+        yshift, xshift = -offset[0], -offset[1]
 
-        # Shift to move point source from the lower left in the model array
+        # Add shift to move point source from the lower left in the model array
         # to `pos` in model *coordinates*. Note that in model coordinates,
         # (0, 0) corresponds to array position (ny-1)/2., (nx-1)/2.
-        fshift_point = fft_shift_phasor_2d((self.ny, self.nx),
-                                           ((self.ny-1)/2. + pos[0],
-                                            (self.nx-1)/2. + pos[1]))
-        fshift_point = np.asarray(fshift_point, dtype=self.complex_dtype)
+        yshift += (self.ny - 1) / 2. + pos[0]
+        xshift += (self.nx - 1) / 2. + pos[1]
 
-        # following block is like ifft2(fftconv * fshift_point * fshift)
+        fshift = fft_shift_phasor_2d((self.ny, self.nx), (yshift, xshift),
+                                     grad=grad)
+        if grad:
+            fshift, fshiftgrad = fshift
+            fshiftgrad *= -1.  # make derivatives w.r.t. `ctr`.
+
+        # following block is like ifft2(fftconv * fshift)
         np.copyto(self.fftout, self.fftconv)
-        self.fftout *= self.fftnorm * fshift_point * fshift
+        self.fftout *= self.fftnorm * fshift
         self.ifft.execute()
+        s = np.copy(self.fftin.real[:, 0:shape[0], 0:shape[1]])
+        
+        if grad:
+            sgrad = np.empty((4,) + s.shape, dtype=np.float64)
+            for i in (0, 1):
+                np.copyto(self.fftout, self.fftconv)
+                self.fftout *= self.fftnorm * fshiftgrad[i]
+                self.ifft.execute()
+                sgrad[i] = self.fftin.real[:, 0:shape[0], 0:shape[1]]
+            sgrad[2:4] = -sgrad[0:2]
+            return s, sgrad
 
-        return np.copy(self.fftin.real[:, 0:shape[0], 0:shape[1]])
+        else:
+            return s
 
     def gradient_helper(self, x, shape, ctr):
         """Not sure exactly what this does yet.

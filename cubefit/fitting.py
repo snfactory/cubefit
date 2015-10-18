@@ -142,7 +142,7 @@ def guess_sky(cube, npix=10):
     return sky
 
 
-def determine_sky_and_sn(galmodel, snmodel, data, weight):
+def sky_and_sn(data, weight, g, s, ggrad=None, sgrad=None):
     """Estimate the sky and SN level for a single epoch.
 
     Given a fixed galaxy and fixed SN PSF shape in the model, the
@@ -150,12 +150,19 @@ def determine_sky_and_sn(galmodel, snmodel, data, weight):
 
     Parameters
     ----------
-    galmodel : ndarray (3-d)
-        The model, evaluated on the data grid.
-    snmodel : ndarray (3-d)
-        The PSF, evaluated on the data grid at the SN position.
     data : ndarray (3-d)
+        Data array.
     weight : ndarray (3-d)
+        Weight array.
+    g : ndarray (3-d)
+        The galaxy model, evaluated on the data grid.
+    s : ndarray (3-d)
+        The PSF, evaluated on the data grid at the SN position.
+    galgrad : ndarray (4-d)
+        Gradient in g with respect to data ctr y, x and sn position, y, x)
+    sngrad : ndarray (4-d)
+        Gradient in s with repsect to data ctr y, x and
+        sn position y, x.
 
     Returns
     -------
@@ -165,47 +172,51 @@ def determine_sky_and_sn(galmodel, snmodel, data, weight):
         1-d SN spectrum for given epoch.
     """
 
-    A11 = (weight * snmodel**2).sum(axis=(1, 2))
-    A12 = (-weight * snmodel).sum(axis=(1, 2))
-    A21 = A12
-    A22 = weight.sum(axis=(1, 2))
+    A = np.sum(weight * s**2, axis=(1, 2))
+    B = np.sum(weight * s, axis=(1, 2))
+    C = np.sum(weight, axis=(1, 2))
+    D = np.sum(weight * data, axis=(1, 2))
+    E = np.sum(weight * data * s, axis=(1, 2))
+    F = np.sum(weight * g, axis=(1, 2))
+    G = np.sum(weight * g * s, axis=(1, 2))
 
-    denom = A11*A22 - A12*A21
+    denom = A * C - B**2
 
-    # There are some cases where we have slices with only 0
-    # values and weights. Since we don't mix wavelengths in
-    # this calculation, we put a dummy value for denom and
-    # then put the sky and sn values to 0 at the end.
-    mask = denom == 0.0
-    if not np.all(A22[mask] == 0.0):
+    # There are some cases where we have spaxels with all 0 values and
+    # weights. Set denom to 1.0 in these cases to avoid divide-by-zero
+    # errors. We double check that the weights are all zero.
+    mask = (denom == 0.0)
+    denom[mask] = 1.0
+    if not np.all(C[mask] == 0.0):
         raise ValueError("found null denom for slices with non null "
                          "weight")
-    denom[mask] = 1.0
 
-    # w2d, w2dy w2dz are used to calculate the variance using
-    # var(alpha x) = alpha^2 var(x)*/
-    tmp = weight * data
-    wd = tmp.sum(axis=(1, 2))
-    wdsn = (tmp * snmodel).sum(axis=(1, 2))
-    wdgal = (tmp * galmodel).sum(axis=(1, 2))
-
-    tmp = weight * galmodel
-    wgal = tmp.sum(axis=(1, 2))
-    wgalsn = (tmp * snmodel).sum(axis=(1, 2))
-    wgal2 = (tmp * galmodel).sum(axis=(1, 2))
-
-    b_sky = (wd * A11 + wdsn * A12) / denom
-    c_sky = (wgal * A11 + wgalsn * A12) / denom
-    b_sn = (wd * A21 + wdsn * A22) / denom
-    c_sn = (wgal * A21 + wgalsn * A22) / denom
-
-    sky = b_sky - c_sky
-    sn = b_sn - c_sn
+    sky = (D*A - E*B - F*A + G*B) / denom
+    sn = (-D*B + E*C + F*B - G*C) / denom
 
     sky[mask] = 0.0
     sn[mask] = 0.0
 
-    return sky, sn
+    # calculate gradient in sky and SN w.r.t. positions.
+    if ggrad is not None and sgrad is not None:
+        dA = np.sum(2.* weight * s * sgrad, axis=(2, 3))
+        dB = np.sum(weight * sgrad, axis=(2, 3))
+        dE = np.sum(weight * data * sgrad, axis=(2, 3))
+        dF = np.sum(weight * ggrad, axis=(2, 3))
+        dG = np.sum(weight * g * sgrad + weight * s * ggrad,
+                    axis=(2, 3))
+
+        skygradnum = D*dA - dE*B - E*dB - dF*A - F*dA + dG*B + G*dB
+        sngradnum = -D*dB + dE*C + dF*B + F*dB - dG*C
+        ddenom = dA*C - 2.*B*dB
+
+        skygrad = (skygradnum + sky * ddenom) / denom
+        sngrad = (sngradnum + sn * ddenom) / denom
+
+        return sky, sn, skygrad, sngrad
+
+    else:
+        return sky, sn
 
 
 def chisq_galaxy_single(galaxy, data, weight, ctr, atm):
@@ -432,53 +443,49 @@ def chisq_position_sky_sn_multi(allctrs, galaxy, datas, weights, atms):
 
     where the indicies are
     """
-    EPS = 0.001  # size of change in spaxels for gradient calculation
 
     nepochs = len(datas)
-    allctrs = allctrs.reshape((nepochs+1, 2))
-    snctr = tuple(allctrs[nepochs, :])
+
+    snctr_ind = slice(2*nepochs, 2*nepochs+2)
+    snctr = tuple(allctrs[snctr_ind])
 
     # initialize return values
-    grad = np.zeros_like(allctrs)
     chisq = 0.
+    chisqgrad = np.zeros_like(allctrs)
 
     for i in range(nepochs):
         data = datas[i]
         weight = weights[i]
         atm = atms[i]
-        ctr = tuple(allctrs[i, :])
+        ctr_ind = slice(2*i, 2*i+2)
+        ctr = tuple(allctrs[ctr_ind])
 
-        # calculate chisq for this epoch; add to total.
-        gal = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
-        psf = atm.evaluate_point_source(snctr, data.shape[1:3], ctr)
-        sky, sn = determine_sky_and_sn(gal, psf, data, weight)
-        scene = sky[:, None, None] + gal + sn[:, None, None] * psf
-        epoch_chisq = np.sum(weight * (data - scene)**2)
-        chisq += epoch_chisq
+        g, ggrad = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr,
+                                       grad=True)
+        s, sgrad = atm.evaluate_point_source(snctr, data.shape[1:3], ctr,
+                                             grad=True)
 
-        # calculate change in chisq from changing the sn position,
-        # in this epoch.
-        for j, snctr2 in ((0, (snctr[0]+EPS, snctr[1]    )),
-                          (1, (snctr[0]    , snctr[1]+EPS))):
-            psf = atm.evaluate_point_source(snctr2, data.shape[1:3], ctr)
-            sky, sn = determine_sky_and_sn(gal, psf, data, weight)
-            scene = sky[:, None, None] + gal + sn[:, None, None] * psf
-            new_epoch_chisq = np.sum(weight * (data - scene)**2)
-            grad[nepochs, j] += (new_epoch_chisq - epoch_chisq) / EPS
+        # add galaxy gradient with SN position
+        ggrad = np.vstack((ggrad, np.zeros_like(ggrad)))
 
-        # calculate change in chisq from changing the data position for
-        # this epoch.
-        for j, ctr2 in ((0, (ctr[0]+EPS, ctr[1]    )),
-                        (1, (ctr[0]    , ctr[1]+EPS))):
-            gal = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr2)
-            psf = atm.evaluate_point_source(snctr, data.shape[1:3], ctr2)
-            sky, sn = determine_sky_and_sn(gal, psf, data, weight)
-            scene = sky[:, None, None] + gal + sn[:, None, None] * psf
-            new_epoch_chisq = np.sum(weight * (data - scene)**2)
-            grad[i, j] = (new_epoch_chisq - epoch_chisq) / EPS
+        sky, sn, skygrad, sngrad = sky_and_sn(data, weight, g, s,
+                                              ggrad=ggrad, sgrad=sgrad)
+
+        scene = sky[:, None, None] + g + sn[:, None, None] * s
+        diff = data - scene
+        chisq += np.sum(weight * diff**2)
+
+        # gradient on chisq for this epoch with position and sn position
+        dscene = (skygrad[:, :, None, None] + ggrad +
+                  sngrad[:, :, None, None] * s + sn[:, None, None] * sgrad)
+        dchisq = -2. * np.sum(weight * diff * dscene, axis=(1, 2, 3))
+
+        # add gradient to right place in chisqgrad
+        chisqgrad[ctr_ind] += dchisq[0:2]
+        chisqgrad[snctr_ind] += dchisq[2:4]
 
     # reshape gradient to 1-d upon return.
-    return chisq, np.ravel(grad)
+    return chisq, chisqgrad
 
 def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, atms):
     """Fit data pointing (nepochs), SN position (in model frame),
@@ -569,7 +576,7 @@ def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, atms):
         gal = atms[i].evaluate_galaxy(galaxy, datas[i].shape[1:3], fctrs[i])
         psf = atms[i].evaluate_point_source(fsnctr, datas[i].shape[1:3],
                                             fctrs[i])
-        sky, sn = determine_sky_and_sn(gal, psf, datas[i], weights[i])
+        sky, sn = sky_and_sn(datas[i], weights[i], gal, psf)
         skys.append(sky)
         sne.append(sn)
 

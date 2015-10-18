@@ -8,7 +8,7 @@ from numpy.testing import assert_allclose
 from scipy.optimize import check_grad, approx_fprime
 
 import cubefit
-from cubefit.fitting import (determine_sky_and_sn,
+from cubefit.fitting import (sky_and_sn,
                              chisq_galaxy_single,
                              chisq_galaxy_sky_multi,
                              chisq_position_sky_sn_multi)
@@ -50,7 +50,7 @@ def plot_gradient(im, fname, **kwargs):
 
 # -----------------------------------------------------------------------------
 
-def test_determine_sky_and_sn():
+def test_sky_and_sn():
     truesky = 3. * np.ones((10,))
     truesn = 2. * np.ones((10,))
 
@@ -61,7 +61,7 @@ def test_determine_sky_and_sn():
     data = gal + truesky[:, None, None] + truesn[:, None, None] * psf
     weight = np.ones_like(data)
     
-    sky, sn = cubefit.fitting.determine_sky_and_sn(gal, psf, data, weight)
+    sky, sn = cubefit.fitting.sky_and_sn(data, weight, gal, psf)
 
     assert_allclose(sky, truesky)
     assert_allclose(sn, truesn)

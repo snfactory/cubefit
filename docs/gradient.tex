@@ -374,7 +374,7 @@ data and SN positions. (Note that $s_i$ is affected by both positions, $g_i$ is 
 %denom = AC - B^2
 \begin{array}{ccc}
 A = \sum_i w_i s_i^2    & \frac{dA}{dx_\ast} = \sum_i 2 w_i s_i \frac{ds_i}{dx_\ast}   &   (x_\ast \in \{x_{data}, x_{sn}\}) \\
-B = -\sum_i w_i s_i    & \frac{dB}{dx_\ast} = -\sum_i w_i \frac{ds_i}{dx_\ast} \\
+B = \sum_i w_i s_i    & \frac{dB}{dx_\ast} = \sum_i w_i \frac{ds_i}{dx_\ast} \\
 C = \sum_i w_i         & \frac{dC}{dx_\ast} = 0 \\
 D = \sum_i w_i d_i     & \frac{dD}{dx_\ast} = 0 \\% wd
 E = \sum_i w_i d_i s_i  & \frac {dE}{dx_\ast} = \sum_i w_i d_i  \frac{ds_i}{dx_\ast} \\ % wdsn
@@ -389,30 +389,30 @@ is the data and $w_i$ is the weight of the data. The SN amplitude, a
 scalar here, is given by
 
 \begin{equation}
-SN = (DB + EC - FB - GC) / (AC - B^2)
+SN = (-DB + EC + FB - GC) / (AC - B^2)
 \end{equation}
 
 \noindent (Derivation not shown.) Taking the derivative with
 respect to $x_\ast$,
 
 \begin{eqnarray*}
-\frac{d(SN)}{dx_\ast} &=& \frac{D'B + DB' + E'C + EC' - F'B - FB' - G'C - GC'}{AC - B^2} + \\
+\frac{d(SN)}{dx_\ast} &=& \frac{-D'B - DB' + E'C + EC' + F'B + FB' - G'C - GC'}{AC - B^2} + \\
                      & & (SN) \frac{A'C + AC' - 2BB'}{AC-B^2} \\
-                     &=& \frac{DB' + E'C - F'B - FB' - G'C}{AC - B^2} + (SN) \frac{A'C - 2BB'}{AC-B^2}
+                     &=& \frac{-DB' + E'C + F'B + FB' - G'C}{AC - B^2} + (SN) \frac{A'C - 2BB'}{AC-B^2}
 \end{eqnarray*}
 
 Similar to the SN amlitude, the sky is given by
 
 \begin{equation}
-sky = (DA + EB - FA - GB) / (AC - B^2)
+sky = (DA - EB - FA + GB) / (AC - B^2)
 \end{equation}
 
 \noindent The derivative is
 
 \begin{eqnarray*}
-\frac{d(sky)}{dx_\ast} &=& \frac{D'A + DA' + E'B + EB' - F'A - FA' - G'B - GB'}{AC - B^2} + \\
-                   & &  + (SN) \frac{A'C + AC' - 2BB'}{AC-B^2} \\
-                   &=& \frac{DA' + E'B + EB' - F'A - FA' - G'B - GB'}{AC - B^2} + (SN) \frac{A'C - 2BB'}{AC-B^2}
+\frac{d(sky)}{dx_\ast} &=& \frac{D'A + DA' - E'B - EB' - F'A - FA' + G'B + GB'}{AC - B^2} + \\
+                   & &  + (sky) \frac{A'C + AC' - 2BB'}{AC-B^2} \\
+                   &=& \frac{DA' - E'B - EB' - F'A - FA' + G'B + GB'}{AC - B^2} + (sky) \frac{A'C - 2BB'}{AC-B^2}
 \end{eqnarray*}
 
 

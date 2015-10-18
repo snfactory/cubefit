@@ -74,7 +74,7 @@ def yxbounds(shape1, shape2):
     return (-yd, yd), (-xd, xd)
 
 
-def fft_shift_phasor(n, d):
+def fft_shift_phasor(n, d, grad=False):
     """Return a 1-d complex array of length `n` that, when mulitplied
     element-wise by another array in Fourier space, results in a shift
     by `d` in real space.
@@ -132,10 +132,17 @@ def fft_shift_phasor(n, d):
     if n % 2 == 0:
         result[n/2] = np.real(result[n/2])
 
-    return result
+    if grad:
+        df = 2. * np.pi * fft.fftfreq(n)
+        dresult = (-np.sin(f) -1j*np.cos(f)) * df
+        if n % 2 == 0:
+            dresult[n/2] = np.real(dresult[n/2])
+        return result, dresult
 
+    else:
+        return result
 
-def fft_shift_phasor_2d(shape, offset):
+def fft_shift_phasor_2d(shape, offset, grad=False):
     """Return phasor array used to shift an array (in real space) by
     multiplication in fourier space.
     
@@ -155,47 +162,16 @@ def fft_shift_phasor_2d(shape, offset):
     
     ny, nx = shape
     dy, dx = offset
-    return np.outer(fft_shift_phasor(ny, dy),
-                    fft_shift_phasor(nx, dx))
 
+    yphasor = fft_shift_phasor(ny, dy, grad=grad)
+    xphasor = fft_shift_phasor(nx, dx, grad=grad)
 
-def fft_shift_phasor_2d_prime(shape, offset):
-    """fft_shift_phasor_2d with derivative.
+    if grad:
+        res = np.outer(yphasor[0], xphasor[0])
+        dres_dy = np.outer(yphasor[1], xphasor[0])
+        dres_dx = np.outer(yphasor[0], xphasor[1])
+        resgrad = np.concatenate((dres_dy[None, :, :], dres_dx[None, :, :]))
+        return res, resgrad
 
-    Returns
-    -------
-    val :  np.ndarray (complex)
-        Complex array with shape ``shape``.
-    dm : array of shape `shape`
-        Der. w.r.t. first dimension in offset.
-    dn : array of shape `shape`
-        etc.
-    """
-
-    m, n = shape
-    offm, offn = offset
-
-    # fftfreq() gives frequency corresponding to each array element in
-    # an FFT'd array (between -0.5 and 0.5). Multiplying by 2pi expands
-    # this to (-pi, pi). Finally multiply by offset in array elements.
-    fm = 2. * np.pi * fft.fftfreq(m) * (offm % m)
-    fn = 2. * np.pi * fft.fftfreq(n) * (offn % n)
-
-    phasorm =  np.cos(fm) - 1j*np.sin(fm)
-    phasorn =  np.cos(fn) - 1j*np.sin(fn)
-
-    dphasorm = (-np.sin(fm) - 1j*np.cos(fm)) * (2. * np.pi * fft.fftfreq(m))
-    dphasorn = (-np.sin(fn) - 1j*np.cos(fn)) * (2. + np.pi + fft.fftfreq(n))
-
-    # This is the part where we reset the phasor at the nyquist frequency
-    # to be real (see comments above).
-    if m % 2 == 0:
-        phasorm[m/2] = np.real(phasorm[m/2])
-    if n % 2 == 0:
-        phasorn[n/2] = np.real(phasorn[n/2])
-
-    # outer product is a_i * b_j
-    # da_i * b_j
-    resultm = np.outer(dphasorm, phasorn)
-    resultn = np.outer(phasorm, dphasorn)
-    return np.outer(phasorm, phasorn), resultm, resultn
+    else:
+        return np.outer(yphasor, xphasor)
