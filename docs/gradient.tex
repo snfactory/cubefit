@@ -329,4 +329,91 @@ full replacement for $\W \rvect$ would be:
 w * rprime - vtwrprime
 \end{verbatim}
 
+\section{Fitting SN and Data Positions}
+
+In the final step of CubeFit, we fit simultaneously the position of
+the data with respect to the galaxy and the position of the SN with
+respect to the galaxy. Here, we calculate the analytic gradient of the
+$\chi^2$ function used in this fit.
+
+\begin{eqnarray*}
+\chi^2 &=& \sum_{t, \lambda} \sum_i w_i (d_i - (scene)_i)^2 \\
+       &=& \sum_{t, \lambda} \sum_i w_i (d_i - (sky + g_i + SN s_i))^2
+\end{eqnarray*}
+
+\noindent where the first sum is over epochs and wavelengths and the
+second sum is over pixels at a give wavelength. $g_i$ and $s_i$ depend
+on the positions that we are optimizing, as do $sky$ and $SN$, which
+are determined based on the galaxy model, $\vec{g}$ and SN model,
+$\vec{s}$.  The derivative of $\chi^2$ with respect to the position
+$x_j$ of the data is
+
+\begin{eqnarray*}
+\frac{d\chi^2}{dx_\ast} &=& \sum_{t, \lambda} \sum_i -2 w_i (d_i - (scene)_i) \frac{d(scene)_i}{dx_\ast} \\
+                     &=& \sum_{t, \lambda} \sum_i -2 w_i (d_i - (scene)_i) \frac{d}{dx_\ast} (sky + g_i + SN s_i) \\
+                     &=&  \sum_{t, \lambda} \sum_i -2 w_i (d_i - (scene)_i) \left(\frac{d(sky)}{dx_\ast} + \frac{dg_i}{dx_\ast} + \frac{d(SN)}{dx_\ast} s_i + SN \frac{ds_i}{dx_\ast}\right)
+\end{eqnarray*}
+
+\noindent If $x_\ast$ is an SN position parameter then $dg_i/dx_\ast = 0$,
+but otherwise all terms above are nonzero: $sky$ and $SN$
+depend on $x_\ast$ through their dependence on $\vec{g}$ and
+$\vec{s}$. The derivatives $dg_i/dx_\ast$ and $ds_i/dx_\ast$ are fairly
+simple to compute. $\vec{g}$ and $\vec{s}$ are computed via
+multiplication by a phase shift array in Fourier space. The phase
+shift array is the only part that depends on position and everything
+else is just multiplication. So all we need to do is to subsitute the
+derivative on the phase shift array, then carry out all calculations
+as we normally would.
+
+We must also determine the gradient in $sky$ and $SN$ with respect to
+position.  We start by defining some quantities for
+convenience (in the left column), and taking their derivatives with respect to
+data and SN positions. (Note that $s_i$ is affected by both positions, $g_i$ is only affected by the data position.)
+
+\begin{displaymath}
+%denom = AC - B^2
+\begin{array}{ccc}
+A = \sum_i w_i s_i^2    & \frac{dA}{dx_\ast} = \sum_i 2 w_i s_i \frac{ds_i}{dx_\ast}   &   (x_\ast \in \{x_{data}, x_{sn}\}) \\
+B = -\sum_i w_i s_i    & \frac{dB}{dx_\ast} = -\sum_i w_i \frac{ds_i}{dx_\ast} \\
+C = \sum_i w_i         & \frac{dC}{dx_\ast} = 0 \\
+D = \sum_i w_i d_i     & \frac{dD}{dx_\ast} = 0 \\% wd
+E = \sum_i w_i d_i s_i  & \frac {dE}{dx_\ast} = \sum_i w_i d_i  \frac{ds_i}{dx_\ast} \\ % wdsn
+F = \sum_i w_i g_i     & \frac{dF}{dx_{data}} = \sum_i w_i \frac{dg_i}{dx_{data}}   &    \frac{dF}{dx_{sn}} = 0 \\ % wgal
+G = \sum_i w_i g_i s_i  & \frac{dG}{dx_{data}} = \sum_i w_i \left(g_i \frac{ds_i}{dx_{data}} + s_i \frac{dg_i}{dx_{data}} \right) & \frac{dG}{dx_{sn}} = \sum_i w_i g_i \frac{ds_i}{dx_{sn}} % wgalsn
+\end{array}
+\end{displaymath}
+
+\noindent where $i$ ranges over all pixels at the given wavelength,
+$s_i$ is the SN model (scaled to 1) $g_i$ is the galaxy model, $d_i$
+is the data and $w_i$ is the weight of the data. The SN amplitude, a
+scalar here, is given by
+
+\begin{equation}
+SN = (DB + EC - FB - GC) / (AC - B^2)
+\end{equation}
+
+\noindent (Derivation not shown.) Taking the derivative with
+respect to $x_\ast$,
+
+\begin{eqnarray*}
+\frac{d(SN)}{dx_\ast} &=& \frac{D'B + DB' + E'C + EC' - F'B - FB' - G'C - GC'}{AC - B^2} + \\
+                     & & (SN) \frac{A'C + AC' - 2BB'}{AC-B^2} \\
+                     &=& \frac{DB' + E'C - F'B - FB' - G'C}{AC - B^2} + (SN) \frac{A'C - 2BB'}{AC-B^2}
+\end{eqnarray*}
+
+Similar to the SN amlitude, the sky is given by
+
+\begin{equation}
+sky = (DA + EB - FA - GB) / (AC - B^2)
+\end{equation}
+
+\noindent The derivative is
+
+\begin{eqnarray*}
+\frac{d(sky)}{dx_\ast} &=& \frac{D'A + DA' + E'B + EB' - F'A - FA' - G'B - GB'}{AC - B^2} + \\
+                   & &  + (SN) \frac{A'C + AC' - 2BB'}{AC-B^2} \\
+                   &=& \frac{DA' + E'B + EB' - F'A - FA' - G'B - GB'}{AC - B^2} + (SN) \frac{A'C - 2BB'}{AC-B^2}
+\end{eqnarray*}
+
+
 \end{document}
