@@ -275,26 +275,26 @@ def main(configfname, outfname, dataprefix="", logfname=None,
 
     logging.info("fitting position of all %d non-refs and SN position",
                  len(nonrefs))
-    datas = [cubes[i].data for i in nonrefs]
-    weights = [cubes[i].weight for i in nonrefs]
-    ctrs = [(yctr[i], xctr[i]) for i in nonrefs]
-    atms_nonrefs = [atms[i] for i in nonrefs]
-    fctrs, snctr, fskys, fsne = fit_position_sky_sn_multi(galaxy, datas,
-                                                          weights, ctrs,
-                                                          snctr, atms_nonrefs)
+    if len(nonrefs) > 0:
+        datas = [cubes[i].data for i in nonrefs]
+        weights = [cubes[i].weight for i in nonrefs]
+        ctrs = [(yctr[i], xctr[i]) for i in nonrefs]
+        atms_nonrefs = [atms[i] for i in nonrefs]
+        fctrs, snctr, fskys, fsne = fit_position_sky_sn_multi(
+            galaxy, datas, weights, ctrs, snctr, atms_nonrefs)
 
-    # put fitted results back in parameter lists.
-    for i,j in enumerate(nonrefs):
-        skys[j, :] = fskys[i]
-        sn[j, :] = fsne[i]
-        yctr[j], xctr[j] = fctrs[i]
+        # put fitted results back in parameter lists.
+        for i,j in enumerate(nonrefs):
+            skys[j, :] = fskys[i]
+            sn[j, :] = fsne[i]
+            yctr[j], xctr[j] = fctrs[i]
 
     tsteps["fit positions of nonrefs & SN"] = datetime.now()
 
     # -------------------------------------------------------------------------
     # optional step(s)
 
-    if refitgal:
+    if refitgal and len(nonrefs) > 0:
 
         if diagdir:
             fname = os.path.join(diagdir, 'step3.fits')
