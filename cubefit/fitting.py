@@ -4,7 +4,7 @@ import copy
 import logging
 
 import numpy as np
-from scipy.optimize import fmin_l_bfgs_b, fmin_bfgs, fmin
+from scipy.optimize import fmin_l_bfgs_b
 
 from .utils import yxbounds
 
@@ -21,17 +21,6 @@ def _check_result(warnflag, msg):
                            "in fmin_l_bfgs_b()")
     if warnflag == 2:
         raise RuntimeError("fmin_l_bfgs_b() exited with warnflag=2: %s" % msg)
-    raise RuntimeError("unknown warnflag: %s" % warnflag)
-
-
-def _check_result_fmin(warnflag):
-    """Check result of fmin()"""
-    if warnflag == 0:
-        return
-    if warnflag == 1:
-        raise RuntimeError("maximum number of function calls reached in fmin")
-    if warnflag == 2:
-        raise RuntimeError("maximum number of iterations reached in fmin")
     raise RuntimeError("unknown warnflag: %s" % warnflag)
 
 
