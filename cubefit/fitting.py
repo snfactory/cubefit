@@ -142,6 +142,28 @@ def guess_sky(cube, npix=10):
     return sky
 
 
+def determine_sky(data, weight, g, ggrad=None):
+    """Determine optimal sky given data and galaxy model"""
+
+    num = np.sum((data - g) * weight, axis=(1, 2))
+    denom = np.sum(weight, axis=(1, 2))
+
+    # avoid divide-by-zero errors
+    mask = (denom == 0.)
+    denom[mask] = 1.
+
+    sky = num / denom
+    sky[mask] = 0.
+
+    if ggrad is None:
+        return sky
+
+    else:
+        skygrad = -np.sum(ggrad * weight, axis=(2, 3)) / denom
+        skygrad[mask] = 0.
+        return sky, skygrad
+
+
 def sky_and_sn(data, weight, g, s, ggrad=None, sgrad=None):
     """Estimate the sky and SN level for a single epoch.
 
@@ -236,13 +258,11 @@ def chisq_galaxy_sky_single(galaxy, data, weight, ctr, atm):
     """Chi^2 and gradient (not including regularization term) for 
     single epoch, allowing sky to float."""
 
-    scene = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
+    g = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
+    sky = determine_sky(data, weight, g)
+    scene = sky[:, None, None] + g
+
     r = data - scene
-
-    # subtract off sky (weighted avg of residuals)
-    sky = np.average(r, weights=weight, axis=(1, 2))
-    r -= sky[:, None, None]
-
     wr = weight * r
     val = np.sum(wr * r)
 
@@ -268,6 +288,25 @@ def chisq_galaxy_sky_multi(galaxy, datas, weights, ctrs, atms):
         grad += epochgrad
 
     return val, grad
+
+
+def chisq_position_sky(ctr, galaxy, data, weight, atm):
+    """chisq and gradient for fit_position_sky"""
+
+    g, ggrad = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr, grad=True)
+
+    sky, skygrad = determine_sky(data, weight, g, ggrad=ggrad)
+
+    scene = sky[:, None, None] + g
+    dscene = skygrad[:, :, None, None] + ggrad
+
+    diff = data - scene
+    chisq = np.sum(weight * diff**2)
+    chisqgrad = -2. * np.sum(weight * diff * dscene, axis=(1, 2, 3))
+
+    logging.debug("(%f, %f) chisq=%f", ctr[0], ctr[1], chisq)
+
+    return chisq, chisqgrad
 
 
 def fit_galaxy_single(galaxy0, data, weight, ctr, atm, regpenalty, factor):
@@ -324,11 +363,13 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty,
     nepochs = len(datas)
 
     # Get initial chisq values for info output.
-    cvals_init = []
+    cvals = []
     for data, weight, ctr, atm in zip(datas, weights, ctrs, atms):
         cval, _ = chisq_galaxy_sky_single(galaxy0, data, weight, ctr, atm)
-        cvals_init.append(cval)
+        cvals.append(cval)
 
+    logging.info(u"        initial \u03C7\u00B2/epoch: [%s]",
+                 ", ".join(["%8.2f" % v for v in cvals]))
 
     # Define objective function to minimize.
     # Returns chi^2 (including regularization term) and its gradient.
@@ -352,7 +393,6 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty,
     galparams0 = np.ravel(galaxy0)  # fit parameters must be 1-d
     galparams, f, d = fmin_l_bfgs_b(objective, galparams0, factr=factor)
     _check_result(d['warnflag'], d['task'])
-    _log_result("fmin_l_bfgs_b", f, d['nit'], d['funcalls'])
 
     galaxy = galparams.reshape(galaxy0.shape)
 
@@ -361,11 +401,10 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty,
     for data, weight, ctr, atm in zip(datas, weights, ctrs, atms):
         cval, _ = chisq_galaxy_sky_single(galaxy, data, weight, ctr, atm)
         cvals.append(cval)
-
-    logging.info(u"        initial \u03C7\u00B2/epoch: [%s]",
-                 ", ".join(["%8.2f" % v for v in cvals_init]))
     logging.info(u"        final   \u03C7\u00B2/epoch: [%s]",
                  ", ".join(["%8.2f" % v for v in cvals]))
+
+    _log_result("fmin_l_bfgs_b", f, d['nit'], d['funcalls'])
 
     # get last-calculated skys, given galaxy.
     skys = []
@@ -397,44 +436,30 @@ def fit_position_sky(galaxy, data, weight, ctr0, atm):
     """
 
     BOUND = 3. # +/- position bound in spaxels
-    minbound = np.array(ctr0) - BOUND
-    maxbound = np.array(ctr0) + BOUND
 
-    gshape = galaxy.shape[1:3]  # model shape
-    dshape = data.shape[1:3]
+    bounds = [(c - BOUND, c + BOUND) for c in ctr0]
 
-    (yminabs, ymaxabs), (xminabs, xmaxabs) = yxbounds(gshape, dshape)
-    minbound[0] = max(minbound[0], yminabs)  # ymin
-    maxbound[0] = min(maxbound[0], ymaxabs)  # ymax
-    minbound[1] = max(minbound[1], xminabs)  # xmin
-    maxbound[1] = min(maxbound[1], xmaxabs)  # xmax
+    # bounds such that arrays still overlap, returned as
+    # (ymin, ymax), (xmin, xmax)
+    absbounds = yxbounds(galaxy.shape[1:3], data.shape[1:3])
 
-    def objective_func(ctr):
-        if not (minbound[0] < ctr[0] < maxbound[0] and
-                minbound[1] < ctr[1] < maxbound[1]):
-            return np.inf
-        gal = atm.evaluate_galaxy(galaxy, dshape, ctr)
+    # limit bounds to absolute bounds.
+    for i in range(len(bounds)):
+        bounds[i] = (max(bounds[i][0], absbounds[i][0]),
+                     min(bounds[i][1], absbounds[i][1]))
 
-        # determine sky (linear problem)
-        resid = data - gal
-        sky = np.average(resid, weights=weight, axis=(1, 2))
-
-        out = np.sum(weight * (resid - sky[:, None, None])**2)
-
-        logging.debug("(%f, %f) %f", ctr[0], ctr[1], out)
-
-        return out
-
-    ctr, fval, niter, ncall, warnflag = fmin(objective_func, ctr0,
-                                             full_output=1, disp=0)
-    _check_result_fmin(warnflag)
-    _log_result("fmin", fval, niter, ncall)
+    ctr, f, d = fmin_l_bfgs_b(chisq_position_sky, ctr0,
+                              args=(galaxy, data, weight, atm),
+                              iprint=0, callback=None, bounds=bounds)
+    _check_result(d['warnflag'], d['task'])
+    _log_result("fmin_l_bfgs_b", f, d['nit'], d['funcalls'])
 
     # get last-calculated sky.
-    gal = atm.evaluate_galaxy(galaxy, dshape, ctr)
-    sky = np.average(data - gal, weights=weight, axis=(1, 2))
+    g = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
+    sky = determine_sky(data, weight, g)
 
     return tuple(ctr), sky
+
 
 def chisq_position_sky_sn_multi(allctrs, galaxy, datas, weights, atms):
     """Function to minimize. `allctrs` is a 1-d ndarray:
