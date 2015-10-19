@@ -41,62 +41,6 @@ def _log_result(fn, fval, niter, ncall):
                  niter, ncall, fval)
 
 
-def guess_sky_clipping(cube, clip, maxiter=10):
-    """Guess sky based on lower signal spaxels compatible with variance
-
-    Parameters
-    ----------
-    cube : DataCube
-    clip : float
-        Number of standard deviations (not variances) to use as
-        the clipping limit (on individual pixels).
-    maxiter : int
-        Maximum number of sigma-clipping interations. Default is 10.
-
-    Returns
-    -------
-    sky : np.ndarray (1-d)
-        Sky level for each wavelength.
-    """
-
-    nspaxels = cube.ny * cube.nx
-
-    weight = np.copy(cube.weight)
-    var = 1.0 / weight
-
-    # Loop until mask stops changing size or until a maximum
-    # number of iterations.
-    avg = None
-    oldmask = None
-    mask = None
-    for j in range(maxiter):
-        oldmask = mask
-
-        # weighted average spectrum (masked array).
-        # We use a masked array because some of the wavelengths
-        # may have all-zero weights for every pixel.
-        # The masked array gets propagated so that `mask` is a
-        # masked array of booleans!
-        avg = np.ma.average(cube.data, weights=weight, axis=(1, 2))
-        deviation = cube.data - avg[:, None, None]
-        mask = deviation**2 > clip**2 * var
-
-        # Break if the mask didn't change.
-        if (oldmask is not None and
-            (mask.data == oldmask.data).all() and
-            (mask.mask == oldmask.mask).all()):
-            break
-
-        # set weights of masked pixels to zero. masked elements
-        # of the mask are *not* changed.
-        weight[mask] = 0.0
-        var[mask] = 0.0
-
-    # convert to normal (non-masked) array. Masked wavelengths are
-    # set to zero in this process.
-    return np.asarray(avg)
-
-
 def guess_sky(cube, npix=10):
     """Guess sky based on lowest signal pixels.
 
