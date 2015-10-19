@@ -32,14 +32,10 @@ REFWAVE = 5000.  # reference wavelength in Angstroms for PSF params and ADR
 
 
 def setup_logging(loglevel, logfname=None):
-    if logfname is None:
-        logfmt = "\033[1m\033[34m%(levelname)s:\033[0m %(message)s"
-    else:
-        if os.path.exists(logfname):
-            os.remove(logfname)
-        logfmt = "%(levelname)s %(message)s"
-
-    logging.basicConfig(filename=logfname, format=logfmt, level=loglevel)
+    if logfname is not None and os.path.exists(logfname):
+        os.remove(logfname)
+    logging.basicConfig(filename=logfname, format="%(levelname)s %(message)s",
+                        level=loglevel)
 
 
 def main(configfname, outfname, dataprefix="", logfname=None,

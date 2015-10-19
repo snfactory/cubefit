@@ -3,13 +3,8 @@ RESULTDIR = results
 DIAGDIR = diagnostics
 PLOTDIR = plots
 LOGLEVEL = info
-LOGFILE = N
 PLOTEPOCHS = N
-ifeq ($(LOGFILE), Y)
-	LOGFILEARG = --logfile=$(RESULTDIR)/$*.log
-else
-	LOGFILEARG = 
-endif
+
 ifeq ($(PLOTEPOCHS), Y)
 	PLOTEPOCHSARG = --plotepochs
 else
@@ -68,9 +63,10 @@ $(RESULTDIR)/%.fits :
         $(RESULTDIR)/$*.fits \
         --dataprefix=$(DATADIR)/$* \
         --diagdir=$(DIAGDIR)/$* \
-        --loglevel=$(LOGLEVEL) $(LOGFILEARG) \
+        --loglevel=$(LOGLEVEL) \
         --mu_wave=0.07 \
-        --mu_xy=0.001
+        --mu_xy=0.001 \
+	2>&1 | tee $(RESULTDIR)/$*.log
 
 $(foreach name,$(names),$(name)-plots) : %-plots :
 	mkdir -p $(PLOTDIR)/$*
