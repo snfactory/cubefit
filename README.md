@@ -22,6 +22,7 @@ following dependencies:
 - scipy (for optimization)
 - [fitsio](https://github.com/esheldon/fitsio) (for FITS file I/O)
 - [pyfftw](http://hgomersall.github.io/pyFFTW) (for fast FFTs)
+- cython
 
 
 Usage

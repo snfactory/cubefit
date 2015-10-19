@@ -1,8 +1,8 @@
 # Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
+__pycache__
 
-# C extensions
+# C extensions / cython-generated
+cubefit/psf.c
 *.so
 
 # Distribution / packaging
