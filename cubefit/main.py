@@ -26,7 +26,6 @@ SNIFS_LATITUDE = np.deg2rad(19.8228)
 SPAXEL_SIZE = 0.43
 MIN_NMAD = 2.5  # Minimum Number of Median Absolute Deviations above
                 # the minimum spaxel value in fit_position
-DTYPE = np.float64
 LBFGSB_FACTOR = 1e10
 REFWAVE = 5000.  # reference wavelength in Angstroms for PSF params and ADR
 
@@ -110,7 +109,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
     nt = len(cfg["filenames"])
 
     logging.info("reading %d data cubes", nt)
-    cubes = [read_datacube(os.path.join(dataprefix, fname), dtype=DTYPE)
+    cubes = [read_datacube(os.path.join(dataprefix, fname))
              for fname in cfg["filenames"]]
     wave = cubes[0].wave
     wavewcs = cubes[0].wavewcs
@@ -156,13 +155,13 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         # make adr_refract[0, :] correspond to y and adr_refract[1, :] => x
         adr_refract = np.flipud(adr_refract)
 
-        atms.append(AtmModel(psf, adr_refract, dtype=DTYPE, fftw_threads=1))
+        atms.append(AtmModel(psf, adr_refract))
 
     # -------------------------------------------------------------------------
     # Initialize all model parameters to be fit
 
-    galaxy = np.zeros((nw, MODEL_SHAPE[0], MODEL_SHAPE[1]), dtype=DTYPE)
-    sn = np.zeros((nt, nw), dtype=DTYPE)  # SN spectrum at each epoch
+    galaxy = np.zeros((nw, MODEL_SHAPE[0], MODEL_SHAPE[1]), dtype=np.float64)
+    sn = np.zeros((nt, nw), dtype=np.float64)  # SN spectrum at each epoch
     snctr = (0.0, 0.0)
     xctr = np.array(cfg["xcenters"])
     yctr = np.array(cfg["ycenters"])
@@ -174,12 +173,12 @@ def main(configfname, outfname, dataprefix="", logfname=None,
     # Regularization penalty parameters
 
     # Calculate rough average galaxy spectrum from all final refs.
-    spectra = np.zeros((len(refs), len(wave)), dtype=DTYPE)
+    spectra = np.zeros((len(refs), len(wave)), dtype=np.float64)
     for j, i in enumerate(refs):
         spectra[j] = np.average(cubes[i].data, axis=(1, 2)) - skys[i]
     mean_gal_spec = np.average(spectra, axis=0)
 
-    galprior = np.zeros((nw, MODEL_SHAPE[0], MODEL_SHAPE[1]), dtype=DTYPE)
+    galprior = np.zeros((nw, MODEL_SHAPE[0], MODEL_SHAPE[1]), dtype=np.float64)
 
     regpenalty = RegularizationPenalty(galprior, mean_gal_spec, mu_xy, mu_wave)
 
@@ -277,7 +276,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         ctrs = [(yctr[i], xctr[i]) for i in nonrefs]
         atms_nonrefs = [atms[i] for i in nonrefs]
         fctrs, snctr, fskys, fsne = fit_position_sky_sn_multi(
-            galaxy, datas, weights, ctrs, snctr, atms_nonrefs)
+            galaxy, datas, weights, ctrs, snctr, atms_nonrefs, LBFGSB_FACTOR)
 
         # put fitted results back in parameter lists.
         for i,j in enumerate(nonrefs):
@@ -344,7 +343,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         ctrs = [(yctr[i], xctr[i]) for i in nonrefs]
         atms_nonrefs = [atms[i] for i in nonrefs]
         fctrs, snctr, fskys, fsne = fit_position_sky_sn_multi(
-            galaxy, datas, weights, ctrs, snctr, atms_nonrefs)
+            galaxy, datas, weights, ctrs, snctr, atms_nonrefs, LBFGSB_FACTOR)
 
         # put fitted results back in parameter lists.
         for i,j in enumerate(nonrefs):

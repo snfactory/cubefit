@@ -445,7 +445,7 @@ def chisq_position_sky_sn_multi(allctrs, galaxy, datas, weights, atms):
     # reshape gradient to 1-d upon return.
     return chisq, chisqgrad
 
-def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, atms):
+def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, atms, factor):
     """Fit data pointing (nepochs), SN position (in model frame),
     SN amplitude (nepochs), and sky level (nepochs). This is meant to be
     used only on epochs with SN light.
@@ -518,7 +518,8 @@ def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, atms):
 
     fallctrs, f, d = fmin_l_bfgs_b(chisq_position_sky_sn_multi, allctrs0,
                                    args=(galaxy, datas, weights, atms),
-                                   iprint=0, callback=callback, bounds=bounds)
+                                   iprint=0, callback=callback, bounds=bounds,
+                                   factr=factor)
     _check_result(d['warnflag'], d['task'])
     _log_result("fmin_l_bfgs_b", f, d['nit'], d['funcalls'])
 
