@@ -1,3 +1,10 @@
+v0.3.0 (2015-10-19)
+===================
+
+- Switch from `fmin` to `fmin_l_bfgs_b` with analytic gradient in first
+  position fitting step.
+- Analytic gradient calculation in last position fitting step.
+
 v0.2.1 (2015-09-10)
 ===================
 
