@@ -256,4 +256,10 @@ can run tests with `./test.py`. Requires the `pytest` package
 License
 -------
 
-CubeFit is released under the MIT license. See LICENSE.md.
+All code in this repository is released under the MIT
+license. However, since CubeFit uses FFTW, which is GPL-licensed, the
+software as a whole is bound by the terms of the GPLv2.
+
+Practically, this means that one can copy the code here, remove the
+dependence on FFTW and release the code under the MIT license (or
+other permissive license).
