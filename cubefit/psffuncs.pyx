@@ -6,46 +6,15 @@ import cython
 
 cnp.import_array()  # To access the numpy C-API.
 
-__all__ = ["GaussMoffatPSF"]
+__all__ = ["gaussian_moffat_psf"]
 
-
-class GaussMoffatPSF:
-    """A Gaussian plus Moffat function 3-d point spread function.
-
-    This describes a separate analytic PSF at multiple (discrete) wavelengths.
-    At each wavelength, the PSF is described by two parameters: ellipticity
-    and alpha. These in turn determine the Gaussian and Moffat function
-    parameters.
-
-    Parameters
-    ----------
-    ellipticity : ndarray (1-d)
-    alpha : ndarray (1-d)
-    """
-
-    def __init__(self, ellipticity, alpha, subpix=1):
-        self.nw = len(ellipticity)
-        if not len(alpha) == self.nw:
-            raise ValueError("length of ellipticity and alpha must match")
-
-        self.ellipticity = np.abs(ellipticity)
-        self.alpha = np.abs(alpha)
-        self.subpix = subpix
-
-        # Correlated params (determined externally)
-        s0, s1 = 0.545, 0.215
-        b0, b1 = 1.685, 0.345
-        e0, e1 = 1.040, 0.0
-
-        self.sigma = s0 + s1 * self.alpha  # Gaussian parameter
-        self.beta  = b0 + b1 * self.alpha  # Moffat parameter
-        self.eta   = e0 + e1 * self.alpha  # gaussian ampl. / moffat ampl.
-
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
-    @cython.cdivision(True)
-    def __call__(self, shape, double[:] yctr, double[:] xctr, int subpix=0):
-        """Evaluate a gaussian+moffat function on a 3-d grid. 
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.cdivision(True)
+def gaussian_moffat_psf(double[:] sigma, double[:] alpha, double[:] beta,
+                        double[:] ellipticity, double[:] eta,
+                        double[:] yctr, double[:] xctr, shape, int subpix=1):
+        """Evaluate a gaussian+moffat function on each slice of a 3-d grid. 
 
         Parameters
         ----------
@@ -75,22 +44,11 @@ class GaussMoffatPSF:
         cdef double gnorm, mnorm, norm, g, m
         cdef double scale, area
         cdef double[:, :, :] outview
-        cdef double[:] sigma, alpha, beta, ellipticity, eta
-
-        if subpix == 0:
-            subpix = self.subpix
 
         scale = 1. / subpix
         area = scale * scale
 
-        # use memory views so we can index our arrays faster
-        sigma = self.sigma
-        alpha = self.alpha
-        beta = self.beta
-        ellipticity = self.ellipticity
-        eta = self.eta
-
-        nw = self.nw
+        nw = len(sigma)
         ny, nx = shape
 
         # allocate output buffer

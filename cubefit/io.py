@@ -4,12 +4,42 @@ import os
 import numpy as np
 import fitsio
 
-from .core import DataCube
 from .version import __version__
 
-__all__ = ["read_datacube", "write_results", "read_results"]
+__all__ = ["DataCube", "read_datacube", "write_results", "read_results"]
 
 SCALE_FACTOR = 1.e17
+
+
+class DataCube(object):
+    """A container for data and weight arrays.
+
+    Attributes
+    ----------
+    data : ndarray (3-d)
+    weight : ndarray (3-d)
+    wave : ndarray (1-d)
+    nw : int
+        length of wave, data.shape[0], weight.shape[0]
+    ny : int
+        data.shape[1], weight.shape[1]
+    nx : int
+        data.shape[2], weight.shape[2]
+    """
+    
+    def __init__(self, data, weight, wave, wavewcs=None):
+        if data.shape != weight.shape:
+            raise ValueError("shape of weight and data must match")
+        if len(wave) != data.shape[0]:
+            raise ValueError("length of wave must match data axis=1")
+        if wavewcs is None:
+            wavewcs = {}
+
+        self.data = data
+        self.weight = weight
+        self.wave = wave
+        self.nw, self.ny, self.nx = data.shape
+        self.wavewcs = wavewcs
 
 
 def wcs_to_wave(hdr):

@@ -2,7 +2,7 @@
 __pycache__
 
 # C extensions / cython-generated
-cubefit/psf.c
+cubefit/*.c
 *.so
 
 # Distribution / packaging

@@ -1,3 +1,11 @@
+v0.4.0 (unreleased)
+===================
+
+- Refactor `AtmModel` class to `PSF` classes.
+- Add PSF model `GaussianMoffatPSF` which samples point source directly on
+  output grid.
+
+
 v0.3.0 (2015-10-19)
 ===================
 

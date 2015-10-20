@@ -1,5 +1,4 @@
 from .adr import *
-from .core import *
 from .fitting import *
 from .io import *
 from .main import *

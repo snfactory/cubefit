@@ -64,21 +64,21 @@ def test_sky_and_sn():
     truesky = 3. * np.ones((10,))
     truesn = 2. * np.ones((10,))
 
-    gal = np.ones((10, 5, 5))  # fake galaxy, after convolution with PSF
-    psf = np.zeros((10, 5, 5))  
-    psf[:, 3, 3] = 1.  # psf is a single pixel
+    g = np.ones((10, 5, 5))  # fake galaxy, after convolution with PSF
+    s = np.zeros((10, 5, 5))  
+    s[:, 3, 3] = 1.  # psf is a single pixel
 
-    data = gal + truesky[:, None, None] + truesn[:, None, None] * psf
+    data = g + truesky[:, None, None] + truesn[:, None, None] * s
     weight = np.ones_like(data)
     
-    sky, sn = cubefit.fitting.sky_and_sn(data, weight, gal, psf)
+    sky, sn = cubefit.fitting.sky_and_sn(data, weight, g, s)
 
     assert_allclose(sky, truesky)
     assert_allclose(sn, truesn)
 
 class TestFitting:
     def setup_class(self):
-        """Create some dummy data and an AtmModel."""
+        """Create some dummy data and a PSF."""
 
         # some settings
         MODEL_SHAPE = (32, 32)
@@ -94,23 +94,27 @@ class TestFitting:
         self.truexctrs = xoffs + (nx-1)/2. - (MODEL_SHAPE[1]-1)/2.
 
         # Create a "true" underlying galaxy. This can be anything, but it
-        # should not be all zeros or flat. The fourth and fifth parameters
-        # are ellipticity and alpha.
+        # should not be all zeros or flat.
         ellip = 4.5 * np.ones(nw)
         alpha = 6.0 * np.ones(nw)
-        p = cubefit.GaussMoffatPSF(ellip, alpha)
-        truegal = p(MODEL_SHAPE, np.zeros(nw) - 2., np.zeros(nw) - 2.)
-        # debug:
-        truegal /= np.sum(truegal, axis=(1, 2))[:, None, None]
+        sigma = 6.0 * np.ones(nw)
+        beta = 2. * np.ones(nw)
+        eta = 1.04 * np.ones(nw)
+        truegal = cubefit.psffuncs.gaussian_moffat_psf(
+            sigma, alpha, beta, ellip, eta,
+            np.zeros(nw) - 2., np.zeros(nw) - 2., MODEL_SHAPE)
 
-        # Create a PSF. The fourth and fifth parameters are ellipticity and
-        # alpha.
+        # Create a PSF.
         ellip = 1.5 * np.ones(nw)
         alpha = 2.0 * np.ones(nw)
-        psfmodel = cubefit.GaussMoffatPSF(ellip, alpha)
-        psf = psfmodel(MODEL_SHAPE, np.zeros(nw), np.zeros(nw))
-        # debug
-        psf /= np.sum(psf, axis=(1, 2))[:, None, None]
+        sigma = 2.0 * np.ones(nw)
+        beta = 2. * np.ones(nw)
+        eta = 1.04 * np.ones(nw)
+        yctr = np.zeros(nw)
+        xctr = np.zeros(nw)
+        A = cubefit.psffuncs.gaussian_moffat_psf(sigma, alpha, beta, ellip,
+                                                 eta, yctr, xctr, MODEL_SHAPE)
+        self.psf = cubefit.TabularPSF(A)
 
         # create the data by convolving the true galaxy model with the psf
         # and taking a slice.
@@ -118,16 +122,12 @@ class TestFitting:
         for j in range(nt):
             data = np.empty((nw, ny, nx), dtype=np.float32)        
             for i in range(nw):
-                data_2d = fftconvolve(truegal[i], psf[i])
+                data_2d = fftconvolve(truegal[i], A[i])
                 data[i, :, :] = data_2d[yoffs[j]:yoffs[j]+ny, 
                                         xoffs[j]:xoffs[j]+nx]
             cubes.append(cubefit.DataCube(data, np.ones_like(data), 
                                           np.ones(nw)))
         self.cubes = cubes
-
-        # make a fake AtmModel
-        adr_refract = np.zeros((2, nw))
-        self.atm = cubefit.AtmModel(psf, adr_refract)
 
         # initialize galaxy model
         self.galaxy = np.zeros((nw, MODEL_SHAPE[0], MODEL_SHAPE[1]))
@@ -143,15 +143,15 @@ class TestFitting:
 
         data = self.cubes[0].data
         weight = self.cubes[0].weight
-        atm = self.atm
+        psf = self.psf
         ctr = (0., 0.)
 
         # analytic gradient is `grad`
-        val, grad = chisq_galaxy_single(self.galaxy, data, weight, ctr, atm)
+        val, grad = chisq_galaxy_single(self.galaxy, data, weight, ctr, psf)
 
         # save data - model residuals for finite differences chi^2 gradient.
         # need to carry out subtraction in float64 to avoid round-off errors.
-        scene = atm.evaluate_galaxy(self.galaxy, data.shape[1:3], ctr)
+        scene = psf.evaluate_galaxy(self.galaxy, data.shape[1:3], ctr)
         r0 = data.astype(np.float64) - scene
 
         # finite differences gradient: alter each element by EPS one
@@ -162,7 +162,7 @@ class TestFitting:
             for j in range(nj):
                 for i in range(ni):
                     self.galaxy[k, j, i] += EPS
-                    scene = atm.evaluate_galaxy(self.galaxy, data.shape[1:3],
+                    scene = psf.evaluate_galaxy(self.galaxy, data.shape[1:3],
                                                 ctr)
                     self.galaxy[k, j, i] -= EPS # reset model value.
 
@@ -187,22 +187,22 @@ class TestFitting:
 
         datas = [self.cubes[0].data]
         weights = [self.cubes[0].weight]
-        atms = [self.atm]
+        psfs = [self.psf]
         ctrs = [(0., 0.)]
 
         # analytic gradient is `grad`
         _, grad = chisq_galaxy_sky_multi(self.galaxy, datas, weights, ctrs,
-                                         atms)
+                                         psfs)
 
         # NOTE: Following is specific to only having one cube!
         data = datas[0]
         weight = weights[0]
-        atm = atms[0]
+        psf = psfs[0]
         ctr = ctrs[0]
 
         # save data - model residuals for finite differences chi^2 gradient.
         # need to carry out subtraction in float64 to avoid round-off errors.
-        scene = atm.evaluate_galaxy(self.galaxy, data.shape[1:3], ctr)
+        scene = psf.evaluate_galaxy(self.galaxy, data.shape[1:3], ctr)
         r0 = data.astype(np.float64) - scene
         sky = np.average(r0, weights=weight, axis=(1, 2))
         r0 -= sky[:, None, None]
@@ -215,7 +215,7 @@ class TestFitting:
             for j in range(nj):
                 for i in range(ni):
                     self.galaxy[k, j, i] += EPS
-                    scene = atm.evaluate_galaxy(self.galaxy, data.shape[1:3],
+                    scene = psf.evaluate_galaxy(self.galaxy, data.shape[1:3],
                                                 ctr)
                     self.galaxy[k, j, i] -= EPS # reset model value.
 
@@ -277,7 +277,7 @@ class TestFitting:
         """Ensure that regularization penalty gradient matches what you
         get with a finite-differences approach."""
 
-        EPS = 1.e-9
+        EPS = 1.e-10
         mu_wave = 0.07
         mu_xy = 0.001
 
@@ -299,35 +299,35 @@ class TestFitting:
                         regpenalty, self.galaxy, k, j, i, EPS) / EPS
 
         rtol = 0.001
-        atol = 1.e-5*np.max(np.abs(fdgrad))
+        atol = 1.e-5 * np.max(np.abs(fdgrad))
         assert_allclose(grad, fdgrad, rtol=rtol, atol=atol)
 
     def test_point_source(self):
         """Test that evaluate_point_source returns the expected point source.
         """
 
-        psf = self.atm.evaluate_point_source((0., 0.), (15, 15), (0., 0.))
+        psf = self.psf.point_source((0., 0.), (15, 15), (0., 0.))
         
     def test_fit_position_grad(self):
         """Test the gradient of the sn and sky position fitting function
         """
         
-        def func_part(ctrs, galaxy, datas, weights, atms):
+        def func_part(ctrs, galaxy, datas, weights, psfs):
             chisq, grad = chisq_position_sky_sn_multi(ctrs, galaxy, 
-                                                      datas, weights, atms)
+                                                      datas, weights, psfs)
             return chisq
 
-        def grad_part(ctrs, galaxy, datas, weights, atms):
+        def grad_part(ctrs, galaxy, datas, weights, psfs):
             chisq, grad = chisq_position_sky_sn_multi(ctrs, galaxy, 
-                                                      datas, weights, atms)
+                                                      datas, weights, psfs)
             return grad
 
         x0s = np.zeros(8)
         datas = [cube.data for cube in self.cubes]
         weights = [cube.weight for cube in self.cubes]
-        atms = [self.atm for cube in self.cubes]
+        psfs = [self.psf for cube in self.cubes]
 
-        code_grad = grad_part(x0s, self.galaxy, datas, weights, atms)
+        code_grad = grad_part(x0s, self.galaxy, datas, weights, psfs)
         test_grad = approx_fprime(x0s, func_part, np.sqrt(np.finfo(float).eps),
-                            self.galaxy, datas, weights, atms)
+                            self.galaxy, datas, weights, psfs)
         assert_allclose(code_grad[:-2], test_grad[:-2], rtol=0.005)

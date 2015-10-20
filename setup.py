@@ -1,21 +1,23 @@
 #!/usr/bin/env python
 import os
-from distutils.core import setup
-from distutils.extension import Extension
+from setuptools import setup
+from setuptools.extension import Extension
 import numpy
 
 # Get __version__ from version.py without importing package itself.
 with open('cubefit/version.py') as f:
     exec(f.read())
 
-fname = os.path.join("cubefit", "psf.pyx")
+fname = os.path.join("cubefit", "psffuncs.pyx")
 USE_CYTHON = True
 if not os.path.exists(fname):
     fname = fname.replace(".pyx", ".c")
     USE_CYTHON = False
 
-exts = [Extension("cubefit.psf", [fname], include_dirs=[numpy.get_include()],
+exts = [Extension("cubefit.psffuncs", [fname],
+                  include_dirs=[numpy.get_include()],
                   libraries=["m"])]
+
 if USE_CYTHON:
     from Cython.Build import cythonize
     exts = cythonize(exts)

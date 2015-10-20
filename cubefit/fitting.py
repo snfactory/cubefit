@@ -9,7 +9,8 @@ from scipy.optimize import fmin_l_bfgs_b
 from .utils import yxbounds
 
 __all__ = ["guess_sky", "fit_galaxy_single", "fit_galaxy_sky_multi",
-           "fit_position_sky", "fit_position_sky_sn_multi"]
+           "fit_position_sky", "fit_position_sky_sn_multi",
+           "RegularizationPenalty"]
 
 
 def _check_result(warnflag, msg):
@@ -174,24 +175,24 @@ def sky_and_sn(data, weight, g, s, ggrad=None, sgrad=None):
         return sky, sn
 
 
-def chisq_galaxy_single(galaxy, data, weight, ctr, atm):
+def chisq_galaxy_single(galaxy, data, weight, ctr, psf):
     """Chi^2 and gradient (not including regularization term) for a single
     epoch."""
 
-    scene = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
+    scene = psf.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
     r = data - scene
     wr = weight * r
     val = np.sum(wr * r)
-    grad = atm.gradient_helper(-2. * wr, data.shape[1:3], ctr)
+    grad = psf.gradient_helper(-2. * wr, data.shape[1:3], ctr)
 
     return val, grad
 
 
-def chisq_galaxy_sky_single(galaxy, data, weight, ctr, atm):
+def chisq_galaxy_sky_single(galaxy, data, weight, ctr, psf):
     """Chi^2 and gradient (not including regularization term) for 
     single epoch, allowing sky to float."""
 
-    g = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
+    g = psf.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
     sky = determine_sky(data, weight, g)
     scene = sky[:, None, None] + g
 
@@ -203,30 +204,30 @@ def chisq_galaxy_sky_single(galaxy, data, weight, ctr, atm):
     # of this gradient!
     tmp = np.sum(wr, axis=(1, 2)) / np.sum(weight, axis=(1, 2))
     vtwr = weight * tmp[:, None, None]
-    grad = atm.gradient_helper(-2. * (wr - vtwr), data.shape[1:3], ctr)
+    grad = psf.gradient_helper(-2. * (wr - vtwr), data.shape[1:3], ctr)
 
     return val, grad
 
 
-def chisq_galaxy_sky_multi(galaxy, datas, weights, ctrs, atms):
+def chisq_galaxy_sky_multi(galaxy, datas, weights, ctrs, psfs):
     """Chi^2 and gradient (not including regularization term) for 
     multiple epochs, allowing sky to float."""
 
     val = 0.0
     grad = np.zeros_like(galaxy)
-    for data, weight, ctr, atm in zip(datas, weights, ctrs, atms):
+    for data, weight, ctr, psf in zip(datas, weights, ctrs, psfs):
         epochval, epochgrad = chisq_galaxy_sky_single(galaxy, data, weight,
-                                                      ctr, atm)
+                                                      ctr, psf)
         val += epochval
         grad += epochgrad
 
     return val, grad
 
 
-def chisq_position_sky(ctr, galaxy, data, weight, atm):
+def chisq_position_sky(ctr, galaxy, data, weight, psf):
     """chisq and gradient for fit_position_sky"""
 
-    g, ggrad = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr, grad=True)
+    g, ggrad = psf.evaluate_galaxy(galaxy, data.shape[1:3], ctr, grad=True)
 
     sky, skygrad = determine_sky(data, weight, g, ggrad=ggrad)
 
@@ -242,7 +243,7 @@ def chisq_position_sky(ctr, galaxy, data, weight, atm):
     return chisq, chisqgrad
 
 
-def fit_galaxy_single(galaxy0, data, weight, ctr, atm, regpenalty, factor):
+def fit_galaxy_single(galaxy0, data, weight, ctr, psf, regpenalty, factor):
     """Fit the galaxy model to a single epoch of data.
 
     Parameters
@@ -264,7 +265,7 @@ def fit_galaxy_single(galaxy0, data, weight, ctr, atm, regpenalty, factor):
 
         # galparams is 1-d (raveled version of galaxy); reshape to 3-d.
         galaxy = galparams.reshape(galaxy0.shape)
-        cval, cgrad = chisq_galaxy_single(galaxy, data, weight, ctr, atm)
+        cval, cgrad = chisq_galaxy_single(galaxy, data, weight, ctr, psf)
         rval, rgrad = regpenalty(galaxy)
         totval = cval + rval
         logging.debug(u'\u03C7\u00B2 = %8.2f (%8.2f + %8.2f)', totval, cval, rval)
@@ -281,7 +282,7 @@ def fit_galaxy_single(galaxy0, data, weight, ctr, atm, regpenalty, factor):
     return galparams.reshape(galaxy0.shape)
 
 
-def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty,
+def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, psfs, regpenalty,
                          factor):
     """Fit the galaxy model to multiple data cubes.
 
@@ -297,8 +298,8 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty,
 
     # Get initial chisq values for info output.
     cvals = []
-    for data, weight, ctr, atm in zip(datas, weights, ctrs, atms):
-        cval, _ = chisq_galaxy_sky_single(galaxy0, data, weight, ctr, atm)
+    for data, weight, ctr, psf in zip(datas, weights, ctrs, psfs):
+        cval, _ = chisq_galaxy_sky_single(galaxy0, data, weight, ctr, psf)
         cvals.append(cval)
 
     logging.info(u"        initial \u03C7\u00B2/epoch: [%s]",
@@ -311,7 +312,7 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty,
         # galparams is 1-d (raveled version of galaxy); reshape to 3-d.
         galaxy = galparams.reshape(galaxy0.shape)
         cval, cgrad = chisq_galaxy_sky_multi(galaxy, datas, weights,
-                                             ctrs, atms)
+                                             ctrs, psfs)
         rval, rgrad = regpenalty(galaxy)
         rval *= nepochs
         rgrad *= nepochs
@@ -331,8 +332,8 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty,
 
     # Get final chisq values.
     cvals = []
-    for data, weight, ctr, atm in zip(datas, weights, ctrs, atms):
-        cval, _ = chisq_galaxy_sky_single(galaxy, data, weight, ctr, atm)
+    for data, weight, ctr, psf in zip(datas, weights, ctrs, psfs):
+        cval, _ = chisq_galaxy_sky_single(galaxy, data, weight, ctr, psf)
         cvals.append(cval)
     logging.info(u"        final   \u03C7\u00B2/epoch: [%s]",
                  ", ".join(["%8.2f" % v for v in cvals]))
@@ -341,15 +342,15 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, atms, regpenalty,
 
     # get last-calculated skys, given galaxy.
     skys = []
-    for data, weight, ctr, atm in zip(datas, weights, ctrs, atms):
-        scene = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
+    for data, weight, ctr, psf in zip(datas, weights, ctrs, psfs):
+        scene = psf.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
         sky = np.average(data - scene, weights=weight, axis=(1, 2))
         skys.append(sky)
 
     return galaxy, skys
 
 
-def fit_position_sky(galaxy, data, weight, ctr0, atm):
+def fit_position_sky(galaxy, data, weight, ctr0, psf):
     """Fit data position and sky for a single epoch (fixed galaxy model).
 
     Parameters
@@ -382,19 +383,19 @@ def fit_position_sky(galaxy, data, weight, ctr0, atm):
                      min(bounds[i][1], absbounds[i][1]))
 
     ctr, f, d = fmin_l_bfgs_b(chisq_position_sky, ctr0,
-                              args=(galaxy, data, weight, atm),
+                              args=(galaxy, data, weight, psf),
                               iprint=0, callback=None, bounds=bounds)
     _check_result(d['warnflag'], d['task'])
     _log_result("fmin_l_bfgs_b", f, d['nit'], d['funcalls'])
 
     # get last-calculated sky.
-    g = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
+    g = psf.evaluate_galaxy(galaxy, data.shape[1:3], ctr)
     sky = determine_sky(data, weight, g)
 
     return tuple(ctr), sky
 
 
-def chisq_position_sky_sn_multi(allctrs, galaxy, datas, weights, atms):
+def chisq_position_sky_sn_multi(allctrs, galaxy, datas, weights, psfs):
     """Function to minimize. `allctrs` is a 1-d ndarray:
 
     [yctr[0], xctr[0], yctr[1], xctr[1], ..., snyctr, snxctr]
@@ -414,14 +415,12 @@ def chisq_position_sky_sn_multi(allctrs, galaxy, datas, weights, atms):
     for i in range(nepochs):
         data = datas[i]
         weight = weights[i]
-        atm = atms[i]
+        psf = psfs[i]
         ctr_ind = slice(2*i, 2*i+2)
         ctr = tuple(allctrs[ctr_ind])
 
-        g, ggrad = atm.evaluate_galaxy(galaxy, data.shape[1:3], ctr,
-                                       grad=True)
-        s, sgrad = atm.evaluate_point_source(snctr, data.shape[1:3], ctr,
-                                             grad=True)
+        g, ggrad = psf.evaluate_galaxy(galaxy, data.shape[1:3], ctr, grad=True)
+        s, sgrad = psf.point_source(snctr, data.shape[1:3], ctr, grad=True)
 
         # add galaxy gradient with SN position
         ggrad = np.vstack((ggrad, np.zeros_like(ggrad)))
@@ -445,7 +444,7 @@ def chisq_position_sky_sn_multi(allctrs, galaxy, datas, weights, atms):
     # reshape gradient to 1-d upon return.
     return chisq, chisqgrad
 
-def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, atms, factor):
+def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, psfs, factor):
     """Fit data pointing (nepochs), SN position (in model frame),
     SN amplitude (nepochs), and sky level (nepochs). This is meant to be
     used only on epochs with SN light.
@@ -459,7 +458,7 @@ def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, atms, facto
         Initial data positions (y, x)
     snctr0 : tuple
         Initial SN position.
-    atms : list of AtmModels
+    psfs : list of PsfModels
 
     Returns
     -------
@@ -484,7 +483,7 @@ def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, atms, facto
     BOUND = 2. # +/- position bound in spaxels
 
     nepochs = len(datas)
-    assert len(weights) == len(ctrs0) == len(atms) == nepochs
+    assert len(weights) == len(ctrs0) == len(psfs) == nepochs
 
     # Initial parameter array. Has order [y0, x0, y1, x1, ... , ysn, xsn].
     allctrs0 = np.ravel(np.vstack((ctrs0, snctr0)))
@@ -517,7 +516,7 @@ def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, atms, facto
     logging.debug('')
 
     fallctrs, f, d = fmin_l_bfgs_b(chisq_position_sky_sn_multi, allctrs0,
-                                   args=(galaxy, datas, weights, atms),
+                                   args=(galaxy, datas, weights, psfs),
                                    iprint=0, callback=callback, bounds=bounds,
                                    factr=factor)
     _check_result(d['warnflag'], d['task'])
@@ -532,11 +531,68 @@ def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, atms, facto
     skys = []
     sne = []
     for i in range(nepochs):
-        gal = atms[i].evaluate_galaxy(galaxy, datas[i].shape[1:3], fctrs[i])
-        psf = atms[i].evaluate_point_source(fsnctr, datas[i].shape[1:3],
-                                            fctrs[i])
-        sky, sn = sky_and_sn(datas[i], weights[i], gal, psf)
+        g = psfs[i].evaluate_galaxy(galaxy, datas[i].shape[1:3], fctrs[i])
+        s = psfs[i].point_source(fsnctr, datas[i].shape[1:3], fctrs[i])
+        sky, sn = sky_and_sn(datas[i], weights[i], g, s)
         skys.append(sky)
         sne.append(sn)
 
     return fctrs, fsnctr, skys, sne
+
+
+class RegularizationPenalty(object):
+    """Callable that returns the penalty and gradient on it."""
+    
+    def __init__(self, galprior, mean_gal_spec, mu_xy, mu_wave):
+        self.galprior = galprior
+        self.mean_gal_spec = mean_gal_spec
+        self.mu_xy = mu_xy
+        self.mu_wave = mu_wave
+
+    def __call__(self, galmodel):
+        """Return regularization penalty and gradient for a given galaxy model.
+
+        Parameters
+        ----------
+        TODO
+
+        Returns
+        -------
+        penalty : float
+        penalty_gradient : ndarray
+            Gradient with respect to model galaxy
+        """
+
+        galdiff = galmodel - self.galprior
+        galdiff /= self.mean_gal_spec[:, None, None]
+        dw = galdiff[1:, :, :] - galdiff[:-1, :, :]
+        dy = galdiff[:, 1:, :] - galdiff[:, :-1, :]
+        dx = galdiff[:, :, 1:] - galdiff[:, :, :-1]
+
+        # Regularlization penalty term
+        val = (self.mu_wave * np.sum(dw**2) +
+               self.mu_xy * np.sum(dy**2) +
+               self.mu_xy * np.sum(dx**2))
+
+        # Gradient in regularization penalty term
+        #
+        # This is clearer when the loops are explicitly written out.
+        # For a loop that goes over all adjacent elements in a given dimension,
+        # one would do (pseudocode):
+        # for i in ...:
+        #     d = arr[i+1] - arr[i]
+        #     penalty += hyper * d^2
+        #     gradient[i+1] += 2 * hyper * d
+        #     gradient[i]   -= 2 * hyper * d
+
+        grad = np.zeros_like(galdiff)
+        grad[1:, :, :] += 2. * self.mu_wave * dw
+        grad[:-1, :, :] -= 2. * self.mu_wave * dw
+        grad[:, 1:, :] += 2. * self.mu_xy * dy
+        grad[:, :-1, :] -= 2. * self.mu_xy * dy
+        grad[:, :, 1:] += 2. * self.mu_xy * dx
+        grad[:, :, :-1] -= 2. * self.mu_xy * dx
+
+        grad /= self.mean_gal_spec[:, None, None]  # put back normalization
+
+        return val, grad

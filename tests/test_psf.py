@@ -4,34 +4,48 @@ import numpy as np
 from numpy.testing import assert_allclose
 
 import cubefit
-import psf_alt
+from . import psffuncs_pure
 
-class TestGaussMoffatPSF:
-    def setup_class(self):
-        self.ellip = np.array([0.5, 1.0, 1.5, 2.0])
-        self.alpha = np.ones(4)
-        self.psf = cubefit.GaussMoffatPSF(self.ellip, self.alpha)
+def get_gaussian_moffat_psf(subpix):
+    """Helper function for constructing a GaussianMoffatPSF for testing"""
 
-    def test_norm(self):
-        """Test normalization. of GaussMoffatPSF"""
+    nw = 4
+    sigma = np.ones(nw)
+    alpha = np.ones(nw)
+    beta = 2. * np.ones(nw)
+    ellip = np.array([0.5, 1.0, 1.5, 2.0])
+    eta = 2. * np.ones(nw)
+    yctr = np.array([0., 0.5, 1.0, 1.5])
+    xctr = np.array([0., 0.5, 1.0, 1.5])
 
-        # sample on 100 x 100 grid ~ infinitly large
-        xctr = np.zeros_like(self.ellip)
-        yctr = np.zeros_like(self.ellip)
-        x = self.psf((100, 100), yctr, xctr, subpix=3)
+    return cubefit.GaussianMoffatPSF(sigma, alpha, beta, ellip, eta,
+                                     yctr, xctr, (32, 32), subpix=subpix)
 
-        sums = (np.sum(x, axis=(1,2))) # sum at each wavelength.
-        assert_allclose(sums, 1., rtol=0.0005)
 
-    def test_comparison_to_pure_python(self):
-        psf2 = psf_alt.GaussMoffatPSF(self.ellip, self.alpha)
+def test_gaussian_moffat_norm():
+    """Test normalization. of GaussMoffatPSF"""
 
-        xctr = np.zeros_like(self.ellip)
-        yctr = np.zeros_like(self.ellip)
-        x = self.psf((100, 100), yctr, xctr, subpix=1)
-        y = psf2((100, 100), yctr, xctr)
+    psf = get_gaussian_moffat_psf(3)
 
-        assert_allclose(x, y)
+    # sample onto 100 x 100 grid ~ infinitly large
+    A = psf.point_source((0., 0.), (100, 100), (0., 0.))
+
+    sums = A.sum(axis=(1, 2)) # sum at each wavelength.
+
+    assert_allclose(sums, 1., rtol=0.0005)
+
+
+def test_comparison_to_pure_python():
+    psf = get_gaussian_moffat_psf(1)
+    A = psf.point_source((0., 0.), (100, 100), (0., 0.))
+    B = psffuncs_pure.gaussian_moffat_psf(psf.sigma, psf.alpha, psf.beta,
+                                          psf.ellipticity, psf.eta, psf.yctr,
+                                          psf.xctr, (100, 100))
+
+    assert not np.all(A == 0.)
+    assert not np.all(B == 0.)
+    assert_allclose(A, B)
+
 
 def test_old_version():
     MODEL_SHAPE = (32, 32)
@@ -45,18 +59,23 @@ def test_old_version():
                   0.066841]
     wave = np.linspace(3200., 5600., 800)
 
-    # old version
-    psfarray = psf_alt.psf_3d_from_params(psf_params, wave, REFWAVE,
-                                          MODEL_SHAPE)
-
     # new version
     relwave = wave / REFWAVE - 1.0
     ellip = psf_params[0] * np.ones_like(wave)
     alpha = (psf_params[1] +
              psf_params[2] * relwave +
              psf_params[3] * relwave**2)
+    sigma = 0.545 + 0.215 * alpha
+    beta  = 1.685 + 0.345 * alpha
+    eta   = 1.040 + 0.0   * alpha 
 
-    psf = cubefit.GaussMoffatPSF(ellip, alpha)
-    psfarray2 = psf(MODEL_SHAPE, np.zeros_like(wave), np.zeros_like(wave))
+    psf = cubefit.GaussianMoffatPSF(sigma, alpha, beta, ellip, eta,
+                                    np.zeros_like(wave), np.zeros_like(wave),
+                                    MODEL_SHAPE, subpix=1)
+    A = psf.point_source((0., 0.), MODEL_SHAPE, (0., 0.))
 
-    assert_allclose(psfarray2, psfarray, rtol=1.e-2)
+    # old version
+    B = psffuncs_pure.psf_3d_from_params(psf_params, wave, REFWAVE,
+                                         MODEL_SHAPE)
+
+    assert_allclose(A, B, rtol=1.e-2)

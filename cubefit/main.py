@@ -11,12 +11,13 @@ from collections import OrderedDict
 import numpy as np
 
 from .version import __version__
-from .psf import GaussMoffatPSF
-from .core import AtmModel, RegularizationPenalty
+from .psffuncs import gaussian_moffat_psf
+from .psf import TabularPSF, GaussianMoffatPSF
 from .io import read_datacube, write_results
 from .adr import paralactic_angle
 from .fitting import (guess_sky, fit_galaxy_single, fit_galaxy_sky_multi,
-                      fit_position_sky, fit_position_sky_sn_multi)
+                      fit_position_sky, fit_position_sky_sn_multi,
+                      RegularizationPenalty)
 from .extern import ADR
 
 __all__ = ["main", "setup_logging"]
@@ -129,24 +130,23 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         raise ValueError("all data must have same wavelengths")
 
     # -------------------------------------------------------------------------
-    # Atmospheric conditions for each observation
+    # PSF for each observation
 
-    logging.info("setting up PSF and ADR for all %d epochs", nt)
-    atms = []
+    logging.info("setting up PSF for all %d epochs", nt)
+    psfs = []
     for i in range(nt):
 
         # Get Gaussian+Moffat parameters at each wavelength.
         relwave = wave / REFWAVE - 1.0
-        ellipticity = cfg["psf_params"][i][0] * np.ones_like(wave)
-        alpha = (cfg["psf_params"][i][1] +
-                 cfg["psf_params"][i][2] * relwave +
-                 cfg["psf_params"][i][3] * relwave**2)
+        ellipticity = abs(cfg["psf_params"][i][0]) * np.ones_like(wave)
+        alpha = np.abs(cfg["psf_params"][i][1] +
+                       cfg["psf_params"][i][2] * relwave +
+                       cfg["psf_params"][i][3] * relwave**2)
 
-        # Create a representation of the PSF as a function of wavelength.
-        psf = GaussMoffatPSF(ellipticity, alpha, subpix=1)
-
-        # evaluate PSF centered in array.
-        psfarray = psf(MODEL_SHAPE, np.zeros_like(wave), np.zeros_like(wave))
+        # correlated parameters (coefficients determined externally)
+        sigma = 0.545 + 0.215 * alpha  # Gaussian parameter
+        beta  = 1.685 + 0.345 * alpha  # Moffat parameter
+        eta   = 1.040 + 0.0   * alpha  # gaussian ampl. / moffat ampl.
 
         # Atmospheric differential refraction (ADR): Because of ADR,
         # the center of the PSF will be different at each wavelength,
@@ -159,11 +159,17 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         adr = ADR(cfg["pressures"][i], cfg["temperatures"][i], lref=REFWAVE,
                   airmass=cfg["airmasses"][i], theta=pa)
         adr_refract = adr.refract(0, 0, wave, unit=SPAXEL_SIZE)
+        
+        # adr_refract[0, :] corresponds to x, adr_refract[1, :] => y
+        xctr, yctr = adr_refract
 
-        # make adr_refract[0, :] correspond to y and adr_refract[1, :] => x
-        adr_refract = np.flipud(adr_refract)
+        # Tabular PSF
+        A = gaussian_moffat_psf(sigma, alpha, beta, ellipticity, eta,
+                                yctr, xctr, MODEL_SHAPE, subpix=1)
+        psfs.append(TabularPSF(A))
 
-        atms.append(AtmModel(psfarray, adr_refract, psf=psf))
+        # TODO: GaussianMoffatPSF
+
 
     # -------------------------------------------------------------------------
     # Initialize all model parameters to be fit
@@ -201,12 +207,12 @@ def main(configfname, outfname, dataprefix="", logfname=None,
     logging.info("fitting galaxy to master ref [%d]", master_ref)
     galaxy = fit_galaxy_single(galaxy, data, weight,
                                (yctr[master_ref], xctr[master_ref]),
-                               atms[master_ref], regpenalty, LBFGSB_FACTOR)
+                               psfs[master_ref], regpenalty, LBFGSB_FACTOR)
 
     if diagdir:
         fname = os.path.join(diagdir, 'step1.fits')
         write_results(galaxy, skys, sn, snctr, yctr, xctr,
-                      cubes[0].data.shape, atms, wavewcs, fname)
+                      cubes[0].data.shape, psfs, wavewcs, fname)
 
     tsteps["fit galaxy to master ref"] = datetime.now()
 
@@ -227,7 +233,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         cube = cubes[i]
 
         # Evaluate galaxy on this epoch for purpose of masking spaxels.
-        gal = atms[i].evaluate_galaxy(galaxy, (cube.ny, cube.nx),
+        gal = psfs[i].evaluate_galaxy(galaxy, (cube.ny, cube.nx),
                                       (yctr[i], xctr[i]))
 
         # Set weight of low-valued spaxels to zero.
@@ -240,7 +246,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         weight = cube.weight * mask[None, :, :]
 
         fctr, fsky = fit_position_sky(galaxy, cube.data, weight,
-                                      (yctr[i], xctr[i]), atms[i])
+                                      (yctr[i], xctr[i]), psfs[i])
         yctr[i], xctr[i] = fctr
         skys[i] = fsky
 
@@ -252,10 +258,10 @@ def main(configfname, outfname, dataprefix="", logfname=None,
     datas = [cubes[i].data for i in refs]
     weights = [cubes[i].weight for i in refs]
     ctrs = [(yctr[i], xctr[i]) for i in refs]
-    atms_refs = [atms[i] for i in refs]
+    psfs_refs = [psfs[i] for i in refs]
     logging.info("fitting galaxy to all refs %s", refs)
     galaxy, fskys = fit_galaxy_sky_multi(galaxy, datas, weights, ctrs,
-                                         atms_refs, regpenalty, LBFGSB_FACTOR)
+                                         psfs_refs, regpenalty, LBFGSB_FACTOR)
 
     # put fitted skys back in `skys`
     for i,j in enumerate(refs):
@@ -264,7 +270,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
     if diagdir:
         fname = os.path.join(diagdir, 'step2.fits')
         write_results(galaxy, skys, sn, snctr, yctr, xctr,
-                      cubes[0].data.shape, atms, wavewcs, fname)
+                      cubes[0].data.shape, psfs, wavewcs, fname)
 
     tsteps["fit galaxy to all refs"] = datetime.now()
 
@@ -282,9 +288,9 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         datas = [cubes[i].data for i in nonrefs]
         weights = [cubes[i].weight for i in nonrefs]
         ctrs = [(yctr[i], xctr[i]) for i in nonrefs]
-        atms_nonrefs = [atms[i] for i in nonrefs]
+        psfs_nonrefs = [psfs[i] for i in nonrefs]
         fctrs, snctr, fskys, fsne = fit_position_sky_sn_multi(
-            galaxy, datas, weights, ctrs, snctr, atms_nonrefs, LBFGSB_FACTOR)
+            galaxy, datas, weights, ctrs, snctr, psfs_nonrefs, LBFGSB_FACTOR)
 
         # put fitted results back in parameter lists.
         for i,j in enumerate(nonrefs):
@@ -302,7 +308,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         if diagdir:
             fname = os.path.join(diagdir, 'step3.fits')
             write_results(galaxy, skys, sn, snctr, yctr, xctr,
-                          cubes[0].data.shape, atms, wavewcs, fname)
+                          cubes[0].data.shape, psfs, wavewcs, fname)
 
         # ---------------------------------------------------------------------
         # Redo fit of galaxy, using ALL epochs, including ones with SN
@@ -325,20 +331,19 @@ def main(configfname, outfname, dataprefix="", logfname=None,
 
         # subtract SN from non-ref cubes.
         for i in nonrefs:
-            psf = atms[i].evaluate_point_source(snctr, datas[i].shape[1:3],
-                                                ctrs[i])
-            snpsf = sn[i, :, None, None] * psf  # scaled PSF
-            datas[i] = cubes[i].data - snpsf  # do *not* use in-place op (-=)!
+            s = psfs[i].point_source(snctr, datas[i].shape[1:3], ctrs[i])
+            # do *not* use in-place operation (-=) here!
+            datas[i] = cubes[i].data - sn[i, :, None, None] * s
 
         galaxy, fskys = fit_galaxy_sky_multi(galaxy, datas, weights, ctrs,
-                                             atms, regpenalty, LBFGSB_FACTOR)
+                                             psfs, regpenalty, LBFGSB_FACTOR)
         for i in range(nt):
             skys[i] = fskys[i]  # put fitted skys back in skys
 
         if diagdir:
             fname = os.path.join(diagdir, 'step4.fits')
             write_results(galaxy, skys, sn, snctr, yctr, xctr,
-                          cubes[0].data.shape, atms, wavewcs, fname)
+                          cubes[0].data.shape, psfs, wavewcs, fname)
 
         # ---------------------------------------------------------------------
         # Repeat step before last: fit position of data and SN in
@@ -349,9 +354,9 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         datas = [cubes[i].data for i in nonrefs]
         weights = [cubes[i].weight for i in nonrefs]
         ctrs = [(yctr[i], xctr[i]) for i in nonrefs]
-        atms_nonrefs = [atms[i] for i in nonrefs]
+        psfs_nonrefs = [psfs[i] for i in nonrefs]
         fctrs, snctr, fskys, fsne = fit_position_sky_sn_multi(
-            galaxy, datas, weights, ctrs, snctr, atms_nonrefs, LBFGSB_FACTOR)
+            galaxy, datas, weights, ctrs, snctr, psfs_nonrefs, LBFGSB_FACTOR)
 
         # put fitted results back in parameter lists.
         for i,j in enumerate(nonrefs):
@@ -364,7 +369,7 @@ def main(configfname, outfname, dataprefix="", logfname=None,
 
     logging.info("writing results to %s", outfname)
     write_results(galaxy, skys, sn, snctr, yctr, xctr,
-                  cubes[0].data.shape, atms, wavewcs, outfname)
+                  cubes[0].data.shape, psfs, wavewcs, outfname)
 
     # time info
     logging.info("step times:")
