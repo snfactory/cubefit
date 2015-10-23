@@ -225,14 +225,19 @@ class GaussianMoffatPSF(PSFBase):
         super(GaussianMoffatPSF, self).__init__(A)
 
     def point_source(self, pos, shape, ctr, grad=False):
-        
-        if grad:
-            raise ValueError("gradient not yet implemented for "
-                             "GaussianMoffatPSF")
-
         yctr = self.yctr + pos[0] - ctr[0]
         xctr = self.xctr + pos[1] - ctr[1]
 
-        return gaussian_moffat_psf(self.sigma, self.alpha, self.beta,
-                                   self.ellipticity, self.eta, yctr, xctr,
-                                   shape, subpix=self.subpix)
+        res = gaussian_moffat_psf(self.sigma, self.alpha, self.beta,
+                                  self.ellipticity, self.eta, yctr, xctr,
+                                  shape, subpix=self.subpix, grad=grad)
+
+        if grad:
+            s, sgrad_pos = res
+            sgrad = np.empty((4,) + s.shape, dtype=np.float64)
+            sgrad[0:2] = -sgrad_pos
+            sgrad[2:4] = sgrad_pos
+            return s, sgrad
+            
+        else:
+            return res

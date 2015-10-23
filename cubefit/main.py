@@ -40,7 +40,7 @@ def setup_logging(loglevel, logfname=None):
 
 def main(configfname, outfname, dataprefix="", logfname=None,
          loglevel=logging.INFO, diagdir=None, refitgal=False,
-         mu_wave=0.07, mu_xy=0.001, **kwargs):
+         mu_wave=0.07, mu_xy=0.001, psftype='tabular', **kwargs):
     """Run cubefit.
 
     Parameters
@@ -64,6 +64,8 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         If true, run additional steps in algorithm.
     mu_wave, mu_xy : float
         Hyperparameters in wavelength and spatial directions.
+    psftype : {'gaussian-moffat', 'tabular'}
+        Type of psf
 
     Additional keyword arugments override parameters in config file
     (after config file is parsed).
@@ -164,12 +166,15 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         xctr, yctr = adr_refract
 
         # Tabular PSF
-        A = gaussian_moffat_psf(sigma, alpha, beta, ellipticity, eta,
-                                yctr, xctr, MODEL_SHAPE, subpix=1)
-        psfs.append(TabularPSF(A))
-
-        # TODO: GaussianMoffatPSF
-
+        if psftype == 'tabular':
+            A = gaussian_moffat_psf(sigma, alpha, beta, ellipticity, eta,
+                                    yctr, xctr, MODEL_SHAPE, subpix=1)
+            psfs.append(TabularPSF(A))
+        elif psftype == 'gaussian-moffat':
+            psfs.append(GaussianMoffatPSF(sigma, alpha, beta, ellipticity, eta,
+                                          yctr, xctr, MODEL_SHAPE, subpix=1))
+        else:
+            raise ValueError("unknown psf type: " + repr(psftype))
 
     # -------------------------------------------------------------------------
     # Initialize all model parameters to be fit

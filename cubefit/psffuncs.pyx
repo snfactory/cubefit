@@ -13,7 +13,8 @@ __all__ = ["gaussian_moffat_psf"]
 @cython.cdivision(True)
 def gaussian_moffat_psf(double[:] sigma, double[:] alpha, double[:] beta,
                         double[:] ellipticity, double[:] eta,
-                        double[:] yctr, double[:] xctr, shape, int subpix=1):
+                        double[:] yctr, double[:] xctr, shape, int subpix=1,
+                        bint grad=False):
         """Evaluate a gaussian+moffat function on each slice of a 3-d grid. 
 
         Parameters
@@ -40,10 +41,13 @@ def gaussian_moffat_psf(double[:] sigma, double[:] alpha, double[:] beta,
 
         cdef cnp.intp_t nw, ny, nx, i, j, k
         cdef double sigma_x, sigma_y, alpha_x, alpha_y
+        cdef double sigma_x2, sigma_y2, alpha_x2, alpha_y2
         cdef double yc, xc, dy, dx, sx, sy
-        cdef double gnorm, mnorm, norm, g, m
+        cdef double gnorm, mnorm, norm, g, m, sg, sm, smbase
+        cdef double gdx, gdy, mdx, mdy
         cdef double scale, area
         cdef double[:, :, :] outview
+        cdef double[:, :, :, :] outgradview
 
         scale = 1. / subpix
         area = scale * scale
@@ -54,6 +58,10 @@ def gaussian_moffat_psf(double[:] sigma, double[:] alpha, double[:] beta,
         # allocate output buffer
         out = np.empty((nw, ny, nx), dtype=np.float64)
         outview = out
+
+        if grad:
+            outgrad = np.empty((2, nw, ny, nx), dtype=np.float64)
+            outgradview = outgrad
 
         for k in range(nw):
 
@@ -66,12 +74,18 @@ def gaussian_moffat_psf(double[:] sigma, double[:] alpha, double[:] beta,
             sigma_y = sigma_x / sqrt(ellipticity[k])
             alpha_y = alpha_x / sqrt(ellipticity[k])
 
+            sigma_x2 = sigma_x * sigma_x
+            alpha_x2 = alpha_x * alpha_x
+            sigma_y2 = sigma_y * sigma_y
+            alpha_y2 = alpha_y * alpha_y
+            
             # normalizing pre-factors for gaussian and moffat
             gnorm = 1. / (2. * M_PI * sigma_x * sigma_y)
             mnorm = (beta[k] - 1.) / (M_PI * alpha_x * alpha_y)
 
             # normalization on (m + eta * g) [see below]
-            norm = 1. / (1. / mnorm + eta[k] / gnorm)
+            # (additionally adjusted by subpixel area).
+            norm = 1. / (1. / mnorm + eta[k] / gnorm) * area
 
             # center in pixel coordinates
             yc = yctr[k] + (ny-1) / 2.0
@@ -82,21 +96,29 @@ def gaussian_moffat_psf(double[:] sigma, double[:] alpha, double[:] beta,
                 for i in range(nx):
                     dx = i - xc
 
-                    g = 0.0
-                    m = 0.0
+                    g = gdx = gdy = 0.0
+                    m = mdx = mdy = 0.0
                     sy = dy - 0.5 + 0.5 * scale  # subpixel coordinates
                     while sy < dy + 0.5:
                         sx = dx - 0.5 + 0.5 * scale
                         while sx < dx + 0.5:
                             
-                            # gaussian
-                            g += exp(-(sx*sx/(2.*sigma_x*sigma_x) +
-                                       sy*sy/(2.*sigma_y*sigma_y)))
+                            sg = exp(-(sx*sx/(2.*sigma_x2) +
+                                       sy*sy/(2.*sigma_y2)))
 
-                            # moffat
-                            m += pow(1. + sx*sx/(alpha_x*alpha_x) +
-                                          sy*sy/(alpha_y*alpha_y), -beta[k])
-                            
+                            # gaussian and its derivative w.r.t. yc, xc
+                            g += sg
+                            gdy += sg * (sy / sigma_y2)
+                            gdx += sg * (sx / sigma_x2)
+
+                            smbase = 1. + sx*sx / alpha_x2 + sy*sy / alpha_y2
+                            sm = pow(smbase, -beta[k])
+
+                            # moffat and its derivative w.r.t. yc, xc
+                            m += sm
+                            mdx += beta[k] * (sm / smbase) * 2 * sx / alpha_x2
+                            mdy += beta[k] * (sm / smbase) * 2 * sy / alpha_y2
+
                             sx += scale
                         sy += scale
 
@@ -110,6 +132,13 @@ def gaussian_moffat_psf(double[:] sigma, double[:] alpha, double[:] beta,
                     # integral of `m + eta[k] * g`.
                     #
                     # `area` accounts for the subpixel area.
-                    outview[k, j, i] = norm * area * (m + eta[k] * g)
+                    outview[k, j, i] = norm * (m + eta[k] * g)
+                    
+                    if grad:
+                        outgradview[0, k, j, i] = norm * (mdy + eta[k] * gdy)
+                        outgradview[1, k, j, i] = norm * (mdx + eta[k] * gdx)
 
-        return out
+        if grad:
+            return out, outgrad
+        else:
+            return out
