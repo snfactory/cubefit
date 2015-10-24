@@ -6,6 +6,7 @@ from argparse import ArgumentParser
 from collections import OrderedDict
 from copy import copy
 from datetime import datetime
+import glob
 import json
 import logging
 import math
@@ -16,7 +17,7 @@ import numpy as np
 from .version import __version__
 from .psffuncs import gaussian_moffat_psf
 from .psf import TabularPSF, GaussianMoffatPSF
-from .io import read_datacube, write_results
+from .io import read_datacube, write_results, read_results
 from .adr import paralactic_angle
 from .fitting import (guess_sky, fit_galaxy_single, fit_galaxy_sky_multi,
                       fit_position_sky, fit_position_sky_sn_multi,
@@ -396,3 +397,77 @@ def cubefit(argv=None):
     logging.info("finished at %s", tfinish.strftime("%Y-%m-%d %H:%M:%S"))
     t = (tfinish - tstart).seconds
     logging.info("took %dm%ds", t // 60, t % 60)
+
+
+def cubefit_plot(argv=None):
+    DESCRIPTION = """Plot results and diagnostics from cubefit"""
+
+    from .plotting import (plot_timeseries, plot_adr, plot_epochs, plot_sn,
+                           plot_wave_slices)
+
+    # arguments are the same as cubefit except an output 
+    parser = ArgumentParser(prog="cubefit-plot", description=DESCRIPTION)
+    parser.add_argument("configfile", help="configuration filename")
+    parser.add_argument("resultfile", help="Result filename from cubefit")
+    parser.add_argument("outprefix", help="output prefix")
+    parser.add_argument("--dataprefix", default="",
+                        help="path prepended to data file names; default is "
+                        "empty string")
+    parser.add_argument('-b', '--band', help='timeseries band (U, B, V). '
+                        'Default is a 1000 A wide band in middle of cube.',
+                        default=None, dest='band')
+    parser.add_argument('--idrfiles', nargs='+', default=None,
+                        help='Prefix of IDR. If given, the cubefit SN '
+                        'spectra are plotted against the production values.')
+    parser.add_argument("--diagdir", default=None,
+                        help="If given, read intermediate diagnostic "
+                        "results from this directory and include in plot(s)")
+    parser.add_argument("--plotepochs", default=False, action="store_true",
+                        help="Make diagnostic plots for each epoch")
+    args = parser.parse_args(argv)
+
+    # Read in data
+    with open(args.configfile) as f:
+        cfg = json.load(f)
+    cubes = [read_datacube(os.path.join(args.dataprefix, fname), scale=False)
+             for fname in cfg["filenames"]]
+
+    results = OrderedDict()
+
+    # Diagnostic results at each step
+    if args.diagdir is not None:
+        fnames = sorted(glob.glob(os.path.join(args.diagdir, "step*.fits")))
+        for fname in fnames:
+            name = os.path.basename(fname).split(".")[0]
+            results[name] = read_results(fname)
+
+    # Final result (don't fail if not available)
+    if os.path.exists(args.resultfile):
+        results["final"] = read_results(args.resultfile)
+
+    # plot time series
+    plot_timeseries(cubes, results, band=args.band,
+                    fname=(args.outprefix + '_timeseries.png'))
+
+    # Plot the x-y coordinates of the adr versus wavelength.
+    plot_adr(cfg, cubes[0].wave, fname=(args.outprefix + '_adr.png'))
+
+    # Plots that depend on final results being available.
+    if 'final' in results:
+        # plot wave slices, just for final refs.
+        refcubes = [cubes[i] for i in cfg['refs']]
+        refgaleval = results['final']['epochs']['galeval'][cfg['refs']]
+        plot_wave_slices(refcubes, refgaleval,
+                         fname=(args.outprefix + '_waveslice.png'))
+
+        # Plot result spectra against IDR spectra.
+        if args.idrfiles is not None:
+            plot_sn(cfg['filenames'], results['final']['epochs']['sn'],
+                    results['final']['wave'], args.idrfiles,
+                    args.outprefix + '_sn.png')
+
+        # Plot wave slices and sn, galaxy and sky spectra for all epochs.
+        if args.plotepochs:
+            for i_t in range(len(cubes)):
+                plot_epoch(cubes[i_t], results['final']['epochs'][i_t],
+                           fname=(args.outprefix + '_epoch%02d.png' % i_t))
