@@ -34,6 +34,11 @@ setup(name="cubefit",
       author_email="kylebarbary@gmail.com",
       packages=['cubefit'],
       ext_modules=exts,
-      scripts=['scripts/cubefit',
-               'scripts/cubefit-subtract',
-               'scripts/cubefit-plot'])
+      entry_points={
+          'console_scripts': [
+              'cubefit = cubefit.main:cubefit',
+              'cubefit-subtract = cubefit.main:cubefit_subtract',
+              'cubefit-plot = cubefit.main:cubefit_plot'
+          ]
+      }
+  )

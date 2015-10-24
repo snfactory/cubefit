@@ -1,4 +1,0 @@
-#!/usr/bin/env python
-import cubefit
-
-cubefit.main.cubefit()
