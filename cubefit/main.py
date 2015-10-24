@@ -1,12 +1,15 @@
+"""Main entry points for scripts."""
+
 from __future__ import print_function, division
 
-import os
-import json
-import math
-from copy import copy
-import logging
-from datetime import datetime
+from argparse import ArgumentParser
 from collections import OrderedDict
+from copy import copy
+from datetime import datetime
+import json
+import logging
+import math
+import os
 
 import numpy as np
 
@@ -20,7 +23,7 @@ from .fitting import (guess_sky, fit_galaxy_single, fit_galaxy_sky_multi,
                       RegularizationPenalty)
 from .extern import ADR
 
-__all__ = ["main", "setup_logging"]
+__all__ = ["cubefit", "setup_logging"]
 
 MODEL_SHAPE = (32, 32)
 SNIFS_LATITUDE = np.deg2rad(19.8228)
@@ -32,46 +35,57 @@ REFWAVE = 5000.  # reference wavelength in Angstroms for PSF params and ADR
 
 
 def setup_logging(loglevel, logfname=None):
+
+    # if loglevel isn't an integer, parse it as "debug", "info", etc:
+    if not isinstance(loglevel, int):
+        loglevel = getattr(logging, loglevel.upper(), None)
+    if not isinstance(loglevel, int):
+        print('Invalid log level: %s' % loglevel)
+        exit(1)
+
+    # remove logfile if it already exists
     if logfname is not None and os.path.exists(logfname):
         os.remove(logfname)
+
     logging.basicConfig(filename=logfname, format="%(levelname)s %(message)s",
                         level=loglevel)
 
 
-def main(configfname, outfname, dataprefix="", logfname=None,
-         loglevel=logging.INFO, diagdir=None, refitgal=False,
-         mu_wave=0.07, mu_xy=0.001, psftype='tabular', **kwargs):
-    """Run cubefit.
+def cubefit(argv=None):
 
-    Parameters
-    ----------
-    configfname : str
-        Configuration file name (JSON format).
-    outfname : str
-        Output file name (FITS format).
+    DESCRIPTION = "Fit SN + galaxy model to SNFactory data cubes."
 
-    Optional Parameters
-    -------------------
-    dataprefix : str
-        Path appended to data file names.
-    logfname : str
-        If supplied, write log to given file (otherwise print to stdout).
-    loglevel : int
-        One of logging.DEBUG, logging.INFO (default), logging.WARNING, etc.
-    diagdir : str
-        If given, write diagnostic output to this directory.
-    refitgal : bool
-        If true, run additional steps in algorithm.
-    mu_wave, mu_xy : float
-        Hyperparameters in wavelength and spatial directions.
-    psftype : {'gaussian-moffat', 'tabular'}
-        Type of psf
+    parser = ArgumentParser(prog="cubefit", description=DESCRIPTION)
+    parser.add_argument("configfile",
+                        help="configuration file name (JSON format)")
+    parser.add_argument("outfile", help="Output file name (FITS format)")
+    parser.add_argument("--dataprefix", default="",
+                        help="path prepended to data file names; default is "
+                        "empty string")
+    parser.add_argument("--logfile", help="Write log to this file "
+                        "(default: print to stdout)", default=None)
+    parser.add_argument("--loglevel", default="info",
+                        help="one of: debug, info, warning (default is info)")
+    parser.add_argument("--diagdir", default=None,
+                        help="If given, write intermediate diagnostic results "
+                        "to this directory")
+    parser.add_argument("--refitgal", default=False, action="store_true",
+                        help="Add an iteration where galaxy model is fit "
+                        "using all epochs and then data/SN positions are "
+                        "refit")
+    parser.add_argument("--mu_wave", default=0.07, type=float,
+                        help="Wavelength regularization parameter. "
+                        "Default is 0.07.")
+    parser.add_argument("--mu_xy", default=0.001, type=float,
+                        help="Spatial regularization parameter. "
+                        "Default is 0.001.")
+    parser.add_argument("--psftype", default="tabular",
+                        help="Type of PSF: 'tabular' or 'gaussian-moffat'. "
+                        "Currently, tabular means generate a tabular PSF from "
+                        "gaussian-moffat parameters.")
+    args = parser.parse_args(argv)
 
-    Additional keyword arugments override parameters in config file
-    (after config file is parsed).
-    """
-
-    setup_logging(loglevel, logfname=logfname)
+    setup_logging(args.loglevel, logfname=args.logfile)
 
     # record start time
     tstart = datetime.now()
@@ -80,11 +94,11 @@ def main(configfname, outfname, dataprefix="", logfname=None,
     tsteps = OrderedDict()  # finish time of each step.
 
     logging.info("parameters: mu_wave={:.3g} mu_xy={:.3g} refitgal={}"
-                 .format(mu_wave, mu_xy, refitgal))
+                 .format(args.mu_wave, args.mu_xy, args.refitgal))
+    logging.info("            psftype={}".format(args.psftype))
 
-    # Read the config file and parse it into a nice dictionary.
     logging.info("reading config file")
-    with open(configfname) as f:
+    with open(args.configfile) as f:
         cfg = json.load(f)
 
     # convert to radians (config file is in degrees)
@@ -97,22 +111,13 @@ def main(configfname, outfname, dataprefix="", logfname=None,
             len(cfg["xcenters"]) == len(cfg["ycenters"]) ==
             len(cfg["psf_params"]) == len(cfg["ha"]) == len(cfg["dec"]))
 
-    # Change any parameters that have been chosen at command line.
-    # There is a check to ensure that we only try to set parameters that are
-    # already in the config file.
-    for key, val in kwargs.items():
-        if key not in cfg:
-            raise RuntimeError("key not in configuration: " + repr(key))
-        if val is not None:
-            cfg[key] = val
-
     # -------------------------------------------------------------------------
     # Load data cubes from the list of FITS files.
 
     nt = len(cfg["filenames"])
 
     logging.info("reading %d data cubes", nt)
-    cubes = [read_datacube(os.path.join(dataprefix, fname))
+    cubes = [read_datacube(os.path.join(args.dataprefix, fname))
              for fname in cfg["filenames"]]
     wave = cubes[0].wave
     wavewcs = cubes[0].wavewcs
@@ -166,15 +171,15 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         xctr, yctr = adr_refract
 
         # Tabular PSF
-        if psftype == 'tabular':
+        if args.psftype == 'tabular':
             A = gaussian_moffat_psf(sigma, alpha, beta, ellipticity, eta,
                                     yctr, xctr, MODEL_SHAPE, subpix=1)
             psfs.append(TabularPSF(A))
-        elif psftype == 'gaussian-moffat':
+        elif args.psftype == 'gaussian-moffat':
             psfs.append(GaussianMoffatPSF(sigma, alpha, beta, ellipticity, eta,
                                           yctr, xctr, MODEL_SHAPE, subpix=1))
         else:
-            raise ValueError("unknown psf type: " + repr(psftype))
+            raise ValueError("unknown psf type: " + repr(args.psftype))
 
     # -------------------------------------------------------------------------
     # Initialize all model parameters to be fit
@@ -199,7 +204,8 @@ def main(configfname, outfname, dataprefix="", logfname=None,
 
     galprior = np.zeros((nw, MODEL_SHAPE[0], MODEL_SHAPE[1]), dtype=np.float64)
 
-    regpenalty = RegularizationPenalty(galprior, mean_gal_spec, mu_xy, mu_wave)
+    regpenalty = RegularizationPenalty(galprior, mean_gal_spec, args.mu_xy,
+                                       args.mu_wave)
 
     tsteps["setup"] = datetime.now()
 
@@ -214,8 +220,8 @@ def main(configfname, outfname, dataprefix="", logfname=None,
                                (yctr[master_ref], xctr[master_ref]),
                                psfs[master_ref], regpenalty, LBFGSB_FACTOR)
 
-    if diagdir:
-        fname = os.path.join(diagdir, 'step1.fits')
+    if args.diagdir:
+        fname = os.path.join(args.diagdir, 'step1.fits')
         write_results(galaxy, skys, sn, snctr, yctr, xctr,
                       cubes[0].data.shape, psfs, wavewcs, fname)
 
@@ -272,8 +278,8 @@ def main(configfname, outfname, dataprefix="", logfname=None,
     for i,j in enumerate(refs):
         skys[j] = fskys[i]
 
-    if diagdir:
-        fname = os.path.join(diagdir, 'step2.fits')
+    if args.diagdir:
+        fname = os.path.join(args.diagdir, 'step2.fits')
         write_results(galaxy, skys, sn, snctr, yctr, xctr,
                       cubes[0].data.shape, psfs, wavewcs, fname)
 
@@ -308,10 +314,10 @@ def main(configfname, outfname, dataprefix="", logfname=None,
     # -------------------------------------------------------------------------
     # optional step(s)
 
-    if refitgal and len(nonrefs) > 0:
+    if args.refitgal and len(nonrefs) > 0:
 
-        if diagdir:
-            fname = os.path.join(diagdir, 'step3.fits')
+        if args.diagdir:
+            fname = os.path.join(args.diagdir, 'step3.fits')
             write_results(galaxy, skys, sn, snctr, yctr, xctr,
                           cubes[0].data.shape, psfs, wavewcs, fname)
 
@@ -345,8 +351,8 @@ def main(configfname, outfname, dataprefix="", logfname=None,
         for i in range(nt):
             skys[i] = fskys[i]  # put fitted skys back in skys
 
-        if diagdir:
-            fname = os.path.join(diagdir, 'step4.fits')
+        if args.diagdir:
+            fname = os.path.join(args.diagdir, 'step4.fits')
             write_results(galaxy, skys, sn, snctr, yctr, xctr,
                           cubes[0].data.shape, psfs, wavewcs, fname)
 
@@ -372,9 +378,9 @@ def main(configfname, outfname, dataprefix="", logfname=None,
     # -------------------------------------------------------------------------
     # Write results
 
-    logging.info("writing results to %s", outfname)
+    logging.info("writing results to %s", args.outfile)
     write_results(galaxy, skys, sn, snctr, yctr, xctr,
-                  cubes[0].data.shape, psfs, wavewcs, outfname)
+                  cubes[0].data.shape, psfs, wavewcs, args.outfile)
 
     # time info
     logging.info("step times:")

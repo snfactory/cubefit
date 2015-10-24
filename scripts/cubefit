@@ -1,45 +1,4 @@
 #!/usr/bin/env python
-"""Fit SN + galaxy model to SNFactory data cubes."""
-
-from argparse import ArgumentParser
-import logging
-
 import cubefit
 
-
-parser = ArgumentParser(prog="cubefit", description=__doc__)
-parser.add_argument("configfile", help="configuration file name (JSON format)")
-parser.add_argument("outfile", help="Output file name (FITS format)")
-parser.add_argument("--dataprefix", default="",
-                    help="path prepended to data file names; default is "
-                    "empty string")
-parser.add_argument("--logfile", help="Write log to this file",
-                    default=None)
-parser.add_argument("--loglevel", default="info",
-                    help="one of: debug, info, warning (default is info)")
-parser.add_argument("--diagdir", default=None,
-                    help="If given, write intermediate diagnostic results to "
-                    "this directory")
-parser.add_argument("--refitgal", default=False, action="store_true",
-                    help="Add an iteration where galaxy model is fit using "
-                    "all epochs and then data/SN positions are refit")
-parser.add_argument("--mu_wave", default=0.07, type=float,
-                    help="Wavelength regularization parameter. "
-                    "Default is 0.07.")
-parser.add_argument("--mu_xy", default=0.001, type=float,
-                    help="Spatial regularization parameter. "
-                    "Default is 0.001.")
-parser.add_argument("--master_ref", default=None, type=int,
-                    help="Choose index of exposure used as master ref")
-args = parser.parse_args()
-
-# translate loglevel to numeric value
-numlevel = getattr(logging, args.loglevel.upper(), None)
-if not isinstance(numlevel, int):
-    print('Invalid log level: %s' % loglevel)
-    exit(1)
-
-cubefit.main(args.configfile, args.outfile, dataprefix=args.dataprefix,
-             logfname=args.logfile, loglevel=numlevel, diagdir=args.diagdir,
-             refitgal=args.refitgal, mu_wave=args.mu_wave, mu_xy=args.mu_xy,
-             master_ref=args.master_ref)
+cubefit.main.cubefit()
