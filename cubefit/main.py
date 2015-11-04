@@ -102,15 +102,9 @@ def cubefit(argv=None):
     with open(args.configfile) as f:
         cfg = json.load(f)
 
-    # convert to radians (config file is in degrees)
-    cfg["ha"] = np.deg2rad(cfg["ha"])
-    cfg["dec"] = np.deg2rad(cfg["dec"])
-
     # basic checks on config contents.
-    assert (len(cfg["filenames"]) == len(cfg["airmasses"]) ==
-            len(cfg["pressures"]) == len(cfg["temperatures"]) ==
-            len(cfg["xcenters"]) == len(cfg["ycenters"]) ==
-            len(cfg["psf_params"]) == len(cfg["ha"]) == len(cfg["dec"]))
+    assert (len(cfg["filenames"]) == len(cfg["xcenters"]) ==
+            len(cfg["ycenters"]) == len(cfg["psf_params"]))
 
     # -------------------------------------------------------------------------
     # Load data cubes from the list of FITS files.
@@ -167,14 +161,13 @@ def cubefit(argv=None):
         # such as MLA rotation, mechanical flexures or finite-exposure
         # corrections. These values have been trained on faint-std star
         # exposures.
-        # 
-        # TODO: get 'parang', 'airmass', 'channel' from database rather than
-        # header for consistency with all other parameters.
-
+        #
+        # `predict_adr_params` sses 'AIRMASS', 'PARANG' and 'CHANNEL' keys
+        # in input dictionary.
         delta, theta = Hyper_PSF3D_PL.predict_adr_params(cubes[i].header)
 
-        adr = ADR(cfg["pressures"][i], cfg["temperatures"][i], lref=REFWAVE,
-                  delta=delta, theta=theta)
+        adr = ADR(cubes[i].header['PRESSURE'], cubes[i].header['TEMP'],
+                  lref=REFWAVE, delta=delta, theta=theta)
         adr_refract = adr.refract(0, 0, wave, unit=SPAXEL_SIZE)
         
         # adr_refract[0, :] corresponds to x, adr_refract[1, :] => y
@@ -540,7 +533,7 @@ def cubefit_plot(argv=None):
                     fname=(args.outprefix + '_timeseries.png'))
 
     # Plot the x-y coordinates of the adr versus wavelength.
-    plot_adr(cfg, cubes[0].wave, cubes, fname=(args.outprefix + '_adr.png'))
+    plot_adr(cubes, cubes[0].wave, fname=(args.outprefix + '_adr.png'))
 
     # Plots that depend on final results being available.
     if 'final' in results:

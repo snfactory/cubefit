@@ -12,7 +12,7 @@ from matplotlib import gridspec
 from matplotlib.ticker import NullLocator
 
 from .adr import paralactic_angle
-from .extern import ADR
+from .extern import ADR, Hyper_PSF3D_PL
 
 __all__ = ["plot_timeseries", "plot_wave_slices", "plot_sn", "plot_epoch",
            "plot_adr"]
@@ -431,7 +431,7 @@ def plot_epoch(cube, epoch, fname=None):
     plt.close()
 
 
-def plot_adr(cfg, wave, cubes, fname=None):
+def plot_adr(cubes, wave, fname=None):
     """Plot adr x and y vs. wavelength, and x vs y
 
     Parameters
@@ -443,11 +443,7 @@ def plot_adr(cfg, wave, cubes, fname=None):
         Used for header values only.
     """
 
-    nt = len(cfg["filenames"])
-
-    # convert to radians (config file is in degrees)
-    cfg["ha"] = np.deg2rad(cfg["ha"])
-    cfg["dec"] = np.deg2rad(cfg["dec"])
+    nt = len(cubes)
 
     fig = plt.figure()
     yplot = plt.subplot2grid((2, 2), (0, 0))
@@ -455,13 +451,12 @@ def plot_adr(cfg, wave, cubes, fname=None):
     xyplot = plt.subplot2grid((2, 2), (1, 0), colspan=2)
 
     cm = plt.get_cmap("jet")
-    for i in range(nt):
 
-        # following lines copied from main.cubefit()
-        # TODO: remove cubes dependence (get parameters from config)
+    for i in range(nt):
+        # following lines same as in main.cubefit()
         delta, theta = Hyper_PSF3D_PL.predict_adr_params(cubes[i].header)
-        adr = ADR(cfg["pressures"][i], cfg["temperatures"][i], lref=REFWAVE,
-                  delta=delta, theta=theta)
+        adr = ADR(cubes[i].header['PRESSURE'], cubes[i].header['TEMP'],
+                  lref=REFWAVE, delta=delta, theta=theta)
         adr_refract = adr.refract(0, 0, wave, unit=SPAXEL_SIZE)
         xctr, yctr = adr_refract
 

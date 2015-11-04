@@ -52,31 +52,24 @@ Input format
 CubeFit requires the following keys in the input JSON file. Keys are
 case-sensitive. Additional keys are simply ignored.
 
-| Parameter        | Type   | Description                           |
+| Parameter        | Type   | Description [units]                   |
 | ---------------- | ------ | ------------------------------------- |
-| `"filenames"`    | *list* | list of FITS data cube files
-| `"airmasses"`    | *list* | airmass for each epoch
-| `"pressures"`    | *list* | pressure for each epoch **[mmHg]**
-| `"temperatures"` | *list* | temperature for each epoch **[deg Celcius]**
+| `"filenames"`    | *list* | FITS data cube files
 | `"xcenters"`     | *list* | x position of MLA center relative to SN **[spaxels]**
 | `"ycenters"`     | *list* | y position of MLA center relative to SN **[spaxels]**
-| `"ha"`           | *list* | HA (?) of instrument **[degrees]**
-| `"dec"`          | *list* | declination of the target **[degrees]**
 | `"psf_params"`   | *list of lists* | PSF parameters for each epoch
 | `"refs"`         | *list* | index of final refs in lists **[0-based indexing]**
 | `"master_ref"`   |        | index of "master" final ref **[0-based indexing]**
-| `"mla_tilt"`     |        | MLA tilt **[radians]** (?)
+| `"outnames"`     | *list* | Output filenames for `cubefit-subtract`
 
+In each input FITS file, the following header keywords are used:
 
-Parameter only used in `cubefit-subtract`:
-
-| Parameter        | Type   | Description                           |
-| ---------------- | ------ | ------------------------------------- |
-| `"outnames"`     | *list* | Target filenames for galaxy-subtracted cubes
-
-
-**NOTE:** the meaning of `xcenters` and `ycenters` is different than in DDT
-config files!
+| Keyword    | Description [units]                           |
+| ---------- | --------------------------------------------- |
+| `AIRMASS`  | Airmass of observation                        |
+| `PRESSURE` | Atmospheric pressure **[mmHg]**               |
+| `TEMP`     | Atmospheric temperature **[degrees Celcius]** |
+| `PARANG`   | Parallactic angle **[degrees]**               |
 
 Output format
 -------------
