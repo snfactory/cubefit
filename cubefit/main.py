@@ -483,7 +483,7 @@ The "sn_outnames" configuration field determines the output filenames.
 def cubefit_plot(argv=None):
     DESCRIPTION = """Plot results and diagnostics from cubefit"""
 
-    from .plotting import (plot_timeseries, plot_adr, plot_epochs, plot_sn,
+    from .plotting import (plot_timeseries, plot_adr, plot_epoch, plot_sn,
                            plot_wave_slices)
 
     # arguments are the same as cubefit except an output 
