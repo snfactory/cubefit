@@ -18,11 +18,11 @@ from .version import __version__
 from .psffuncs import gaussian_moffat_psf
 from .psf import TabularPSF, GaussianMoffatPSF
 from .io import read_datacube, write_results, read_results
-from .adr import paralactic_angle
 from .fitting import (guess_sky, fit_galaxy_single, fit_galaxy_sky_multi,
                       fit_position_sky, fit_position_sky_sn_multi,
                       RegularizationPenalty)
-from .extern import ADR
+from .extern import ADR, Hyper_PSF3D_PL
+
 
 __all__ = ["cubefit", "setup_logging"]
 
@@ -162,10 +162,19 @@ def cubefit(argv=None):
         # atmospheric conditions and the pointing and angle of the
         # instrument. We calculate the offsets here as a function of
         # observation and wavelength and input these to the model.
-        pa = paralactic_angle(cfg["airmasses"][i], cfg["ha"][i], cfg["dec"][i],
-                              cfg["mla_tilt"], SNIFS_LATITUDE)
+
+        # Correction to parallactic angle and airmass for 2nd-order effects
+        # such as MLA rotation, mechanical flexures or finite-exposure
+        # corrections. These values have been trained on faint-std star
+        # exposures.
+        # 
+        # TODO: get 'parang', 'airmass', 'channel' from database rather than
+        # header for consistency with all other parameters.
+
+        delta, theta = Hyper_PSF3D_PL.predict_adr_params(cubes[i].header)
+
         adr = ADR(cfg["pressures"][i], cfg["temperatures"][i], lref=REFWAVE,
-                  airmass=cfg["airmasses"][i], theta=pa)
+                  delta=delta, theta=theta)
         adr_refract = adr.refract(0, 0, wave, unit=SPAXEL_SIZE)
         
         # adr_refract[0, :] corresponds to x, adr_refract[1, :] => y
@@ -531,7 +540,7 @@ def cubefit_plot(argv=None):
                     fname=(args.outprefix + '_timeseries.png'))
 
     # Plot the x-y coordinates of the adr versus wavelength.
-    plot_adr(cfg, cubes[0].wave, fname=(args.outprefix + '_adr.png'))
+    plot_adr(cfg, cubes[0].wave, cubes, fname=(args.outprefix + '_adr.png'))
 
     # Plots that depend on final results being available.
     if 'final' in results:

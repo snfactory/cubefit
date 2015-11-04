@@ -431,21 +431,19 @@ def plot_epoch(cube, epoch, fname=None):
     plt.close()
 
 
-def plot_adr(cfg, wave, i_ts = None, fname=None):
+def plot_adr(cfg, wave, cubes, fname=None):
     """Plot adr x and y vs. wavelength, and x vs y
 
     Parameters
     ----------
-    cfg : json dict
-        Input configuration file.
+    cfg : dict
+        Configuration contents.
     wave : 1-d array
-    i_t : list
-        Optional list of epochs to plot
+    cubes : list of DataCube
+        Used for header values only.
     """
 
     nt = len(cfg["filenames"])
-    if i_ts is None:
-        i_ts = range(nt)
 
     # convert to radians (config file is in degrees)
     cfg["ha"] = np.deg2rad(cfg["ha"])
@@ -457,18 +455,19 @@ def plot_adr(cfg, wave, i_ts = None, fname=None):
     xyplot = plt.subplot2grid((2, 2), (1, 0), colspan=2)
 
     cm = plt.get_cmap("jet")
-    for i in i_ts:
-        pa = paralactic_angle(cfg["airmasses"][i], cfg["ha"][i], cfg["dec"][i],
-                              cfg["mla_tilt"], SNIFS_LATITUDE)
-        adr = ADR(cfg["pressures"][i], cfg["temperatures"][i], lref=REFWAVE,
-                  airmass=cfg["airmasses"][i], theta=pa)
-        adr_refract = adr.refract(0, 0, wave, unit=SPAXEL_SIZE)
-        # make adr_refract[0, :] correspond to y and adr_refract[1, :] => x
-        adr_refract = np.flipud(adr_refract)
+    for i in range(nt):
 
-        yplot.plot(wave, adr_refract[0], color=cm(i/nt))
-        xplot.plot(wave, adr_refract[1], color=cm(i/nt))
-        xyplot.plot(adr_refract[1], adr_refract[0], color=cm(i/nt))
+        # following lines copied from main.cubefit()
+        # TODO: remove cubes dependence (get parameters from config)
+        delta, theta = Hyper_PSF3D_PL.predict_adr_params(cubes[i].header)
+        adr = ADR(cfg["pressures"][i], cfg["temperatures"][i], lref=REFWAVE,
+                  delta=delta, theta=theta)
+        adr_refract = adr.refract(0, 0, wave, unit=SPAXEL_SIZE)
+        xctr, yctr = adr_refract
+
+        yplot.plot(wave, yctr, color=cm(i/nt))
+        xplot.plot(wave, xctr, color=cm(i/nt))
+        xyplot.plot(xctr, yctr, color=cm(i/nt))
 
     yplot.set_ylabel('dY (spaxels)')
     xplot.set_ylabel('dX (spaxels)')

@@ -27,7 +27,7 @@ class DataCube(object):
         data.shape[2], weight.shape[2]
     """
     
-    def __init__(self, data, weight, wave, wavewcs=None):
+    def __init__(self, data, weight, wave, wavewcs=None, header=None):
         if data.shape != weight.shape:
             raise ValueError("shape of weight and data must match")
         if len(wave) != data.shape[0]:
@@ -40,7 +40,7 @@ class DataCube(object):
         self.wave = wave
         self.nw, self.ny, self.nx = data.shape
         self.wavewcs = wavewcs
-
+        self.header = header
 
 def wcs_to_wave(hdr):
     pixcoords = np.arange(1., hdr["NAXIS3"] + 1.)  # FITS is 1-indexed
@@ -96,10 +96,10 @@ def read_datacube(filename, scale=True):
                "CRPIX3": hdr["CRPIX3"],
                "CDELT3": hdr["CDELT3"]}
 
-    return DataCube(data, weight, wave, wavewcs=wavewcs)
+    return DataCube(data, weight, wave, wavewcs=wavewcs, header=hdr)
 
 
-def epoch_results(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms):
+def epoch_results(galaxy, skys, sn, snctr, yctr, xctr, dshape, psfs):
     """Package all by-epoch results into a single numpy structured array,
     amenable to writing out to a FITS file.
 
@@ -109,7 +109,7 @@ def epoch_results(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms):
     """
 
     # This is a table with `nt` rows
-    nt = len(atms)
+    nt = len(psfs)
     dtype = [('yctr', 'f8'),
              ('xctr', 'f8'),
              ('sn', 'f4', sn.shape[1]),
@@ -125,9 +125,9 @@ def epoch_results(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms):
 
     # evaluate galaxy & PSF on data
     for i in range(nt):
-        epochs['galeval'][i] = atms[i].evaluate_galaxy(galaxy, dshape[1:3],
+        epochs['galeval'][i] = psfs[i].evaluate_galaxy(galaxy, dshape[1:3],
                                                        (yctr[i], xctr[i]))
-        epochs['sneval'][i] = atms[i].evaluate_point_source(snctr, dshape[1:3],
+        epochs['sneval'][i] = psfs[i].evaluate_point_source(snctr, dshape[1:3],
                                                             (yctr[i], xctr[i]))
 
     # multiply by sn amplitude
@@ -136,7 +136,7 @@ def epoch_results(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms):
     return epochs
 
 
-def write_results(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms, wavewcs,
+def write_results(galaxy, skys, sn, snctr, yctr, xctr, dshape, psfs, wavewcs,
                   fname, descale=True):
     """Write results to a FITS file."""
 
@@ -146,7 +146,7 @@ def write_results(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms, wavewcs,
         sn = sn / SCALE_FACTOR
 
     # Create epochs table.
-    epochs = epoch_results(galaxy, skys, sn, snctr, yctr, xctr, dshape, atms)
+    epochs = epoch_results(galaxy, skys, sn, snctr, yctr, xctr, dshape, psfs)
 
     if os.path.exists(fname):  # avoids warning doing FITS(..., clobber=True)
         os.remove(fname)
