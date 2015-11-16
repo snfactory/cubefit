@@ -127,8 +127,8 @@ def epoch_results(galaxy, skys, sn, snctr, yctr, xctr, dshape, psfs):
     for i in range(nt):
         epochs['galeval'][i] = psfs[i].evaluate_galaxy(galaxy, dshape[1:3],
                                                        (yctr[i], xctr[i]))
-        epochs['sneval'][i] = psfs[i].evaluate_point_source(snctr, dshape[1:3],
-                                                            (yctr[i], xctr[i]))
+        epochs['sneval'][i] = psfs[i].point_source(snctr, dshape[1:3],
+                                                   (yctr[i], xctr[i]))
 
     # multiply by sn amplitude
     epochs['sneval'] *= sn[:, :, None, None]

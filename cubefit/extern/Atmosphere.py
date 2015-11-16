@@ -11,7 +11,7 @@ import numpy as N
 from . import Coords
 
 RAD2DEG = 57.295779513082323            # 180/pi
-
+RAD2ARC = 206264.80624709636            # RAD2DEG * 3600
 
 #@add_attrs(source='NIST/IAPWS')
 def _saturationVaporPressureOverWater(T):

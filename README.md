@@ -60,7 +60,8 @@ case-sensitive. Additional keys are simply ignored.
 | `"psf_params"`   | *list of lists* | PSF parameters for each epoch
 | `"refs"`         | *list* | index of final refs in lists **[0-based indexing]**
 | `"master_ref"`   |        | index of "master" final ref **[0-based indexing]**
-| `"outnames"`     | *list* | Output filenames for `cubefit-subtract`
+| `"outnames"`     | *list* | Output subtracted cube filenames for `cubefit-subtract`
+| `"sn_outnames"`  | *list* | Output SN spectrum filenames for `cubefit-subtract`
 
 In each input FITS file, the following header keywords are used:
 
@@ -70,6 +71,7 @@ In each input FITS file, the following header keywords are used:
 | `PRESSURE` | Atmospheric pressure **[mmHg]**               |
 | `TEMP`     | Atmospheric temperature **[degrees Celcius]** |
 | `PARANG`   | Parallactic angle **[degrees]**               |
+| `CHANNEL`  | `B` or `R`                                    |
 
 Output format
 -------------

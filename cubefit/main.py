@@ -24,7 +24,7 @@ from .fitting import (guess_sky, fit_galaxy_single, fit_galaxy_sky_multi,
 from .extern import ADR, Hyper_PSF3D_PL
 
 
-__all__ = ["cubefit", "setup_logging"]
+__all__ = ["cubefit", "cubefit_subtract", "cubefit_plot"]
 
 MODEL_SHAPE = (32, 32)
 SNIFS_LATITUDE = np.deg2rad(19.8228)
@@ -33,6 +33,47 @@ MIN_NMAD = 2.5  # Minimum Number of Median Absolute Deviations above
                 # the minimum spaxel value in fit_position
 LBFGSB_FACTOR = 1e10
 REFWAVE = 5000.  # reference wavelength in Angstroms for PSF params and ADR
+
+def snfpsfparams(wave, psfparams, header):
+    """Create a 3-d PSF based on SNFactory-specific parameterization of
+    Gaussian + Moffat PSF parameters and ADR."""
+
+    # Get Gaussian+Moffat parameters at each wavelength.
+    relwave = wave / REFWAVE - 1.0
+    ellipticity = abs(psfparams[0]) * np.ones_like(wave)
+    alpha = np.abs(psfparams[1] +
+                   psfparams[2] * relwave +
+                   psfparams[3] * relwave**2)
+
+    # correlated parameters (coefficients determined externally)
+    sigma = 0.545 + 0.215 * alpha  # Gaussian parameter
+    beta  = 1.685 + 0.345 * alpha  # Moffat parameter
+    eta   = 1.040 + 0.0   * alpha  # gaussian ampl. / moffat ampl.
+
+    # Atmospheric differential refraction (ADR): Because of ADR,
+    # the center of the PSF will be different at each wavelength,
+    # by an amount that we can determine (pretty well) from the
+    # atmospheric conditions and the pointing and angle of the
+    # instrument. We calculate the offsets here as a function of
+    # observation and wavelength and input these to the model.
+
+    # Correction to parallactic angle and airmass for 2nd-order effects
+    # such as MLA rotation, mechanical flexures or finite-exposure
+    # corrections. These values have been trained on faint-std star
+    # exposures.
+    #
+    # `predict_adr_params` uses 'AIRMASS', 'PARANG' and 'CHANNEL' keys
+    # in input dictionary.
+    delta, theta = Hyper_PSF3D_PL.predict_adr_params(header)
+
+    adr = ADR(header['PRESSURE'], header['TEMP'],
+              lref=REFWAVE, delta=delta, theta=theta)
+    adr_refract = adr.refract(0, 0, wave, unit=SPAXEL_SIZE)
+        
+    # adr_refract[0, :] corresponds to x, adr_refract[1, :] => y
+    xctr, yctr = adr_refract
+
+    return sigma, alpha, beta, ellipticity, eta, yctr, xctr
 
 
 def setup_logging(loglevel, logfname=None):
@@ -137,41 +178,8 @@ def cubefit(argv=None):
     logging.info("setting up PSF for all %d epochs", nt)
     psfs = []
     for i in range(nt):
-
-        # Get Gaussian+Moffat parameters at each wavelength.
-        relwave = wave / REFWAVE - 1.0
-        ellipticity = abs(cfg["psf_params"][i][0]) * np.ones_like(wave)
-        alpha = np.abs(cfg["psf_params"][i][1] +
-                       cfg["psf_params"][i][2] * relwave +
-                       cfg["psf_params"][i][3] * relwave**2)
-
-        # correlated parameters (coefficients determined externally)
-        sigma = 0.545 + 0.215 * alpha  # Gaussian parameter
-        beta  = 1.685 + 0.345 * alpha  # Moffat parameter
-        eta   = 1.040 + 0.0   * alpha  # gaussian ampl. / moffat ampl.
-
-        # Atmospheric differential refraction (ADR): Because of ADR,
-        # the center of the PSF will be different at each wavelength,
-        # by an amount that we can determine (pretty well) from the
-        # atmospheric conditions and the pointing and angle of the
-        # instrument. We calculate the offsets here as a function of
-        # observation and wavelength and input these to the model.
-
-        # Correction to parallactic angle and airmass for 2nd-order effects
-        # such as MLA rotation, mechanical flexures or finite-exposure
-        # corrections. These values have been trained on faint-std star
-        # exposures.
-        #
-        # `predict_adr_params` sses 'AIRMASS', 'PARANG' and 'CHANNEL' keys
-        # in input dictionary.
-        delta, theta = Hyper_PSF3D_PL.predict_adr_params(cubes[i].header)
-
-        adr = ADR(cubes[i].header['PRESSURE'], cubes[i].header['TEMP'],
-                  lref=REFWAVE, delta=delta, theta=theta)
-        adr_refract = adr.refract(0, 0, wave, unit=SPAXEL_SIZE)
-        
-        # adr_refract[0, :] corresponds to x, adr_refract[1, :] => y
-        xctr, yctr = adr_refract
+        sigma, alpha, beta, ellipticity, eta, yctr, xctr = snfpsfparams(
+            wave, cfg["psf_params"][i], cubes[i].header)
 
         # Tabular PSF
         if args.psftype == 'tabular':
@@ -183,6 +191,7 @@ def cubefit(argv=None):
                                           yctr, xctr, MODEL_SHAPE, subpix=1))
         else:
             raise ValueError("unknown psf type: " + repr(args.psftype))
+
 
     # -------------------------------------------------------------------------
     # Initialize all model parameters to be fit
