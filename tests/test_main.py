@@ -81,8 +81,8 @@ def generate_data():
     galaxy *= 1.0 / galaxy.max()  # scale so that max is 1.0
 
     # other "true" parameters
-    yctr = np.random.uniform(-2.0, 2.0, size=NOBS)
-    xctr = np.random.uniform(-2.0, 2.0, size=NOBS)
+    yctr = np.random.uniform(-1.0, 1.0, size=NOBS)
+    xctr = np.random.uniform(-1.0, 1.0, size=NOBS)
     yctr[MASTER_REF] = xctr[MASTER_REF] = 0.
     sky = [np.random.uniform(0.3, 0.7) * np.ones(NW) for _ in range(NOBS)]
     snctr = tuple(np.random.uniform(-2.0, 2.0, size=2))
@@ -164,7 +164,7 @@ def generate_data():
         data = sky[i][:, None, None] + g + sn[i][:, None, None] * s
 
         # add error
-        error = NOISE_RATIO * data.max()
+        error = NOISE_RATIO * (g + sky[i][:, None, None]).max()
         data += np.random.normal(scale=error, size=data.shape)
         weight = (1. / error**2) * np.ones_like(data)
 
@@ -190,10 +190,12 @@ def write_datacube(cube, fname):
     if os.path.exists(fname):
         os.remove(fname)
 
+    scaled_data = (1. / SCALE_FACTOR) * cube.data
+    scaled_var = (1. / SCALE_FACTOR**2) / cube.weight
+
     f = fitsio.FITS(fname, "rw")
-    f.write(np.asarray((1. / SCALE_FACTOR) * cube.data, dtype=np.float32),
-            header=cube.header)
-    f.write(np.asarray((1. / SCALE_FACTOR)**2 * cube.weight, dtype=np.float32))
+    f.write(np.asarray(scaled_data, dtype=np.float32), header=cube.header)
+    f.write(np.asarray(scaled_var, dtype=np.float32))
     f.close()
 
 
@@ -230,8 +232,8 @@ def test_cubefit():
 
     # run cubefit
     resultfname = os.path.join(dirname, "result.fits")
-    cubefit.cubefit(argv=[configfname, resultfname,
-                          "--mu_xy", "0.0", "--mu_wave", "0.0"])
+    cubefit.cubefit(argv=[configfname, resultfname])
+#                          "--mu_xy", "0.0", "--mu_wave", "0.0"])
 
     # run cubefit-subtract
     cubefit.cubefit_subtract([configfname, resultfname])
@@ -241,4 +243,5 @@ def test_cubefit():
     cubefit.cubefit_plot(argv=[configfname, resultfname, plotprefix,
                                "--plotepochs"])
 
-test_cubefit()
+if __name__ == "__main__":
+    test_cubefit()
