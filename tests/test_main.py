@@ -83,9 +83,10 @@ def generate_data():
     # other "true" parameters
     yctr = np.random.uniform(-2.0, 2.0, size=NOBS)
     xctr = np.random.uniform(-2.0, 2.0, size=NOBS)
-    sky = [np.random.uniform(0.5, 1.0) * np.ones(NW) for _ in range(NOBS)]
-    #snctr = tuple(np.random.uniform(-1.0, 1.0, size=2))
-    snctr = (0., 0.)
+    yctr[MASTER_REF] = xctr[MASTER_REF] = 0.
+    sky = [np.random.uniform(0.3, 0.7) * np.ones(NW) for _ in range(NOBS)]
+    snctr = tuple(np.random.uniform(-2.0, 2.0, size=2))
+    #snctr = (-2., 2.)
 
     # From SALT2 model, just for fun.
     sn_at_max = np.array([
@@ -140,7 +141,7 @@ def generate_data():
 
     cubes = []
     for i in range(NOBS):
-        # atmospheric conditions used to create PSF and also go in header
+        # atmospheric conditions used to create PSF; they also go in header
         header = {'AIRMASS': np.random.uniform(1., 1.5),
                   'TEMP': np.random.uniform(0., 5.),
                   'PRESSURE': np.random.uniform(615., 620.),
@@ -150,11 +151,11 @@ def generate_data():
 
         # create a PSF for convolving & shifting the galaxy model to create
         # the data.
-        sigma, alpha, beta, ellipticity, eta, yctr, xctr = \
+        sigma, alpha, beta, ellipticity, eta, yc, xc = \
             cubefit.main.snfpsfparams(wave, psf_params[i], header)
         A = cubefit.psffuncs.gaussian_moffat_psf(
             sigma, alpha, beta, ellipticity, eta,
-            yctr, xctr, MODEL_SHAPE, subpix=1)
+            yc, xc, MODEL_SHAPE, subpix=1)
         psf = cubefit.TabularPSF(A)
 
         # create data from sky + galaxy + SN

@@ -441,8 +441,8 @@ def chisq_position_sky_sn_multi(allctrs, galaxy, datas, weights, psfs):
         chisqgrad[ctr_ind] += dchisq[0:2]
         chisqgrad[snctr_ind] += dchisq[2:4]
 
-    # reshape gradient to 1-d upon return.
     return chisq, chisqgrad
+
 
 def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, psfs, factor):
     """Fit data pointing (nepochs), SN position (in model frame),
