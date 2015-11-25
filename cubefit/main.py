@@ -33,6 +33,7 @@ MIN_NMAD = 2.5  # Minimum Number of Median Absolute Deviations above
                 # the minimum spaxel value in fit_position
 LBFGSB_FACTOR = 1e10
 REFWAVE = 5000.  # reference wavelength in Angstroms for PSF params and ADR
+POSITION_BOUND = 3.  # Bound on fitted positions relative in initial positions
 
 def snfpsfparams(wave, psfparams, header):
     """Create a 3-d PSF based on SNFactory-specific parameterization of
@@ -269,7 +270,8 @@ def cubefit(argv=None):
         weight = cube.weight * mask[None, :, :]
 
         fctr, fsky = fit_position_sky(galaxy, cube.data, weight,
-                                      (yctr[i], xctr[i]), psfs[i])
+                                      (yctr[i], xctr[i]), psfs[i],
+                                      POSITION_BOUND)
         yctr[i], xctr[i] = fctr
         skys[i] = fsky
 
@@ -313,7 +315,8 @@ def cubefit(argv=None):
         ctrs = [(yctr[i], xctr[i]) for i in nonrefs]
         psfs_nonrefs = [psfs[i] for i in nonrefs]
         fctrs, snctr, fskys, fsne = fit_position_sky_sn_multi(
-            galaxy, datas, weights, ctrs, snctr, psfs_nonrefs, LBFGSB_FACTOR)
+            galaxy, datas, weights, ctrs, snctr, psfs_nonrefs,
+            LBFGSB_FACTOR, POSITION_BOUND)
 
         # put fitted results back in parameter lists.
         for i,j in enumerate(nonrefs):
@@ -379,7 +382,8 @@ def cubefit(argv=None):
         ctrs = [(yctr[i], xctr[i]) for i in nonrefs]
         psfs_nonrefs = [psfs[i] for i in nonrefs]
         fctrs, snctr, fskys, fsne = fit_position_sky_sn_multi(
-            galaxy, datas, weights, ctrs, snctr, psfs_nonrefs, LBFGSB_FACTOR)
+            galaxy, datas, weights, ctrs, snctr, psfs_nonrefs,
+            LBFGSB_FACTOR, POSITION_BOUND)
 
         # put fitted results back in parameter lists.
         for i,j in enumerate(nonrefs):

@@ -350,7 +350,7 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, psfs, regpenalty,
     return galaxy, skys
 
 
-def fit_position_sky(galaxy, data, weight, ctr0, psf):
+def fit_position_sky(galaxy, data, weight, ctr0, psf, relbound):
     """Fit data position and sky for a single epoch (fixed galaxy model).
 
     Parameters
@@ -360,6 +360,8 @@ def fit_position_sky(galaxy, data, weight, ctr0, psf):
     weight : ndarray(3-d)
     ctr0 : (float, float)
         Initial center.
+    relbound : float
+        Bound on position relative to initial position.
 
     Returns
     -------
@@ -369,9 +371,7 @@ def fit_position_sky(galaxy, data, weight, ctr0, psf):
         Fitted sky.
     """
 
-    BOUND = 3. # +/- position bound in spaxels
-
-    bounds = [(c - BOUND, c + BOUND) for c in ctr0]
+    bounds = [(c - relbound, c + relbound) for c in ctr0]
 
     # bounds such that arrays still overlap, returned as
     # (ymin, ymax), (xmin, xmax)
@@ -444,7 +444,7 @@ def chisq_position_sky_sn_multi(allctrs, galaxy, datas, weights, psfs):
     return chisq, chisqgrad
 
 
-def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, psfs, factor):
+def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, psfs, factor, relbound):
     """Fit data pointing (nepochs), SN position (in model frame),
     SN amplitude (nepochs), and sky level (nepochs). This is meant to be
     used only on epochs with SN light.
@@ -458,7 +458,10 @@ def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, psfs, facto
         Initial data positions (y, x)
     snctr0 : tuple
         Initial SN position.
-    psfs : list of PsfModels
+    psfs : list of PSFModels
+    relbound : float
+        Bound on positions relative to initial positions. Bounds will
+        be ``(intial - relbound, initial + relbound)``.
 
     Returns
     -------
@@ -480,8 +483,6 @@ def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, psfs, facto
     each iteration.
     """
 
-    BOUND = 2. # +/- position bound in spaxels
-
     nepochs = len(datas)
     assert len(weights) == len(ctrs0) == len(psfs) == nepochs
 
@@ -489,8 +490,8 @@ def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, psfs, facto
     allctrs0 = np.ravel(np.vstack((ctrs0, snctr0)))
 
     # Default parameter bounds for all parameters.
-    minbound = allctrs0 - BOUND
-    maxbound = allctrs0 + BOUND
+    minbound = allctrs0 - relbound
+    maxbound = allctrs0 + relbound
 
     # For data position parameters, check that bounds do not extend
     # past the edge of the model and adjust the minbound and maxbound.
