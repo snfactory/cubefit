@@ -184,7 +184,7 @@ def cubefit(argv=None):
         # Tabular PSF
         if args.psftype == 'tabular':
             A = gaussian_moffat_psf(sigma, alpha, beta, ellipticity, eta,
-                                    yc, xc, MODEL_SHAPE, subpix=1)
+                                    yc, xc, MODEL_SHAPE, subpix=3)
             psfs.append(TabularPSF(A))
         elif args.psftype == 'gaussian-moffat':
             psfs.append(GaussianMoffatPSF(sigma, alpha, beta, ellipticity, eta,
