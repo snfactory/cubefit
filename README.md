@@ -1,7 +1,8 @@
 CubeFit
 =======
 
-Fit supernova + galaxy model on a Nearby Supernova Factory spectral data cube.
+Fit supernova + galaxy model on a series of spectral data cubes from
+the Nearby Supernova Factory.
 
 
 Installation
@@ -130,23 +131,31 @@ What it does
 
 The data are N 3-d cubes, where N are observations at different times
 (typically N ~ 10-30).  Each cube has two spatial directions and one
-wavelength direction (typical dimensions 15 x 15 x 800). Each cube has
-both a data array and a corresponding weight (error) array.
+wavelength direction. For SN factory, the dimensions are 15 x 15 x M,
+where M=779 for the blue channel M=1572 for the red channel. Each cube
+has both a data array and a corresponding weight (error) array.
+
+Some of the data cubes are designed as "final refs", meaning that there is
+assumed to be no SN light in these epochs.
 
 **The model**
 
 The model parameters consist of:
 
-- 3-d galaxy model ("unconvolved"). Default size is approximately 32 x
-  32 x 800, where the pixel size of the model matches that of the data
+- 3-d galaxy model ("unconvolved"). Default size is 32 x
+  32 x M, where the pixel size of the model matches that of the data
   (both spatially and in wavelength) but the model extends past the
-  data spatially.
+  data spatially, and the spectral grid matches the data.
 - N 1-d sky spectra
 - N 1-d supernova spectra
-- position of each of the N data cubes relative to a "master final
-  ref": 2 x (N-1) parameters
-- position of the SN in the "master final ref" frame of reference: 2
-  parameters
+- position of each of the N data cubes: 2N parameters
+- position of the SN: 2 parameters
+
+Some of these parameters are fixed. For example, the SN spectrum in
+each of the final refs is fixed to zero. The position of one of the
+final refs (the "master" final ref) is fixed to the input values
+because only the relative offset between data cube positions is
+discernable.
 
 Additionally there are inputs that describe "atmospheric
 conditions". These are necessary for propagating the model to the
