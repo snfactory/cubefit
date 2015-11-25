@@ -178,17 +178,17 @@ def cubefit(argv=None):
     logging.info("setting up PSF for all %d epochs", nt)
     psfs = []
     for i in range(nt):
-        sigma, alpha, beta, ellipticity, eta, yctr, xctr = snfpsfparams(
+        sigma, alpha, beta, ellipticity, eta, yc, xc = snfpsfparams(
             wave, cfg["psf_params"][i], cubes[i].header)
 
         # Tabular PSF
         if args.psftype == 'tabular':
             A = gaussian_moffat_psf(sigma, alpha, beta, ellipticity, eta,
-                                    yctr, xctr, MODEL_SHAPE, subpix=1)
+                                    yc, xc, MODEL_SHAPE, subpix=1)
             psfs.append(TabularPSF(A))
         elif args.psftype == 'gaussian-moffat':
             psfs.append(GaussianMoffatPSF(sigma, alpha, beta, ellipticity, eta,
-                                          yctr, xctr, MODEL_SHAPE, subpix=1))
+                                          yc, xc, MODEL_SHAPE, subpix=1))
         else:
             raise ValueError("unknown psf type: " + repr(args.psftype))
 
