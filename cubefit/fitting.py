@@ -312,8 +312,6 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, psfs, regpenalty,
         cval, cgrad = chisq_galaxy_sky_multi(galaxy, datas, weights,
                                              ctrs, psfs)
         rval, rgrad = regpenalty(galaxy)
-        rval *= nepochs
-        rgrad *= nepochs
 
         totval = cval + rval
         logging.debug(u'\u03C7\u00B2 = %8.2f (%8.2f + %8.2f)', totval, cval, rval)
