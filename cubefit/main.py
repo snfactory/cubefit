@@ -21,6 +21,7 @@ from .io import read_datacube, write_results, read_results
 from .fitting import (guess_sky, fit_galaxy_single, fit_galaxy_sky_multi,
                       fit_position_sky, fit_position_sky_sn_multi,
                       RegularizationPenalty)
+from .utils import yxbounds
 from .extern import ADR, Hyper_PSF3D_PL
 
 
@@ -193,18 +194,45 @@ def cubefit(argv=None):
         else:
             raise ValueError("unknown psf type: " + repr(args.psftype))
 
-
     # -------------------------------------------------------------------------
     # Initialize all model parameters to be fit
 
+    yctr0 = np.array(cfg["ycenters"])
+    xctr0 = np.array(cfg["xcenters"])
+
     galaxy = np.zeros((nw, MODEL_SHAPE[0], MODEL_SHAPE[1]), dtype=np.float64)
     sn = np.zeros((nt, nw), dtype=np.float64)  # SN spectrum at each epoch
-    snctr = (0.0, 0.0)
-    xctr = np.array(cfg["xcenters"])
-    yctr = np.array(cfg["ycenters"])
+    skys = np.zeros((nt, nw), dtype=np.float64)  # Sky spectrum at each epoch
+    yctr = yctr0.copy()
+    xctr = xctr0.copy()
+    snctr = (0., 0.)
+
+    # -------------------------------------------------------------------------
+    # Position bounds
+
+    # Bounds on data position: shape=(nt, 2)
+    xctrbounds = np.vstack((xctr - POSITION_BOUND, xctr + POSITION_BOUND)).T
+    yctrbounds = np.vstack((yctr - POSITION_BOUND, yctr + POSITION_BOUND)).T
+    snctrbounds = (-POSITION_BOUND, POSITION_BOUND)
+
+    # For data positions, check that bounds do not extend
+    # past the edge of the model and adjust the minbound and maxbound.
+    # This doesn't apply to SN position.
+    gshape = galaxy.shape[1:3]  # model shape
+    for i in range(nt):
+        dshape = cubes[i].data.shape[1:3]
+        (yminabs, ymaxabs), (xminabs, xmaxabs) = yxbounds(gshape, dshape)
+        yctrbounds[i, 0] = max(yctrbounds[i, 0], yminabs)
+        yctrbounds[i, 1] = min(yctrbounds[i, 1], ymaxabs)
+        xctrbounds[i, 0] = max(xctrbounds[i, 0], xminabs)
+        xctrbounds[i, 1] = min(xctrbounds[i, 1], xmaxabs)
+
+    # -------------------------------------------------------------------------
+    # Guess sky
 
     logging.info("guessing sky for all %d epochs", nt)
-    skys = np.array([guess_sky(cube, npix=30) for cube in cubes])
+    for i, cube in enumerate(cubes):
+        skys[i, :] = guess_sky(cube, npix=30)
 
     # -------------------------------------------------------------------------
     # Regularization penalty parameters
@@ -225,7 +253,7 @@ def cubefit(argv=None):
     # -------------------------------------------------------------------------
     # Fit just the galaxy model to just the master ref.
 
-    data = cubes[master_ref].data - skys[master_ref][:, None, None]
+    data = cubes[master_ref].data - skys[master_ref, :, None, None]
     weight = cubes[master_ref].weight
 
     logging.info("fitting galaxy to master ref [%d]", master_ref)
@@ -235,8 +263,8 @@ def cubefit(argv=None):
 
     if args.diagdir:
         fname = os.path.join(args.diagdir, 'step1.fits')
-        write_results(galaxy, skys, sn, snctr, yctr, xctr,
-                      cubes[0].data.shape, psfs, wavewcs, fname)
+        write_results(galaxy, skys, sn, snctr, yctr, xctr, yctr0, xctr0,
+                      yctrbounds, xctrbounds, cubes, psfs, wavewcs, fname)
 
     tsteps["fit galaxy to master ref"] = datetime.now()
 
@@ -271,9 +299,9 @@ def cubefit(argv=None):
 
         fctr, fsky = fit_position_sky(galaxy, cube.data, weight,
                                       (yctr[i], xctr[i]), psfs[i],
-                                      POSITION_BOUND)
+                                      (yctrbounds[i], xctrbounds[i]))
         yctr[i], xctr[i] = fctr
-        skys[i] = fsky
+        skys[i, :] = fsky
 
     tsteps["fit positions of other refs"] = datetime.now()
 
@@ -290,12 +318,12 @@ def cubefit(argv=None):
 
     # put fitted skys back in `skys`
     for i,j in enumerate(refs):
-        skys[j] = fskys[i]
+        skys[j, :] = fskys[i]
 
     if args.diagdir:
         fname = os.path.join(args.diagdir, 'step2.fits')
-        write_results(galaxy, skys, sn, snctr, yctr, xctr,
-                      cubes[0].data.shape, psfs, wavewcs, fname)
+        write_results(galaxy, skys, sn, snctr, yctr, xctr, yctr0, xctr0,
+                      yctrbounds, xctrbounds, cubes, psfs, wavewcs, fname)
 
     tsteps["fit galaxy to all refs"] = datetime.now()
 
@@ -312,17 +340,18 @@ def cubefit(argv=None):
     if len(nonrefs) > 0:
         datas = [cubes[i].data for i in nonrefs]
         weights = [cubes[i].weight for i in nonrefs]
-        ctrs = [(yctr[i], xctr[i]) for i in nonrefs]
         psfs_nonrefs = [psfs[i] for i in nonrefs]
-        fctrs, snctr, fskys, fsne = fit_position_sky_sn_multi(
-            galaxy, datas, weights, ctrs, snctr, psfs_nonrefs,
-            LBFGSB_FACTOR, POSITION_BOUND)
+        fyctr, fxctr, snctr, fskys, fsne = fit_position_sky_sn_multi(
+            galaxy, datas, weights, yctr[nonrefs], xctr[nonrefs],
+            snctr, psfs_nonrefs, LBFGSB_FACTOR, yctrbounds[nonrefs],
+            xctrbounds[nonrefs], snctrbounds)
 
         # put fitted results back in parameter lists.
+        yctr[nonrefs] = fyctr
+        xctr[nonrefs] = fxctr
         for i,j in enumerate(nonrefs):
             skys[j, :] = fskys[i]
             sn[j, :] = fsne[i]
-            yctr[j], xctr[j] = fctrs[i]
 
     tsteps["fit positions of nonrefs & SN"] = datetime.now()
 
@@ -333,8 +362,8 @@ def cubefit(argv=None):
 
         if args.diagdir:
             fname = os.path.join(args.diagdir, 'step3.fits')
-            write_results(galaxy, skys, sn, snctr, yctr, xctr,
-                          cubes[0].data.shape, psfs, wavewcs, fname)
+            write_results(galaxy, skys, sn, snctr, yctr, xctr, yctr0, xctr0,
+                          yctrbounds, xctrbounds, cubes, psfs, wavewcs, fname)
 
         # ---------------------------------------------------------------------
         # Redo fit of galaxy, using ALL epochs, including ones with SN
@@ -364,12 +393,12 @@ def cubefit(argv=None):
         galaxy, fskys = fit_galaxy_sky_multi(galaxy, datas, weights, ctrs,
                                              psfs, regpenalty, LBFGSB_FACTOR)
         for i in range(nt):
-            skys[i] = fskys[i]  # put fitted skys back in skys
+            skys[i, :] = fskys[i]  # put fitted skys back in skys
 
         if args.diagdir:
             fname = os.path.join(args.diagdir, 'step4.fits')
-            write_results(galaxy, skys, sn, snctr, yctr, xctr,
-                          cubes[0].data.shape, psfs, wavewcs, fname)
+            write_results(galaxy, skys, sn, snctr, yctr, xctr, yctr0, xctr0,
+                          yctrbounds, xctrbounds, cubes, psfs, wavewcs, fname)
 
         # ---------------------------------------------------------------------
         # Repeat step before last: fit position of data and SN in
@@ -377,26 +406,28 @@ def cubefit(argv=None):
 
         logging.info("re-fitting position of all %d non-refs and SN position",
                      len(nonrefs))
-        datas = [cubes[i].data for i in nonrefs]
-        weights = [cubes[i].weight for i in nonrefs]
-        ctrs = [(yctr[i], xctr[i]) for i in nonrefs]
-        psfs_nonrefs = [psfs[i] for i in nonrefs]
-        fctrs, snctr, fskys, fsne = fit_position_sky_sn_multi(
-            galaxy, datas, weights, ctrs, snctr, psfs_nonrefs,
-            LBFGSB_FACTOR, POSITION_BOUND)
+        if len(nonrefs) > 0:
+            datas = [cubes[i].data for i in nonrefs]
+            weights = [cubes[i].weight for i in nonrefs]
+            psfs_nonrefs = [psfs[i] for i in nonrefs]
+            fyctr, fxctr, snctr, fskys, fsne = fit_position_sky_sn_multi(
+                galaxy, datas, weights, yctr[nonrefs], xctr[nonrefs],
+                snctr, psfs_nonrefs, LBFGSB_FACTOR, yctrbounds[nonrefs],
+                xctrbounds[nonrefs], snctrbounds)
 
-        # put fitted results back in parameter lists.
-        for i,j in enumerate(nonrefs):
-            skys[j] = fskys[i]
-            sn[j, :] = fsne[i]
-            yctr[j], xctr[j] = fctrs[i]
+            # put fitted results back in parameter lists.
+            yctr[nonrefs] = fyctr
+            xctr[nonrefs] = fxctr
+            for i, j in enumerate(nonrefs):
+                skys[j, :] = fskys[i]
+                sn[j, :] = fsne[i]
 
     # -------------------------------------------------------------------------
     # Write results
 
     logging.info("writing results to %s", args.outfile)
-    write_results(galaxy, skys, sn, snctr, yctr, xctr,
-                  cubes[0].data.shape, psfs, wavewcs, args.outfile)
+    write_results(galaxy, skys, sn, snctr, yctr, xctr, yctr0, xctr0,
+                  yctrbounds, xctrbounds, cubes, psfs, wavewcs, args.outfile)
 
     # time info
     logging.info("step times:")

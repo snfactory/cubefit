@@ -6,8 +6,6 @@ import logging
 import numpy as np
 from scipy.optimize import fmin_l_bfgs_b
 
-from .utils import yxbounds
-
 __all__ = ["guess_sky", "fit_galaxy_single", "fit_galaxy_sky_multi",
            "fit_position_sky", "fit_position_sky_sn_multi",
            "RegularizationPenalty"]
@@ -350,7 +348,7 @@ def fit_galaxy_sky_multi(galaxy0, datas, weights, ctrs, psfs, regpenalty,
     return galaxy, skys
 
 
-def fit_position_sky(galaxy, data, weight, ctr0, psf, relbound):
+def fit_position_sky(galaxy, data, weight, ctr0, psf, bounds):
     """Fit data position and sky for a single epoch (fixed galaxy model).
 
     Parameters
@@ -360,8 +358,9 @@ def fit_position_sky(galaxy, data, weight, ctr0, psf, relbound):
     weight : ndarray(3-d)
     ctr0 : (float, float)
         Initial center.
-    relbound : float
-        Bound on position relative to initial position.
+    bounds : [(float, float), (float, float)]
+        Lower and upper bounds on each parameter. Order:
+        (lower y, upper y), (lower x, upper x).
 
     Returns
     -------
@@ -370,17 +369,6 @@ def fit_position_sky(galaxy, data, weight, ctr0, psf, relbound):
     sky : ndarray (1-d)
         Fitted sky.
     """
-
-    bounds = [(c - relbound, c + relbound) for c in ctr0]
-
-    # bounds such that arrays still overlap, returned as
-    # (ymin, ymax), (xmin, xmax)
-    absbounds = yxbounds(galaxy.shape[1:3], data.shape[1:3])
-
-    # limit bounds to absolute bounds.
-    for i in range(len(bounds)):
-        bounds[i] = (max(bounds[i][0], absbounds[i][0]),
-                     min(bounds[i][1], absbounds[i][1]))
 
     ctr, f, d = fmin_l_bfgs_b(chisq_position_sky, ctr0,
                               args=(galaxy, data, weight, psf),
@@ -444,7 +432,9 @@ def chisq_position_sky_sn_multi(allctrs, galaxy, datas, weights, psfs):
     return chisq, chisqgrad
 
 
-def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, psfs, factor, relbound):
+def fit_position_sky_sn_multi(galaxy, datas, weights, yctr0, xctr0, snctr0,
+                              psfs, factor, yctrbounds, xctrbounds,
+                              snctrbounds):
     """Fit data pointing (nepochs), SN position (in model frame),
     SN amplitude (nepochs), and sky level (nepochs). This is meant to be
     used only on epochs with SN light.
@@ -484,29 +474,19 @@ def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, psfs, facto
     """
 
     nepochs = len(datas)
-    assert len(weights) == len(ctrs0) == len(psfs) == nepochs
+    assert len(weights) == len(yctr0) == len(xctr0) == len(psfs) == nepochs
 
-    # Initial parameter array. Has order [y0, x0, y1, x1, ... , ysn, xsn].
-    allctrs0 = np.ravel(np.vstack((ctrs0, snctr0)))
+    # Reshape initial positions to [y0, x0, y1, x1, ... , ysn, xsn]
+    allctrs0 = np.empty(2*nepochs + 2, dtype=np.float64)
+    allctrs0[0:2*nepochs:2] = yctr0
+    allctrs0[1:2*nepochs:2] = xctr0
+    allctrs0[2*nepochs:2*nepochs+2] = snctr0
 
-    # Default parameter bounds for all parameters.
-    minbound = allctrs0 - relbound
-    maxbound = allctrs0 + relbound
-
-    # For data position parameters, check that bounds do not extend
-    # past the edge of the model and adjust the minbound and maxbound.
-    # For SN position bounds, we don't do any checking like this.
-    gshape = galaxy.shape[1:3]  # model shape
-    for i in range(nepochs):
-        dshape = datas[i].shape[1:3]
-        (yminabs, ymaxabs), (xminabs, xmaxabs) = yxbounds(gshape, dshape)
-        minbound[2*i] = max(minbound[2*i], yminabs)  # ymin
-        maxbound[2*i] = min(maxbound[2*i], ymaxabs)  # ymax
-        minbound[2*i+1] = max(minbound[2*i+1], xminabs)  # xmin
-        maxbound[2*i+1] = min(maxbound[2*i+1], xmaxabs)  # xmax
-
-    # [(y0min, y0max), (x0min, x0max), ...]
-    bounds = list(zip(minbound, maxbound))
+    # reshape bounds to [(y0min, y0max), (x0min, x0max), ...]
+    bounds = np.empty((2*nepochs + 2, 2), dtype=np.float64)
+    bounds[0:2*nepochs:2, :] = yctrbounds
+    bounds[1:2*nepochs:2, :] = xctrbounds
+    bounds[2*nepochs:2*nepochs+2, :] = snctrbounds
 
     def callback(params):
         for i in range(len(params)//2-1):
@@ -524,21 +504,23 @@ def fit_position_sky_sn_multi(galaxy, datas, weights, ctrs0, snctr0, psfs, facto
     _log_result("fmin_l_bfgs_b", f, d['nit'], d['funcalls'])
 
     # pull out fitted positions
-    fallctrs = fallctrs.reshape((nepochs+1, 2))
-    fsnctr = tuple(fallctrs[nepochs, :])
-    fctrs = [tuple(fallctrs[i, :]) for i in range(nepochs)]
+    fyctr = fallctrs[0:2*nepochs:2].copy()
+    fxctr = fallctrs[1:2*nepochs:2].copy()
+    fsnctr = fallctrs[2*nepochs:2*nepochs+2].copy()
 
     # evaluate final sky and sn in each epoch
     skys = []
     sne = []
     for i in range(nepochs):
-        g = psfs[i].evaluate_galaxy(galaxy, datas[i].shape[1:3], fctrs[i])
-        s = psfs[i].point_source(fsnctr, datas[i].shape[1:3], fctrs[i])
+        g = psfs[i].evaluate_galaxy(galaxy, datas[i].shape[1:3],
+                                    (fyctr[i], fxctr[i]))
+        s = psfs[i].point_source(fsnctr, datas[i].shape[1:3],
+                                 (fyctr[i], fxctr[i]))
         sky, sn = sky_and_sn(datas[i], weights[i], g, s)
         skys.append(sky)
         sne.append(sn)
 
-    return fctrs, fsnctr, skys, sne
+    return fyctr, fxctr, fsnctr, skys, sne
 
 
 class RegularizationPenalty(object):

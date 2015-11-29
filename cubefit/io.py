@@ -99,7 +99,8 @@ def read_datacube(filename, scale=True):
     return DataCube(data, weight, wave, wavewcs=wavewcs, header=hdr)
 
 
-def epoch_results(galaxy, skys, sn, snctr, yctr, xctr, dshape, psfs):
+def epoch_results(galaxy, skys, sn, snctr, yctr, xctr, yctr0, xctr0,
+                  yctrbounds, xctrbounds, cubes, psfs):
     """Package all by-epoch results into a single numpy structured array,
     amenable to writing out to a FITS file.
 
@@ -107,21 +108,31 @@ def epoch_results(galaxy, skys, sn, snctr, yctr, xctr, dshape, psfs):
     spatial shape. A different format would have to be used if this were not
     the case.
     """
+    dshape = cubes[0].data.shape
 
     # This is a table with `nt` rows
     nt = len(psfs)
     dtype = [('yctr', 'f8'),
              ('xctr', 'f8'),
              ('sn', 'f4', sn.shape[1]),
-             ('sky', 'f4', len(skys[0])),
+             ('sky', 'f4', skys.shape[1]),
              ('galeval', 'f4', dshape),
-             ('sneval', 'f4', dshape)]
+             ('sneval', 'f4', dshape),
+             ('chisq', 'f8'),
+             ('yctr0', 'f8'),
+             ('xctr0', 'f8'),
+             ('yctrbounds', 'f8', 2),
+             ('xctrbounds', 'f8', 2)]
 
     epochs = np.zeros(nt, dtype=dtype)
     epochs['yctr'] = yctr
     epochs['xctr'] = xctr
     epochs['sn'] = sn
     epochs['sky'] = skys
+    epochs['yctr0'] = yctr0
+    epochs['xctr0'] = xctr0
+    epochs['yctrbounds'] = yctrbounds
+    epochs['xctrbounds'] = xctrbounds
 
     # evaluate galaxy & PSF on data
     for i in range(nt):
@@ -129,15 +140,20 @@ def epoch_results(galaxy, skys, sn, snctr, yctr, xctr, dshape, psfs):
                                                        (yctr[i], xctr[i]))
         epochs['sneval'][i] = psfs[i].point_source(snctr, dshape[1:3],
                                                    (yctr[i], xctr[i]))
+        epochs['sneval'][i] *= sn[i, :, None, None]  # multiply by sn amplitude
 
-    # multiply by sn amplitude
-    epochs['sneval'] *= sn[:, :, None, None]
+        # Calculate chi squared.
+        scene = (epochs['sky'][i, :, None, None] + epochs['galeval'][i] +
+                 epochs['sneval'][i])
+        epochs['chisq'][i] = np.sum(cubes[i].weight *
+                                    (cubes[i].data - scene)**2)
 
     return epochs
 
 
-def write_results(galaxy, skys, sn, snctr, yctr, xctr, dshape, psfs, wavewcs,
-                  fname, descale=True):
+def write_results(galaxy, skys, sn, snctr, yctr, xctr, yctr0, xctr0,
+                  yctrbounds, xctrbounds, cubes, psfs, wavewcs, fname,
+                  descale=True):
     """Write results to a FITS file."""
 
     if descale:
@@ -146,7 +162,8 @@ def write_results(galaxy, skys, sn, snctr, yctr, xctr, dshape, psfs, wavewcs,
         sn = sn / SCALE_FACTOR
 
     # Create epochs table.
-    epochs = epoch_results(galaxy, skys, sn, snctr, yctr, xctr, dshape, psfs)
+    epochs = epoch_results(galaxy, skys, sn, snctr, yctr, xctr, yctr0, xctr0,
+                           yctrbounds, xctrbounds, cubes, psfs)
 
     if os.path.exists(fname):  # avoids warning doing FITS(..., clobber=True)
         os.remove(fname)
