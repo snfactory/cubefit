@@ -190,7 +190,7 @@ def cubefit(argv=None):
             psfs.append(TabularPSF(A))
         elif args.psftype == 'gaussian-moffat':
             psfs.append(GaussianMoffatPSF(sigma, alpha, beta, ellipticity, eta,
-                                          yc, xc, MODEL_SHAPE, subpix=1))
+                                          yc, xc, MODEL_SHAPE, subpix=3))
         else:
             raise ValueError("unknown psf type: " + repr(args.psftype))
 
