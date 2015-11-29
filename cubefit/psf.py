@@ -215,8 +215,6 @@ class GaussianMoffatPSF(PSFBase):
         self.yctr = yctr
         self.xctr = xctr
 
-        self.nw = len(ellipticity)
-
         self.subpix = subpix
 
         # Set up tabular PSF for galaxy convolution
