@@ -529,8 +529,7 @@ The "sn_outnames" configuration field determines the output filenames.
 def cubefit_plot(argv=None):
     DESCRIPTION = """Plot results and diagnostics from cubefit"""
 
-    from .plotting import (plot_timeseries, plot_adr, plot_epoch, plot_sn,
-                           plot_wave_slices)
+    from .plotting import plot_timeseries, plot_epoch, plot_sn, plot_adr
 
     # arguments are the same as cubefit except an output 
     parser = ArgumentParser(prog="cubefit-plot", description=DESCRIPTION)
@@ -576,25 +575,18 @@ def cubefit_plot(argv=None):
     plot_timeseries(cubes, results, band=args.band,
                     fname=(args.outprefix + '_timeseries.png'))
 
-    # Plot the x-y coordinates of the adr versus wavelength.
-    plot_adr(cubes, cubes[0].wave, fname=(args.outprefix + '_adr.png'))
+    # Plot wave slices and sn, galaxy and sky spectra for all epochs.
+    if 'final' in results and args.plotepochs:
+        for i_t in range(len(cubes)):
+            plot_epoch(cubes[i_t], results['final']['epochs'][i_t],
+                       fname=(args.outprefix + '_epoch%02d.png' % i_t))
 
-    # Plots that depend on final results being available.
-    if 'final' in results:
-        # plot wave slices, just for final refs.
-        refcubes = [cubes[i] for i in cfg['refs']]
-        refgaleval = results['final']['epochs']['galeval'][cfg['refs']]
-        plot_wave_slices(refcubes, refgaleval,
-                         fname=(args.outprefix + '_waveslice.png'))
+    # Plot result spectra against IDR spectra.
+    if 'final' in results and args.idrfiles is not None:
+        plot_sn(cfg['filenames'], results['final']['epochs']['sn'],
+                results['final']['wave'], args.idrfiles,
+                args.outprefix + '_sn.png')
 
-        # Plot result spectra against IDR spectra.
-        if args.idrfiles is not None:
-            plot_sn(cfg['filenames'], results['final']['epochs']['sn'],
-                    results['final']['wave'], args.idrfiles,
-                    args.outprefix + '_sn.png')
-
-        # Plot wave slices and sn, galaxy and sky spectra for all epochs.
-        if args.plotepochs:
-            for i_t in range(len(cubes)):
-                plot_epoch(cubes[i_t], results['final']['epochs'][i_t],
-                           fname=(args.outprefix + '_epoch%02d.png' % i_t))
+    # Plot the x-y coordinates of the adr versus wavelength
+    # (Skip this for now; contains no interesting information)
+    #plot_adr(cubes, cubes[0].wave, fname=(args.outprefix + '_adr.png'))
