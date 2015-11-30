@@ -1,14 +1,22 @@
-DATADIR = data
-RESULTDIR = results
-DIAGDIR = diagnostics
-PLOTDIR = plots
+DATADIR := data
+RESULTDIR := results
+DIAGDIR := diagnostics
+PLOTDIR := plots
 LOGLEVEL = info
-PLOTEPOCHS = N
+PLOTEPOCHS = 0
+PSFTYPE = tabular
 
-ifeq ($(PLOTEPOCHS), Y)
+ifeq ($(PLOTEPOCHS), 1)
 	PLOTEPOCHSARG = --plotepochs
 else
 	PLOTEPOCHSARG = 
+endif
+
+# for trying different versions
+ifdef PREFIX
+	RESULTDIR := $(PREFIX)-$(RESULTDIR)
+	DIAGDIR := $(PREFIX)-$(DIAGDIR)
+	PLOTDIR := $(PREFIX)-$(PLOTDIR)
 endif
 
 # user override for --idrfiles argument in `cubefit-plot`
@@ -66,6 +74,7 @@ $(RESULTDIR)/%.fits :
         --loglevel=$(LOGLEVEL) \
         --mu_wave=0.07 \
         --mu_xy=0.001 \
+	--psftype=$(PSFTYPE) \
 	2>&1 | tee $(RESULTDIR)/$*.log
 
 $(foreach name,$(names),$(name)-plots) : %-plots :
