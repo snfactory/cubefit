@@ -72,7 +72,7 @@ $(RESULTDIR)/%.fits :
         --dataprefix=$(DATADIR)/$* \
         --diagdir=$(DIAGDIR)/$* \
         --loglevel=$(LOGLEVEL) \
-        --mu_wave=0.07 \
+        --mu_wave=0.001 \
         --mu_xy=0.001 \
 	--psftype=$(PSFTYPE) \
 	2>&1 | tee $(RESULTDIR)/$*.log
