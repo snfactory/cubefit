@@ -27,19 +27,16 @@ class DataCube(object):
         data.shape[2], weight.shape[2]
     """
     
-    def __init__(self, data, weight, wave, wavewcs=None, header=None):
+    def __init__(self, data, weight, wave, header=None):
         if data.shape != weight.shape:
             raise ValueError("shape of weight and data must match")
         if len(wave) != data.shape[0]:
             raise ValueError("length of wave must match data axis=1")
-        if wavewcs is None:
-            wavewcs = {}
 
         self.data = data
         self.weight = weight
         self.wave = wave
         self.nw, self.ny, self.nx = data.shape
-        self.wavewcs = wavewcs
         self.header = header
 
 def wcs_to_wave(hdr):
@@ -69,11 +66,11 @@ def read_datacube(filename, scale=True):
     """
 
     with fitsio.FITS(filename, "r") as f:
-        hdr = f[0].read_header()
+        header = f[0].read_header()
         data = np.asarray(f[0].read(), dtype=np.float64)
         variance = np.asarray(f[1].read(), dtype=np.float64)
 
-    wave = wcs_to_wave(hdr)
+    wave = wcs_to_wave(header)
     weight = 1. / variance
 
     # Zero-weight array elements that are NaN
@@ -91,12 +88,7 @@ def read_datacube(filename, scale=True):
     #       (variance = Inf is OK - weight becomes 0)
     #       check for Inf in data? set data, weight to zero?
 
-    # save the raw wavelength WCS solution for eventually writing out results.
-    wavewcs = {"CRVAL3": hdr["CRVAL3"],
-               "CRPIX3": hdr["CRPIX3"],
-               "CDELT3": hdr["CDELT3"]}
-
-    return DataCube(data, weight, wave, wavewcs=wavewcs, header=hdr)
+    return DataCube(data, weight, wave, header=header)
 
 
 def epoch_results(galaxy, skys, sn, snctr, yctr, xctr, yctr0, xctr0,
@@ -152,7 +144,7 @@ def epoch_results(galaxy, skys, sn, snctr, yctr, xctr, yctr0, xctr0,
 
 
 def write_results(galaxy, skys, sn, snctr, yctr, xctr, yctr0, xctr0,
-                  yctrbounds, xctrbounds, cubes, psfs, wavewcs, fname,
+                  yctrbounds, xctrbounds, cubes, psfs, modelwcs, fname,
                   descale=True):
     """Write results to a FITS file."""
 
@@ -169,7 +161,7 @@ def write_results(galaxy, skys, sn, snctr, yctr, xctr, yctr0, xctr0,
         os.remove(fname)
 
     with fitsio.FITS(fname, "rw") as f:
-        f.write(galaxy, extname="galaxy", header=wavewcs)
+        f.write(galaxy, extname="galaxy", header=modelwcs)
         f[0].write_history("created by cubefit v" + __version__)
         f.write(epochs, extname="epochs",
                 header={"SNY": snctr[0], "SNX": snctr[1]})
@@ -184,12 +176,8 @@ def read_results(fname):
         epochs_hdr = f[1].read_header()
         epochs = f[1].read()
 
-        wavewcs = {"CRVAL3": galaxy_hdr["CRVAL3"],
-                   "CRPIX3": galaxy_hdr["CRPIX3"],
-                   "CDELT3": galaxy_hdr["CDELT3"]}
-
     return {"galaxy": galaxy,
-            "wavewcs": wavewcs,
+            "header": galaxy_hdr,
             "wave": wcs_to_wave(galaxy_hdr),
             "epochs": epochs,
             "snctr": (epochs_hdr["SNY"], epochs_hdr["SNX"])}

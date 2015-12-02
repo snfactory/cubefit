@@ -168,8 +168,7 @@ def generate_data():
         data += np.random.normal(scale=error, size=data.shape)
         weight = (1. / error**2) * np.ones_like(data)
 
-        cube = cubefit.DataCube(data, weight, wave, wavewcs=wavewcs,
-                                header=header)
+        cube = cubefit.DataCube(data, weight, wave, header=header)
         cubes.append(cube)
 
     # Build a configuration dictionary that we'll need in order to run

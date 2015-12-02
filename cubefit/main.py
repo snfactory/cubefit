@@ -28,7 +28,6 @@ from .extern import ADR, Hyper_PSF3D_PL
 __all__ = ["cubefit", "cubefit_subtract", "cubefit_plot"]
 
 MODEL_SHAPE = (32, 32)
-SNIFS_LATITUDE = np.deg2rad(19.8228)
 SPAXEL_SIZE = 0.43
 MIN_NMAD = 2.5  # Minimum Number of Median Absolute Deviations above
                 # the minimum spaxel value in fit_position
@@ -158,7 +157,6 @@ def cubefit(argv=None):
     cubes = [read_datacube(os.path.join(args.dataprefix, fname))
              for fname in cfg["filenames"]]
     wave = cubes[0].wave
-    wavewcs = cubes[0].wavewcs
     nw = len(wave)
 
     # assign some local variables for convenience
@@ -206,6 +204,17 @@ def cubefit(argv=None):
     yctr = yctr0.copy()
     xctr = xctr0.copy()
     snctr = (0., 0.)
+
+    # For writing out to FITS
+    modelwcs = {"CRVAL1": -SPAXEL_SIZE * (MODEL_SHAPE[0] - 1) / 2.,
+                "CRPIX1": 1,
+                "CDELT1": SPAXEL_SIZE,
+                "CRVAL2": -SPAXEL_SIZE * (MODEL_SHAPE[1] - 1) / 2.,
+                "CRPIX2": 1,
+                "CDELT2": SPAXEL_SIZE,
+                "CRVAL3": cubes[0].header["CRVAL3"],
+                "CRPIX3": cubes[0].header["CRPIX3"],
+                "CDELT3": cubes[0].header["CDELT3"]}
 
     # -------------------------------------------------------------------------
     # Position bounds
@@ -264,7 +273,7 @@ def cubefit(argv=None):
     if args.diagdir:
         fname = os.path.join(args.diagdir, 'step1.fits')
         write_results(galaxy, skys, sn, snctr, yctr, xctr, yctr0, xctr0,
-                      yctrbounds, xctrbounds, cubes, psfs, wavewcs, fname)
+                      yctrbounds, xctrbounds, cubes, psfs, modelwcs, fname)
 
     tsteps["fit galaxy to master ref"] = datetime.now()
 
@@ -323,7 +332,7 @@ def cubefit(argv=None):
     if args.diagdir:
         fname = os.path.join(args.diagdir, 'step2.fits')
         write_results(galaxy, skys, sn, snctr, yctr, xctr, yctr0, xctr0,
-                      yctrbounds, xctrbounds, cubes, psfs, wavewcs, fname)
+                      yctrbounds, xctrbounds, cubes, psfs, modelwcs, fname)
 
     tsteps["fit galaxy to all refs"] = datetime.now()
 
@@ -363,7 +372,7 @@ def cubefit(argv=None):
         if args.diagdir:
             fname = os.path.join(args.diagdir, 'step3.fits')
             write_results(galaxy, skys, sn, snctr, yctr, xctr, yctr0, xctr0,
-                          yctrbounds, xctrbounds, cubes, psfs, wavewcs, fname)
+                          yctrbounds, xctrbounds, cubes, psfs, modelwcs, fname)
 
         # ---------------------------------------------------------------------
         # Redo fit of galaxy, using ALL epochs, including ones with SN
@@ -398,7 +407,7 @@ def cubefit(argv=None):
         if args.diagdir:
             fname = os.path.join(args.diagdir, 'step4.fits')
             write_results(galaxy, skys, sn, snctr, yctr, xctr, yctr0, xctr0,
-                          yctrbounds, xctrbounds, cubes, psfs, wavewcs, fname)
+                          yctrbounds, xctrbounds, cubes, psfs, modelwcs, fname)
 
         # ---------------------------------------------------------------------
         # Repeat step before last: fit position of data and SN in
@@ -427,12 +436,12 @@ def cubefit(argv=None):
 
     logging.info("writing results to %s", args.outfile)
     write_results(galaxy, skys, sn, snctr, yctr, xctr, yctr0, xctr0,
-                  yctrbounds, xctrbounds, cubes, psfs, wavewcs, args.outfile)
+                  yctrbounds, xctrbounds, cubes, psfs, modelwcs, args.outfile)
 
     # time info
     logging.info("step times:")
     maxlen = max(len(key) for key in tsteps)
-    fmtstr = "        %dm%02ds - %-" + str(maxlen) + "s"
+    fmtstr = "        %2dm%02ds - %-" + str(maxlen) + "s"
     tprev = tstart
     for key, tstep in tsteps.items():
         t = (tstep - tprev).seconds
@@ -442,7 +451,7 @@ def cubefit(argv=None):
     tfinish = datetime.now()
     logging.info("finished at %s", tfinish.strftime("%Y-%m-%d %H:%M:%S"))
     t = (tfinish - tstart).seconds
-    logging.info("took %dm%ds", t // 60, t % 60)
+    logging.info("took %3dm%2ds", t // 60, t % 60)
 
 
 def cubefit_subtract(argv=None):
@@ -514,9 +523,9 @@ The "sn_outnames" configuration field determines the output filenames.
     # output SN spectra to separate files.
     sn_outnames = [os.path.join(args.outprefix, fname)
                    for fname in cfg["sn_outnames"]]
-    header = {"CRVAL1": results["wavewcs"]["CRVAL3"],
-              "CRPIX1": results["wavewcs"]["CRPIX3"],
-              "CDELT1": results["wavewcs"]["CDELT3"]}
+    header = {"CRVAL1": results["header"]["CRVAL3"],
+              "CRPIX1": results["header"]["CRPIX3"],
+              "CDELT1": results["header"]["CDELT3"]}
     for outfname, epoch in zip(sn_outnames, epochs):
         logging.info("writing %s", outfname)
         if os.path.exists(outfname):  # avoid warning from clobber=True
