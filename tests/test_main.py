@@ -151,12 +151,7 @@ def generate_data():
 
         # create a PSF for convolving & shifting the galaxy model to create
         # the data.
-        sigma, alpha, beta, ellipticity, eta, yc, xc = \
-            cubefit.main.snfpsfparams(wave, psf_params[i], header)
-        A = cubefit.psffuncs.gaussian_moffat_psf(
-            sigma, alpha, beta, ellipticity, eta,
-            yc, xc, MODEL_SHAPE, subpix=1)
-        psf = cubefit.TabularPSF(A)
+        psf = cubefit.main.snfpsf(wave, psf_params[i], header, 'tabular')
 
         # create data from sky + galaxy + SN
         g = psf.evaluate_galaxy(galaxy, DATA_SHAPE, (yctr[i], xctr[i]))

@@ -35,7 +35,7 @@ LBFGSB_FACTOR = 1e10
 REFWAVE = 5000.  # reference wavelength in Angstroms for PSF params and ADR
 POSITION_BOUND = 3.  # Bound on fitted positions relative in initial positions
 
-def snfpsfparams(wave, psfparams, header):
+def snfpsf(wave, psfparams, header, psftype):
     """Create a 3-d PSF based on SNFactory-specific parameterization of
     Gaussian + Moffat PSF parameters and ADR."""
 
@@ -74,7 +74,16 @@ def snfpsfparams(wave, psfparams, header):
     # adr_refract[0, :] corresponds to x, adr_refract[1, :] => y
     xctr, yctr = adr_refract
 
-    return sigma, alpha, beta, ellipticity, eta, yctr, xctr
+    if psftype == 'gaussian-moffat':
+        return GaussianMoffatPSF(sigma, alpha, beta, ellipticity, eta,
+                                 yctr, xctr, MODEL_SHAPE, subpix=3))
+
+    elif psftype == 'tabular':
+        A = gaussian_moffat_psf(sigma, alpha, beta, ellipticity, eta,
+                                yctr, xctr, MODEL_SHAPE, subpix=3)
+        return TabularPSF(A)
+    else:
+        raise ValueError("unknown psf type: " + repr(psftype))
 
 
 def setup_logging(loglevel, logfname=None):
@@ -122,8 +131,8 @@ def cubefit(argv=None):
     parser.add_argument("--mu_xy", default=0.001, type=float,
                         help="Spatial regularization parameter. "
                         "Default is 0.001.")
-    parser.add_argument("--psftype", default="tabular",
-                        help="Type of PSF: 'tabular' or 'gaussian-moffat'. "
+    parser.add_argument("--psftype", default="gaussian-moffat",
+                        help="Type of PSF: 'gaussian-moffat' or 'tabular'. "
                         "Currently, tabular means generate a tabular PSF from "
                         "gaussian-moffat parameters.")
     args = parser.parse_args(argv)
@@ -176,21 +185,8 @@ def cubefit(argv=None):
     # PSF for each observation
 
     logging.info("setting up PSF for all %d epochs", nt)
-    psfs = []
-    for i in range(nt):
-        sigma, alpha, beta, ellipticity, eta, yc, xc = snfpsfparams(
-            wave, cfg["psf_params"][i], cubes[i].header)
-
-        # Tabular PSF
-        if args.psftype == 'tabular':
-            A = gaussian_moffat_psf(sigma, alpha, beta, ellipticity, eta,
-                                    yc, xc, MODEL_SHAPE, subpix=3)
-            psfs.append(TabularPSF(A))
-        elif args.psftype == 'gaussian-moffat':
-            psfs.append(GaussianMoffatPSF(sigma, alpha, beta, ellipticity, eta,
-                                          yc, xc, MODEL_SHAPE, subpix=3))
-        else:
-            raise ValueError("unknown psf type: " + repr(args.psftype))
+    psfs = [snfpsf(wave, cfg["psf_params"][i], cubes[i].header, args.psftype)
+            for i in range(nt)]
 
     # -------------------------------------------------------------------------
     # Initialize all model parameters to be fit
