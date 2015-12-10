@@ -76,7 +76,7 @@ def snfpsf(wave, psfparams, header, psftype):
 
     if psftype == 'gaussian-moffat':
         return GaussianMoffatPSF(sigma, alpha, beta, ellipticity, eta,
-                                 yctr, xctr, MODEL_SHAPE, subpix=3))
+                                 yctr, xctr, MODEL_SHAPE, subpix=3)
 
     elif psftype == 'tabular':
         A = gaussian_moffat_psf(sigma, alpha, beta, ellipticity, eta,

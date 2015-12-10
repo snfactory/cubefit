@@ -4,7 +4,7 @@ DIAGDIR := diagnostics
 PLOTDIR := plots
 LOGLEVEL = info
 PLOTEPOCHS = 0
-PSFTYPE = tabular
+PSFTYPE = gaussian-moffat
 
 ifeq ($(PLOTEPOCHS), 1)
 	PLOTEPOCHSARG = --plotepochs

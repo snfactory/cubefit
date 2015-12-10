@@ -1,10 +1,18 @@
-v0.4.0 (unreleased)
+v0.4.0 (2015-12-10)
 ===================
 
-- Refactor `AtmModel` class to `PSF` classes.
-- Add PSF model `GaussianMoffatPSF` which samples point source directly on
-  output grid.
-
+- Code organization: Refactor `AtmModel` class to `PSF` classes.
+- Tweak: Add PSF model `GaussianMoffatPSF` which samples point source
+  directly on output grid for the final position fitting step. This is
+  now the default behavior. Also, uses subpixel sampling when creating
+  FFT convolution kernel (for convolving galaxy).
+- Tweak: Loosen position bounds from 2 spaxels to 3 spaxels
+- Tweak: Do not multiply regularization penalty by nepochs in multi-ref fit
+- Tweak: Get paralactic angle info from image header instead of config file
+- Results: Add Axis 1 and 2 WCS keywords to output header
+- Results: Add chisq, position bound information to output (2nd HDU)
+- Plotting: Improved plots, remove ADR and waveslice plots
+- Testing: Integration tests
 
 v0.3.0 (2015-10-19)
 ===================
