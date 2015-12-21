@@ -32,7 +32,7 @@ setup(name="cubefit",
       url="https://github.com/snfactory/cubefit",
       author="Kyle Barbary, Seb Bongard, Clare Saunders",
       author_email="kylebarbary@gmail.com",
-      packages=['cubefit'],
+      packages=['cubefit', 'cubefit.extern'],
       ext_modules=exts,
       entry_points={
           'console_scripts': [
