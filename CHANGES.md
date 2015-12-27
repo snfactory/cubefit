@@ -1,3 +1,15 @@
+v0.4.2 (2015-12-27)
+===================
+
+- Add checks for reasonable temperature and pressure values in FITS headers.
+- Revert from using setuptools' console_scripts to generate scripts.
+- Enable `setup.py test` to run tests and move tests inside package.
+
+v0.4.1 (2015-12-21)
+===================
+
+Fix install bug in setup.py.
+
 v0.4.0 (2015-12-10)
 ===================
 
@@ -8,7 +20,8 @@ v0.4.0 (2015-12-10)
   FFT convolution kernel (for convolving galaxy).
 - Tweak: Loosen position bounds from 2 spaxels to 3 spaxels
 - Tweak: Do not multiply regularization penalty by nepochs in multi-ref fit
-- Tweak: Get paralactic angle info from image header instead of config file
+- Tweak: Get metadata such as pressure, temperature and paralactic angle
+  from image header instead of config file
 - Results: Add Axis 1 and 2 WCS keywords to output header
 - Results: Add chisq, position bound information to output (2nd HDU)
 - Plotting: Improved plots, remove ADR and waveslice plots
