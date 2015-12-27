@@ -37,6 +37,10 @@ names = ["LSQ12dbr",
          "SNNGC4424",
          "SNNGC6801"]
 
+REMOTE_PARENT_DIR = ("/sps/snovae/user/snprod/snprod/jobs/SNF-02-03/"
+                     "MoreFlux/CUBEFIT/PCF")
+TAG = "BWATER"
+
 if "SNF_CC_USER_MACHINE" not in os.environ:
     raise RuntimeError("set SNF_CC_USER_MACHINE environment variable to "
                        "USER@MACHINE")
@@ -50,11 +54,10 @@ if "SNF_CC_USER_MACHINE" not in os.environ:
 # Note: The order of the --include and --exclude args is significant.
 cmd = ["rsync", "-vzrmt",
        "--include=*/",
-       "--include=*/SNF-0013-CUBEFIT2_?b-*_config.json",
+       "--include=*/SNF-0013-{}_?b-*_config.json".format(TAG),
        "--exclude=*",
-       os.environ["SNF_CC_USER_MACHINE"] +
-       ":/afs/in2p3.fr/group/snovae/snprodJob/"
-       "00-13/cubefit/{" + ",".join(names) + "}",
+       os.environ["SNF_CC_USER_MACHINE"] + ":" + REMOTE_PARENT_DIR +
+       "/{" + ",".join(names) + "}",
        "data/config_orig"]
 print(" ".join(cmd))
 subprocess.check_call(cmd)
@@ -66,8 +69,8 @@ for name in names:
         # Get filename (this is overly complicated because the SN name in the
         # file name has a different format than in `names`.
         fnames = glob.glob("data/config_orig/{}/"
-                           "SNF-0013-CUBEFIT2_{}b-*_config.json"
-                           .format(name, band))
+                           "SNF-0013-{}_{}b-*_config.json"
+                           .format(name, TAG, band))
         if len(fnames) != 1:
             raise RuntimeError("Found zero or multiple config files: {}"
                                .format(fname))
