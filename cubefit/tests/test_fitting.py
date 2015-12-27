@@ -11,12 +11,6 @@ from numpy.fft import fft2, ifft2
 from numpy.testing import assert_allclose
 from scipy.optimize import check_grad, approx_fprime
 
-# Use built version of cubefit, because C-extensions
-#dirname = "lib.{}-{}.{}".format(sysconfig.get_platform(),
-#                                sys.version_info[0],
-#                                sys.version_info[1])
-#sys.path.insert(0, os.path.join("build", dirname))
-
 import cubefit
 from cubefit.fitting import (sky_and_sn,
                              chisq_galaxy_single,

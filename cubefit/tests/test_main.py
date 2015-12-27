@@ -5,6 +5,8 @@ from __future__ import division
 import json
 import math
 import os
+import tempfile
+import shutil
 
 import numpy as np
 import fitsio
@@ -196,11 +198,7 @@ def write_datacube(cube, fname):
 def test_cubefit():
     
     # make a temp directory to hold the data
-    #dirname = tempfile.mkdtemp()
-    testdir = os.path.dirname(os.path.abspath(__file__))
-    dirname = os.path.join(testdir, "temp")
-    if not os.path.exists(dirname):
-        os.path.mkdir(dirname)
+    dirname = tempfile.mkdtemp(prefix='cubefit')
 
     conf, cubes = generate_data()
 
@@ -237,5 +235,5 @@ def test_cubefit():
     cubefit.cubefit_plot(argv=[configfname, resultfname, plotprefix,
                                "--plotepochs"])
 
-if __name__ == "__main__":
-    test_cubefit()
+    # clean up temp directory and its contents.
+    shutil.rmtree(dirname)
