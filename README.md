@@ -253,7 +253,7 @@ Developer Documentation
 **Running Tests:**
 
 If you've clone the repository (rather than using pip to install), you
-can run tests with `./test.py`. Requires the `pytest` package
+can run tests with `setup.py test`. Requires the `pytest` package
 (available via pip or conda).
 
 
