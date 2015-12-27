@@ -67,8 +67,16 @@ def snfpsf(wave, psfparams, header, psftype):
     # in input dictionary.
     delta, theta = Hyper_PSF3D_PL.predict_adr_params(header)
 
-    adr = ADR(header['PRESSURE'], header['TEMP'],
-              lref=REFWAVE, delta=delta, theta=theta)
+    # check for crazy values of pressure and temperature, and assign default
+    # values.
+    pressure = header.get('PRESSURE', 617.)
+    if not 550. < pressure < 650.:
+        pressure = 617.
+    temp = header.get('TEMP', 2.)
+    if not -20. < temp < 20.:
+        temp = 2.
+
+    adr = ADR(pressure, temp, lref=REFWAVE, delta=delta, theta=theta)
     adr_refract = adr.refract(0, 0, wave, unit=SPAXEL_SIZE)
         
     # adr_refract[0, :] corresponds to x, adr_refract[1, :] => y
@@ -163,8 +171,10 @@ def cubefit(argv=None):
     nt = len(cfg["filenames"])
 
     logging.info("reading %d data cubes", nt)
-    cubes = [read_datacube(os.path.join(args.dataprefix, fname))
-             for fname in cfg["filenames"]]
+    cubes = []
+    for fname in cfg["filenames"]:
+        logging.debug("  reading %s", fname)
+        cubes.append(read_datacube(os.path.join(args.dataprefix, fname)))
     wave = cubes[0].wave
     nw = len(wave)
 
@@ -449,6 +459,8 @@ def cubefit(argv=None):
     t = (tfinish - tstart).seconds
     logging.info("took %3dm%2ds", t // 60, t % 60)
 
+    return 0
+
 
 def cubefit_subtract(argv=None):
     DESCRIPTION = \
@@ -530,6 +542,8 @@ The "sn_outnames" configuration field determines the output filenames.
             f.write(epoch["sn"], extname="sn", header=header)
             f[0].write_history("created by " + prog_name_ver)
 
+    return 0
+
 
 def cubefit_plot(argv=None):
     DESCRIPTION = """Plot results and diagnostics from cubefit"""
@@ -595,3 +609,5 @@ def cubefit_plot(argv=None):
     # Plot the x-y coordinates of the adr versus wavelength
     # (Skip this for now; contains no interesting information)
     #plot_adr(cubes, cubes[0].wave, fname=(args.outprefix + '_adr.png'))
+
+    return 0
