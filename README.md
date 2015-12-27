@@ -11,7 +11,7 @@ Installation
 To install a release version:
 
 ```
-pip install http://github.com/snfactory/cubefit/archive/v0.2.0.tar.gz
+pip install http://github.com/snfactory/cubefit/archive/v0.4.2.tar.gz
 ```
 
 Release versions are listed
@@ -131,11 +131,11 @@ What it does
 
 The data are N 3-d cubes, where N are observations at different times
 (typically N ~ 10-30).  Each cube has two spatial directions and one
-wavelength direction. For SN factory, the dimensions are 15 x 15 x M,
+wavelength direction. For SNFactory, the dimensions are 15 x 15 x M,
 where M=779 for the blue channel M=1572 for the red channel. Each cube
 has both a data array and a corresponding weight (error) array.
 
-Some of the data cubes are designed as "final refs", meaning that there is
+Some of the data cubes are designated as "final refs", meaning that there is
 assumed to be no SN light in these epochs.
 
 **The model**
@@ -144,7 +144,7 @@ The model parameters consist of:
 
 - 3-d galaxy model ("unconvolved"). Default size is 32 x
   32 x M, where the pixel size of the model matches that of the data
-  (both spatially and in wavelength) but the model extends past the
+  (both spatially and in wavelength). The model extends past the
   data spatially, and the spectral grid matches the data.
 - N 1-d sky spectra
 - N 1-d supernova spectra
@@ -157,38 +157,38 @@ final refs (the "master" final ref) is fixed to the input values
 because only the relative offset between data cube positions is
 discernable.
 
-Additionally there are inputs that describe "atmospheric
-conditions". These are necessary for propagating the model to the
-data. They are derived externally and are not varied in the fit:
-
-- Amount and direction of atmospheric differential refraction in each
-  observation.
-- wavelength-dependent PSF model for each observation.
+Additionally there are inputs that describe the point spread function
+(PSF) in each epoch. These are necessary for propagating the model to
+the data. They are derived externally and are not varied in the
+fit. The PSF is "3-d": it is defined on a grid of wavelengths. The
+spatial shape can vary between wavelengths, as can the position of the
+center of the PSF. The change in the center position with wavelength
+encodes the amount of atmospheric differential refraction (ADR).
 
 Finally, there are two regularization parameters that determine the
 penalty on the galaxy model for being "rougher" (having a high
 pixel-to-pixel variation).
 
-**The Procedure**
+**Fitting Procedure**
 
-These steps are carried out in ``cubefit.main`` (which is called from
+These steps are carried out in ``cubefit.main.cubefit()`` (which is called from
 the command-line script).
 
 1. **Initialization**
 
+   - Read configuration file
    - Read in datacubes
-   - Read in parameters that determine the PSF and ADR and initialize the
-     "atmospheric model" that contains these for each epoch.
+   - Initialize the PSF model for each epoch, based on values in the configuration
+     file and image header.
    - Initialize all model parameters to zero, except sky. For the sky, we
-     make an initial heuristic guess based on only the data and a
-     sigma-clipping process.
+     make an initial heuristic guess based on only the data.
    - Initialize the regularization, based on the input regularization
      parameters and a rough guess at the average galaxy spectrum.
 
 2. **Fit the galaxy model to just the master final ref**
 
-   The model is defined in the frame of the master final ref, so there
-   is no position fit here. Also, the sky of the master final ref is
+   The position of the master final ref is fixed with respect to the model,
+   so there is no position fit here. Also, the sky of the master final ref is
    fixed to the initial guess (as the galaxy model and sky level are
    degenerate).
 
@@ -202,49 +202,49 @@ the command-line script).
 Internal API documentation
 --------------------------
 
-|                |                  |
-| -------------- | ---------------- |
-| `cubefit.main` | Main entry point |
+This is intended as a rough guide to the major components of the code.
+
+| Console scripts                   |                                           |
+| --------------------------------- | ----------------------------------------- |
+| `main.cubefit()`                  | Entry point for `cubefit` script          |
+| `main.cubefit_subtract()`         | Entry point for `cubefit-subtract` script |
+| `main.cubefit_plot()`             | Entry point for `cubefit-plot` script     |
 
 
-**Data structure and I/O**
-
-|                         |                                          |
+| Data structure and I/O  |                                          |
 | ----------------------- | ---------------------------------------- |
-| `cubefit.DataCube`      | Container for data and weight arrays     |
-| `cubefit.read_datacube` | Read a two-HDU FITS file into a DataCube |
+| `io.DataCube`           | Container for data and weight arrays     |
+| `io.read_datacube`      | Read a two-HDU FITS file into a DataCube |
 
 
-**ADR and PSF model**
+| PSF model                        |                                          |
+| -------------------------------- | ---------------------------------------- |
+| `psf.GaussianMoffatPSF`          | A 3-d PSF model made up of a Gaussian + Mofffat profile. |
+| `psf.TabularPSF`                 | A 3-d PSF model defined by a 3-d array. |
+| `main.snfpsf()`                  | Instatiate a 3-d PSF model based on SNFactory-specific parameterization. |
+| `psffuncs.gaussian_moffat_psf()` | Evaluate a 3-d Gaussian + Moffat profile on a 3-d array. |
 
-|                                    |                                          |
-| ---------------------------------- | ---------------------------------------- |
-| `cubefit.paralactic_angle`         | Return paralactic angle in radians, including MLA tilt |
-| `cubefit.gaussian_plus_moffat_psf` | Evaluate a gaussian+moffat function on a 2-d grid |
-| `cubefit.psf_3d_from_params`       | Create a wavelength-dependent Gaussian+Moffat PSF from given parameters |
-| `cubefit.AtmModel`                 |  Atmospheric conditions (PSF and ADR) model for a single observation |
-
-*Additionally, the ADR class from the SNfactory Toolbox package is used.*
-
-**Fitting**
-
-|                                     |                                          |
-| ----------------------------------- | ---------------------------------------- |
-| `cubefit.RegularizationPenalty`     | Callable that returns the penalty and gradient on it. |
-| `cubefit.guess_sky`                 | Guess sky based on lower signal spaxels compatible with variance |
-| `cubefit.fit_galaxy_single`         | Fit the galaxy model to a single epoch of data. |
-| `cubefit.fit_galaxy_sky_multi`      | Fit the galaxy model to multiple data cubes. |
-| `cubefit.fit_position_sky`          | Fit data position and sky for a single epoch (fixed galaxy model). |
-| `cubefit.fit_position_sky_sn_multi` | Fit data pointing (nepochs), SN position (in model frame), SN amplitude (nepochs), and sky level (nepochs). |
+Note: The `ADR` class from the SNfactory Toolbox package and the
+ `Hyper_PSF3D_PL` class from libExtractStar are used in
+ `cubefit.main.snfpsf()`
 
 
+| Fitting                               |                                          |
+| ------------------------------------- | ---------------------------------------- |
+| `fitting.RegularizationPenalty`       | Callable that returns the penalty and gradient on it. |
+| `fitting.guess_sky()`                 | Guess sky based on lower signal spaxels compatible with variance |
+| `fitting.fit_galaxy_single()`         | Fit the galaxy model to a single epoch of data. |
+| `fitting.fit_galaxy_sky_multi()`      | Fit the galaxy model to multiple data cubes. |
+| `fitting.fit_position_sky()`          | Fit data position and sky for a single epoch (fixed galaxy model). |
+| `fitting.fit_position_sky_sn_multi()` | Fit data pointing (nepochs), SN position (in model frame), SN amplitude (nepochs), and sky level (nepochs). |
 
-**Utilities**
 
-|                               |                                          |
-| ----------------------------- | ---------------------------------------- |
-| `cubefit.fft_shift_phasor_2d` | phasor array used to shift an array (in real space) by multiplication in fourier space. |
-| `cubefit.plot_timeseries`     | Return a figure showing data and model. |
+| Plotting                     |                                                        |
+| ---------------------------- | ------------------------------------------------------ |
+| `plotting.plot_timeseries()` | Return a figure showing data and model for all epochs. |
+| `plotting.plot_epoch()`      | Make a more detailed figure for a single epoch.        |
+
+These functions are called by `cubefit-plot`.
 
 
 Developer Documentation
