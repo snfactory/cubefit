@@ -523,9 +523,11 @@ The "sn_outnames" configuration field determines the output filenames.
         f[0].write(data)
         f[0].write_history("galaxy subtracted by " + prog_name_ver)
         f[0].write_key("CBFT_SNX", snx - epoch['xctr'],
-                       comment="SN x offset from center at ref wave [spaxels]")
+                       comment="SN x offset from center at {:.0f} A [spaxels]"
+                       .format(REFWAVE))
         f[0].write_key("CBFT_SNY", sny - epoch['yctr'],
-                       comment="SN y offset from center at ref wave [spaxels]")
+                       comment="SN y offset from center at {:.0f} A [spaxels]"
+                       .format(REFWAVE))
         f.close()
 
     # output SN spectra to separate files.
