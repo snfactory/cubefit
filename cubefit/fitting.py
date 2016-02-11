@@ -92,7 +92,7 @@ def determine_sky(data, weight, g, ggrad=None):
 
     else:
         skygrad = -np.sum(ggrad * weight, axis=(2, 3)) / denom
-        skygrad[mask] = 0.
+        skygrad[:, mask] = 0.
         return sky, skygrad
 
 
