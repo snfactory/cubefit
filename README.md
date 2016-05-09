@@ -127,6 +127,8 @@ for the first epoch:
 What it does
 ------------
 
+A description of the original implemetation of the algorithm can be found in [Bongard et al (2011)](http://adsabs.harvard.edu/abs/2011MNRAS.418..258B).
+
 **The data**
 
 The data are N 3-d cubes, where N are observations at different times
