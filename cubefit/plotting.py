@@ -172,9 +172,9 @@ def plot_timeseries(cubes, results, band=None, fname=None, title='Timeseries'):
             if j == len(results) - 1:
                 ticklocs = [residvmin[i_t], 0., residvmax[i_t]]
                 scenemax = scenes[j][i_t].max()
-                ticklabels = ['%d%%' % (100 * residvmin[i_t] / scenemax),
+                ticklabels = ['%d%%' % round(100 * residvmin[i_t] / scenemax),
                               '0%',
-                              '%d%%' % (100 * residvmax[i_t] / scenemax)]
+                              '%d%%' % round(100 * residvmax[i_t] / scenemax)]
                 tickalign =['left', 'center', 'right']
 
                 cb = fig.colorbar(rp, cax=plt.subplot(gs[2*j+3, i_t+3]),

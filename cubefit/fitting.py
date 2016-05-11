@@ -490,6 +490,7 @@ def fit_position_sky_sn_multi(galaxy, datas, weights, yctr0, xctr0, snctr0,
         for i in range(len(params)//2-1):
             logging.debug('Epoch %s: %s, %s', i, params[2*i], params[2*i+1])
         logging.debug('SN position %s, %s', params[-2], params[-1])
+
     logging.debug('Bounds:')
     callback(bounds)
     logging.debug('')
