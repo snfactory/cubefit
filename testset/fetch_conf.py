@@ -12,9 +12,12 @@ names = ["LSQ12dbr",
          "PTF09fox",
          "PTF10ndc",
          "PTF10nlg",
+         "PTF11dzm",
+         "PTF12ena",
          "SN2005ki",
          "SN2006ac",
          "SN2006ob",
+         "SN2011bl",
          "SN2011by",
          "SNF20050919-000",
          "SNF20051003-003",
@@ -39,7 +42,7 @@ names = ["LSQ12dbr",
 
 REMOTE_PARENT_DIR = ("/sps/snovae/user/snprod/snprod/jobs/SNF-02-03/"
                      "MoreFlux/CUBEFIT/PCF")
-TAG = "BWATER"
+TAG = "0203-CABALLO"
 
 if "SNF_CC_USER_MACHINE" not in os.environ:
     raise RuntimeError("set SNF_CC_USER_MACHINE environment variable to "
@@ -54,7 +57,7 @@ if "SNF_CC_USER_MACHINE" not in os.environ:
 # Note: The order of the --include and --exclude args is significant.
 cmd = ["rsync", "-vzrmt",
        "--include=*/",
-       "--include=*/SNF-0013-{}_?b-*_config.json".format(TAG),
+       "--include=*/SNF-{}_?b-*_config.json".format(TAG),
        "--exclude=*",
        os.environ["SNF_CC_USER_MACHINE"] + ":" + REMOTE_PARENT_DIR +
        "/{" + ",".join(names) + "}",
@@ -69,11 +72,11 @@ for name in names:
         # Get filename (this is overly complicated because the SN name in the
         # file name has a different format than in `names`.
         fnames = glob.glob("data/config_orig/{}/"
-                           "SNF-0013-{}_{}b-*_config.json"
+                           "SNF-{}_{}b-*_config.json"
                            .format(name, TAG, band))
         if len(fnames) != 1:
-            raise RuntimeError("Found zero or multiple config files: {}"
-                               .format(fname))
+            raise RuntimeError("Found {:d} config files for {}. Expected one."
+                               .format(len(fnames), name))
 
         # read it
         with open(fnames[0]) as f:
