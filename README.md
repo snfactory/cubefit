@@ -4,6 +4,14 @@ CubeFit
 Fit supernova + galaxy model on a series of spectral data cubes from
 the Nearby Supernova Factory.
 
+![Example](example.png)
+
+*Above:* Each column shows a separate observation date for a
+supernova, with the last four observations occuring after the
+supernova faded. *Top row:* The **data** integrated over a 1000
+Angstrom-wide bandpass. *Bottom row:* The cubefit **model** for the
+scene integrated over the same bandpass.
+
 
 Installation
 ------------
@@ -29,7 +37,9 @@ following dependencies:
 Usage
 -----
 
-Fit the model, write output to given file:
+Cubefit consists of three command-line executables.
+
+Fit the model, write an output model to given file:
 
 ```
 cubefit config.json output.fits
@@ -41,11 +51,19 @@ Producing subtracted data cubes is a separate step:
 cubefit-subtract config.json output.fits
 ```
 
-This reads the input and output filenames listed in the configuration file, and
-the results of the fit saved in `output.fits`.
+(This reads the input and output filenames listed in the configuration
+file, and the results of the fit saved in `output.fits`.)
 
-With either command, you can run with `-h` or `--help` options to see all the
-optional arguments: `cubefit --help`.
+Finally, there are some standard plots that can be produced with
+
+```
+cubefit-plot config.json output.fits plotdir
+```
+
+(where `plotdir` is the target directory for the resulting plots).
+
+With any command, you can run with `-h` or `--help` options to see all the
+optional arguments, e.g., `cubefit --help`.
 
 Input format
 ------------
