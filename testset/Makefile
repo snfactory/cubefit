@@ -35,6 +35,7 @@ names = LSQ12dbr_R \
 	PTF10nlg_B \
 	PTF11dzm_B PTF11dzm_R \
 	PTF12ena_B PTF12ena_R \
+	SN2004dt_B SN2004dt_R \
 	SN2005ki_B SN2005ki_R \
 	SN2006ac_B \
 	SN2006ob_B SN2006ob_R \
