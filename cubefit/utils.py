@@ -1,5 +1,7 @@
 """General utilities."""
 
+from __future__ import division
+
 import numpy as np
 from numpy import fft
 
@@ -136,7 +138,7 @@ def fft_shift_phasor(n, d, grad=False):
         df = 2. * np.pi * fft.fftfreq(n)
         dresult = (-np.sin(f) -1j*np.cos(f)) * df
         if n % 2 == 0:
-            dresult[n/2] = np.real(dresult[n/2])
+            dresult[n//2] = np.real(dresult[n//2])
         return result, dresult
 
     else:
