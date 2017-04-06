@@ -294,7 +294,9 @@ def plot_epoch(cube, epoch, fname=None):
     model_plot.set_title('Model')
     resid_plot.set_title('Residual')
 
-    metaslices = np.linspace(0, len(wave), numslices + 1)
+    # `metaslices` is an array of index borders for the slices:
+    # e.g., [0, 300, ..., len(wave)].
+    metaslices = np.linspace(0, len(wave), numslices + 1).astype(np.int)
 
     for i in range(numslices):
         sliceindices = np.arange(metaslices[i], metaslices[i+1], dtype=int)
