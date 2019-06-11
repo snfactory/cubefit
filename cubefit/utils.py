@@ -132,7 +132,7 @@ def fft_shift_phasor(n, d, grad=False):
 
     # This is where we set the Nyquist frequency to be purely real (see above)
     if n % 2 == 0:
-        result[n/2] = np.real(result[n/2])
+        result[int(n/2)] = np.real(result[int(n/2)])
 
     if grad:
         df = 2. * np.pi * fft.fftfreq(n)
