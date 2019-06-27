@@ -262,6 +262,7 @@ def cubefit(argv=None):
         spectra[j] = np.interp(wave, bins[:-1] + np.diff(bins)[0]/2., 
                                mean_spec)
     mean_gal_spec = np.average(spectra, axis=0)
+    # Ensure that there won't be any negative or tiny values in mean:
     mean_floor = 0.1 * np.median(mean_gal_spec)
     mean_gal_spec[mean_gal_spec < mean_floor] = mean_floor
 
