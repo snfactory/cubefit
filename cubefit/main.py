@@ -12,6 +12,7 @@ import logging
 import math
 import os
 
+import scipy.stats
 import numpy as np
 
 from .version import __version__
@@ -255,8 +256,15 @@ def cubefit(argv=None):
     # Calculate rough average galaxy spectrum from all final refs.
     spectra = np.zeros((len(refs), len(wave)), dtype=np.float64)
     for j, i in enumerate(refs):
-        spectra[j] = np.average(cubes[i].data, axis=(1, 2)) - skys[i]
+        avg_spec = np.average(cubes[i].data, axis=(1, 2)) - skys[i]
+        mean_spec, bins, bn = scipy.stats.binned_statistic(wave, avg_spec, 
+                                                           bins=len(wave)/10)
+        spectra[j] = np.interp(wave, bins[:-1] + np.diff(bins)[0]/2., 
+                               mean_spec)
     mean_gal_spec = np.average(spectra, axis=0)
+    # Ensure that there won't be any negative or tiny values in mean:
+    mean_floor = 0.1 * np.median(mean_gal_spec)
+    mean_gal_spec[mean_gal_spec < mean_floor] = mean_floor
 
     galprior = np.zeros((nw, MODEL_SHAPE[0], MODEL_SHAPE[1]), dtype=np.float64)
 
